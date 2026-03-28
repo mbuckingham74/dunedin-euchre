@@ -7,6 +7,7 @@
     "start": "node server.js",
     "dev": "node --watch server.js",
     "seed": "node db/seed.js",
+    "import:participants": "node scripts/import-participants-csv.js",
     "test": "node --test"
   },
   "dependencies": {
