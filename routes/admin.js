@@ -115,7 +115,6 @@ router.get('/auth/:token', (req, res) => {
   db.prepare('UPDATE admin_tokens SET used = 1 WHERE token = ?').run(row.token);
 
   req.session.adminAuthenticated = true;
-  req.session.adminEmail = ADMIN_EMAIL;
 
   res.redirect('/admin/dashboard');
 });
