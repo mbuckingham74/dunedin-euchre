@@ -7,6 +7,9 @@ const { formatEventDate, formatTime } = require('../services/email');
 
 const MAX_CHANGES = 5;
 
+// ── Root redirect ─────────────────────────────────────────────
+router.get('/', (req, res) => res.redirect('/admin'));
+
 // ── Helpers ──────────────────────────────────────────────────
 
 function getCurrentEvent() {
