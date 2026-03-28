@@ -201,6 +201,15 @@ function getRosterWithCounts(eventId) {
   return { roster, counts };
 }
 
+function listActiveParticipants() {
+  return db.prepare(`
+    SELECT id, name, email, created_at
+    FROM participants
+    WHERE active = 1
+    ORDER BY name ASC
+  `).all();
+}
+
 function buildDashboardRedirect(eventId) {
   return eventId ? `/admin/dashboard?eventId=${eventId}` : '/admin/dashboard';
 }
@@ -265,6 +274,7 @@ router.get('/auth/:token', (req, res) => {
 router.get('/dashboard', requireAdmin, (req, res) => {
   const requestedEventId = parseEventId(req.query.eventId);
   const event = getDashboardEvent(requestedEventId);
+  const inviteParticipants = listActiveParticipants();
 
   if (requestedEventId && !event) {
     return res.status(404).send('<h1 style="font-family:sans-serif;padding:2rem">Event not found.</h1>');
@@ -285,6 +295,7 @@ router.get('/dashboard', requireAdmin, (req, res) => {
     event,
     roster,
     counts,
+    inviteParticipants,
     publicSlugHistory,
     previousPublicSlugs,
     allEvents: listEvents(),

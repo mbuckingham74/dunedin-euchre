@@ -376,6 +376,42 @@ test('participant create route reactivates instead of duplicating an existing em
   }]);
 });
 
+test('dashboard shows the full invite list even when no event is selected', async () => {
+  insertParticipant({
+    name: 'Alice Invitee',
+    email: 'alice.invitee@example.com',
+    rsvp_token: 'alice-invitee-token'
+  });
+  insertParticipant({
+    name: 'Bob Invitee',
+    email: 'bob.invitee@example.com',
+    rsvp_token: 'bob-invitee-token'
+  });
+  insertParticipant({
+    name: 'Inactive Invitee',
+    email: 'inactive.invitee@example.com',
+    rsvp_token: 'inactive-invitee-token',
+    active: 0
+  });
+  const cookie = await signInAsAdmin();
+
+  const response = await fetch(`${baseUrl}/admin/dashboard`, {
+    headers: { cookie }
+  });
+
+  assert.equal(response.status, 200);
+  const body = await response.text();
+  assert.match(body, /Invite List/);
+  assert.match(body, /Everyone currently signed up to receive RSVP invitations\./);
+  assert.match(body, /<strong>2<\/strong>\s*active participants will receive event invites\./);
+  assert.match(body, /Alice Invitee/);
+  assert.match(body, /alice\.invitee@example\.com/);
+  assert.match(body, /Bob Invitee/);
+  assert.match(body, /bob\.invitee@example\.com/);
+  assert.doesNotMatch(body, /Inactive Invitee/);
+  assert.doesNotMatch(body, /inactive\.invitee@example\.com/);
+});
+
 test('admin event create and update routes persist slug settings and keep old slug links working after removal', async () => {
   const cookie = await signInAsAdmin();
 

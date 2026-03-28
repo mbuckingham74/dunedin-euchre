@@ -512,6 +512,21 @@ body {
   font-weight: 700;
   color: var(--gray-900);
 }
+.admin-card-header-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+.admin-card-copy {
+  margin: 0;
+  color: var(--gray-500);
+  font-size: 0.95rem;
+  font-family: system-ui, sans-serif;
+}
+.admin-card-note {
+  color: var(--gray-500);
+  font-family: system-ui, sans-serif;
+}
 
 /* ── RSVP count boxes (admin) ────────────────────────────── */
 .admin-counts {
@@ -596,6 +611,10 @@ body {
 .comment-cell { color: var(--gray-500); font-style: italic; max-width: 240px; }
 .date-cell { color: var(--gray-400); white-space: nowrap; font-size: 0.875rem; }
 .actions-cell { white-space: nowrap; }
+.admin-email-link {
+  color: var(--blue);
+  word-break: break-all;
+}
 
 /* ── Forms (admin) ───────────────────────────────────────── */
 .form-group { display: flex; flex-direction: column; }
