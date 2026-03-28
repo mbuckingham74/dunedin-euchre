@@ -453,9 +453,9 @@ body {
   position: absolute;
   right: calc(100% + 1.5rem);
   top: 0;
-  width: 180px;
+  width: 360px;
 }
-@media (max-width: 1380px) {
+@media (max-width: 1560px) {
   .dashboard-logo { display: none; }
 }
 .admin-card { }
