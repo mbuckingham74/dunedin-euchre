@@ -376,7 +376,7 @@ test('participant create route reactivates instead of duplicating an existing em
   }]);
 });
 
-test('dashboard shows the full invite list even when no event is selected', async () => {
+test('dashboard shows the full roster even when no event is selected', async () => {
   insertParticipant({
     name: 'Alice Invitee',
     email: 'alice.invitee@example.com',
@@ -401,7 +401,9 @@ test('dashboard shows the full invite list even when no event is selected', asyn
 
   assert.equal(response.status, 200);
   const body = await response.text();
-  assert.match(body, /Invite List/);
+  assert.match(body, /href="\/admin\/dashboard#roster"/);
+  assert.match(body, /<section id="roster" class="card admin-card admin-anchor-section"/);
+  assert.match(body, /Roster/);
   assert.match(body, /Everyone currently signed up to receive RSVP invitations\./);
   assert.match(body, /<strong>2<\/strong>\s*active participants will receive event invites\./);
   assert.match(body, /Alice Invitee/);

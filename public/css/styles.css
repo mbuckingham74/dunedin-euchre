@@ -523,6 +523,9 @@ body {
   font-size: 0.95rem;
   font-family: system-ui, sans-serif;
 }
+.admin-anchor-section {
+  scroll-margin-top: 70px;
+}
 .admin-card-note {
   color: var(--gray-500);
   font-family: system-ui, sans-serif;
