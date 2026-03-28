@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dunedin Euchre – Stats</title>
+  <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body class="admin-page">
+
+<%- include('../partials/admin-nav', { active: 'stats' }) %>
+
+<main class="admin-main">
+  <div class="admin-content">
+
+    <section class="card admin-card" style="margin-bottom:1.5rem;">
+      <h2 class="card-title">Historical Attendance</h2>
+      <p style="color:#64748b;margin-top:0.25rem;margin-bottom:1.5rem;">
+        Based on <strong><%= totalEvents %></strong> event<%= totalEvents === 1 ? '' : 's' %> on record.
+      </p>
+
+      <% if (totalEvents === 0) { %>
+        <p style="color:#64748b;">No events recorded yet.</p>
+      <% } else { %>
+
+        <div style="margin-bottom:1rem;display:flex;gap:0.5rem;flex-wrap:wrap;">
+          <button class="btn-sm btn-secondary" onclick="sortTable('attendance','desc')">Sort by Attendance ↓</button>
+          <button class="btn-sm btn-secondary" onclick="sortTable('attendance','asc')">Sort by Attendance ↑</button>
+          <button class="btn-sm btn-secondary" onclick="sortTable('name','asc')">Sort by Name A–Z</button>
+        </div>
+
+        <div class="admin-table-wrap">
+          <table class="admin-table" id="stats-table">
+            <thead>
+              <tr>
+                <th data-col="name">Name</th>
+                <th data-col="attendance">Attendance Rate</th>
+                <th>Shows / Events</th>
+                <th data-col="changes">Avg. Changes</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% stats.forEach(function(s) { %>
+                <tr
+                  data-name="<%= s.name %>"
+                  data-attendance="<%= s.attendanceRate !== null ? s.attendanceRate : -1 %>"
+                  data-changes="<%= s.avgChanges %>"
+                >
+                  <td><%= s.name %></td>
+                  <td>
+                    <% if (s.attendanceRate !== null) { %>
+                      <div class="attendance-bar-wrap">
+                        <div class="attendance-bar" style="width:<%= s.attendanceRate %>%"></div>
+                        <span class="attendance-pct"><%= s.attendanceRate %>%</span>
+                      </div>
+                    <% } else { %>
+                      <span style="color:#94a3b8;">—</span>
+                    <% } %>
+                  </td>
+                  <td style="color:#64748b;">
+                    <%= s.yesCount %> / <%= totalEvents %>
+                  </td>
+                  <td style="color:#64748b;text-align:center;">
+                    <%= s.avgChanges %>
+                  </td>
+                </tr>
+              <% }); %>
+            </tbody>
+          </table>
+        </div>
+
+      <% } %>
+    </section>
+
+    <% if (events.length > 0) { %>
+      <section class="card admin-card">
+        <h2 class="card-title" style="margin-bottom:1rem;">Event History</h2>
+        <ul style="list-style:none;padding:0;margin:0;">
+          <% events.slice().reverse().forEach(function(e) { %>
+            <li style="padding:0.6rem 0;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;gap:1rem;flex-wrap:wrap;">
+              <span style="font-weight:600;"><%= formatEventDate(e.event_date) %></span>
+              <span style="color:#64748b;"><%= e.location_name %></span>
+              <a href="/event/<%= e.id %>" target="_blank" class="btn-sm btn-secondary">View roster</a>
+            </li>
+          <% }); %>
+        </ul>
+      </section>
+    <% } %>
+
+  </div>
+</main>
+
+<script>
+function sortTable(col, dir) {
+  const tbody = document.querySelector('#stats-table tbody');
+  const rows = Array.from(tbody.querySelectorAll('tr'));
+  rows.sort((a, b) => {
+    if (col === 'name') {
+      return dir === 'asc'
+        ? a.dataset.name.localeCompare(b.dataset.name)
+        : b.dataset.name.localeCompare(a.dataset.name);
+    }
+    const av = parseFloat(a.dataset[col === 'attendance' ? 'attendance' : 'changes']);
+    const bv = parseFloat(b.dataset[col === 'attendance' ? 'attendance' : 'changes']);
+    return dir === 'desc' ? bv - av : av - bv;
+  });
+  rows.forEach(r => tbody.appendChild(r));
+}
+</script>
+<script src="/js/admin.js"></script>
+</body>
+</html>

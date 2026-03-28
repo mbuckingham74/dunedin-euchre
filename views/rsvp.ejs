@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dunedin Euchre – RSVP</title>
+  <link rel="stylesheet" href="/css/styles.css">
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#2563eb">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Dunedin Euchre">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png">
+</head>
+<body class="rsvp-page">
+
+<header class="site-header">
+  <div class="header-inner">
+    <span class="site-title">&#9830; Dunedin Euchre</span>
+    <span class="header-sub">Monthly Tournament</span>
+  </div>
+</header>
+
+<main class="rsvp-layout">
+
+  <!-- LEFT COLUMN: event info + form -->
+  <div class="rsvp-left">
+
+    <section class="card event-card">
+      <h2 class="event-date-heading"><%= formatEventDate(event.event_date) %></h2>
+      <div class="event-meta">
+        <div class="event-meta-row">
+          <span class="meta-label">Location</span>
+          <span class="meta-value"><%= event.location_name %></span>
+        </div>
+        <div class="event-meta-row">
+          <span class="meta-label">Time</span>
+          <span class="meta-value"><%= formatTime(event.start_time) %> – <%= formatTime(event.end_time) %></span>
+        </div>
+      </div>
+
+      <% if (event.notes) { %>
+        <div class="event-notes">
+          <span class="notes-label">Note</span>
+          <p class="notes-text"><%= event.notes %></p>
+        </div>
+      <% } %>
+
+      <% if (event.location_image) { %>
+        <div class="location-image-wrap">
+          <p class="location-image-caption">Building entrance</p>
+          <img
+            src="/uploads/<%= event.location_image %>"
+            alt="Entrance to <%= event.location_name %>"
+            class="location-image"
+          >
+        </div>
+      <% } %>
+    </section>
+
+    <!-- RSVP Form -->
+    <section class="card rsvp-form-card" id="rsvp-form-section">
+      <h3 class="form-heading">Your RSVP</h3>
+      <p class="greeting">Hi, <strong><%= participant.name %></strong></p>
+
+      <%
+        const changesLeft = myResponse
+          ? maxChanges - myResponse.change_count
+          : maxChanges;
+        const atLimit = changesLeft <= 0;
+      %>
+
+      <div class="status-buttons" id="status-buttons">
+        <button
+          class="btn-status btn-yes <%= (myResponse && myResponse.status === 'yes') ? 'active' : '' %>"
+          data-status="yes"
+          <%= atLimit ? 'disabled' : '' %>
+        >
+          ✓ Yes, I'll be there
+        </button>
+        <button
+          class="btn-status btn-no <%= (myResponse && myResponse.status === 'no') ? 'active' : '' %>"
+          data-status="no"
+          <%= atLimit ? 'disabled' : '' %>
+        >
+          ✕ Can't make it
+        </button>
+        <button
+          class="btn-status btn-maybe <%= (myResponse && myResponse.status === 'maybe') ? 'active' : '' %>"
+          data-status="maybe"
+          <%= atLimit ? 'disabled' : '' %>
+        >
+          ? Not sure yet
+        </button>
+      </div>
+
+      <div class="comment-wrap" id="comment-wrap">
+        <label for="comment-input" class="comment-label">Add a note (optional)</label>
+        <textarea
+          id="comment-input"
+          class="comment-input"
+          maxlength="400"
+          placeholder="e.g. Running 10 minutes late..."
+          <%= atLimit ? 'disabled' : '' %>
+        ><%= (myResponse && myResponse.comment) ? myResponse.comment : '' %></textarea>
+        <div class="char-counter"><span id="char-count"><%= (myResponse && myResponse.comment) ? myResponse.comment.length : 0 %></span> / 400</div>
+      </div>
+
+      <button
+        class="btn-submit"
+        id="submit-btn"
+        disabled
+        aria-label="Submit your RSVP"
+      >
+        Submit RSVP
+      </button>
+
+      <div class="rsvp-feedback" id="rsvp-feedback" aria-live="polite"></div>
+
+      <% if (myResponse) { %>
+        <div class="current-rsvp" id="current-rsvp">
+          <span class="current-label">Current response:</span>
+          <span class="current-status status-<%= myResponse.status %>">
+            <%= myResponse.status === 'yes' ? '✓ Yes' : myResponse.status === 'no' ? '✕ No' : '? Maybe' %>
+          </span>
+        </div>
+      <% } %>
+
+      <% if (!atLimit) { %>
+        <p class="changes-note" id="changes-note">
+          You can change your answer up to <strong><%= changesLeft %></strong> more time<%= changesLeft === 1 ? '' : 's' %>.
+        </p>
+      <% } else { %>
+        <p class="changes-note limit-reached">
+          You've reached the maximum number of changes for this event.
+        </p>
+      <% } %>
+    </section>
+
+  </div><!-- /.rsvp-left -->
+
+  <!-- RIGHT COLUMN: roster -->
+  <div class="rsvp-right">
+    <section class="card roster-card">
+      <h3 class="roster-heading">Who's Coming</h3>
+
+      <div class="roster-counts" id="roster-counts">
+        <%
+          const counts = { yes: 0, no: 0, maybe: 0, none: 0 };
+          roster.forEach(r => { if (r.status) counts[r.status]++; else counts.none++; });
+        %>
+        <span class="count-badge count-yes" title="Yes"><%= counts.yes %> Yes</span>
+        <span class="count-badge count-maybe" title="Maybe"><%= counts.maybe %> Maybe</span>
+        <span class="count-badge count-no" title="No"><%= counts.no %> No</span>
+        <span class="count-badge count-none" title="Not yet responded"><%= counts.none %> Pending</span>
+      </div>
+
+      <ul class="roster-list" id="roster-list">
+        <% roster.forEach(function(p) { %>
+          <li class="roster-item roster-<%= p.status || 'none' %> <%= p.id === participant.id ? 'roster-mine' : '' %>"
+              data-pid="<%= p.id %>">
+            <span class="roster-name">
+              <%= p.name %>
+              <% if (p.id === participant.id) { %><span class="you-badge">You</span><% } %>
+            </span>
+            <span class="roster-status">
+              <% if (p.status === 'yes') { %>
+                <span class="status-pill pill-yes">✓ Yes</span>
+              <% } else if (p.status === 'no') { %>
+                <span class="status-pill pill-no">✕ No</span>
+              <% } else if (p.status === 'maybe') { %>
+                <span class="status-pill pill-maybe">? Maybe</span>
+              <% } else { %>
+                <span class="status-pill pill-none">—</span>
+              <% } %>
+            </span>
+            <% if (p.comment) { %>
+              <span class="roster-comment">"<%= p.comment %>"</span>
+            <% } %>
+          </li>
+        <% }); %>
+      </ul>
+    </section>
+  </div><!-- /.rsvp-right -->
+
+</main>
+
+<footer class="site-footer">
+  <a href="/event/<%= event.id %>">View public roster</a>
+</footer>
+
+<script>
+  const TOKEN     = '<%= participant.rsvp_token %>';
+  const MY_PID    = <%= participant.id %>;
+  const MAX_CHANGES = <%= maxChanges %>;
+  let changesLeft = <%= changesLeft %>;
+  let selectedStatus = '<%= (myResponse && myResponse.status) ? myResponse.status : '' %>';
+</script>
+<script src="/js/rsvp.js"></script>
+<script>
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+  }
+</script>
+</body>
+</html>

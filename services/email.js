@@ -1,0 +1,103 @@
+'use strict';
+
+const { Resend } = require('resend');
+
+const resend = new Resend(process.env.RESEND_API_KEY);
+const FROM = process.env.FROM_EMAIL || 'admin@dunedin-euchre.com';
+const BASE_URL = process.env.BASE_URL || 'https://dunedin-euchre.com';
+
+async function sendMagicLink(toEmail, token) {
+  const link = `${BASE_URL}/admin/auth/${token}`;
+  await resend.emails.send({
+    from: FROM,
+    to: toEmail,
+    subject: 'Your Dunedin Euchre admin sign-in link',
+    html: `
+      <div style="font-family: Georgia, serif; max-width: 480px; margin: 0 auto; padding: 32px; color: #1e293b;">
+        <h2 style="margin: 0 0 24px; font-size: 22px;">Dunedin Euchre &mdash; Admin Sign In</h2>
+        <p style="font-size: 17px; line-height: 1.6; margin: 0 0 28px;">
+          Click the button below to sign in. This link expires in <strong>15 minutes</strong> and can only be used once.
+        </p>
+        <a href="${link}" style="display:inline-block; background:#2563eb; color:#fff; font-size:17px; font-weight:600; padding:14px 28px; border-radius:6px; text-decoration:none;">
+          Sign In to Dashboard
+        </a>
+        <p style="font-size: 14px; color: #64748b; margin: 28px 0 0;">
+          If you didn't request this link, you can safely ignore this email.
+        </p>
+        <p style="font-size: 13px; color: #94a3b8; margin: 8px 0 0;">
+          ${link}
+        </p>
+      </div>
+    `
+  });
+}
+
+async function sendRsvpInvite(participant, event) {
+  const link = `${BASE_URL}/rsvp/${participant.rsvp_token}`;
+  const dateStr = formatEventDate(event.event_date);
+
+  await resend.emails.send({
+    from: FROM,
+    to: participant.email,
+    subject: `Dunedin Euchre – RSVP for ${dateStr}`,
+    html: `
+      <div style="font-family: Georgia, serif; max-width: 520px; margin: 0 auto; padding: 32px; color: #1e293b;">
+        <h2 style="margin: 0 0 8px; font-size: 24px;">Dunedin Euchre</h2>
+        <p style="font-size: 15px; color: #64748b; margin: 0 0 28px;">Monthly Tournament</p>
+
+        <p style="font-size: 17px; line-height: 1.6; margin: 0 0 20px;">
+          Hi ${participant.name.split(' ')[0]},
+        </p>
+        <p style="font-size: 17px; line-height: 1.6; margin: 0 0 24px;">
+          It's time to RSVP for next month's game!
+        </p>
+
+        <table style="width:100%; border-collapse:collapse; margin: 0 0 24px; font-size:17px;">
+          <tr>
+            <td style="padding: 8px 12px 8px 0; color:#64748b; white-space:nowrap; vertical-align:top;">Date</td>
+            <td style="padding: 8px 0; font-weight:600;">${dateStr}</td>
+          </tr>
+          <tr>
+            <td style="padding: 8px 12px 8px 0; color:#64748b; white-space:nowrap; vertical-align:top;">Location</td>
+            <td style="padding: 8px 0; font-weight:600;">${event.location_name}</td>
+          </tr>
+          <tr>
+            <td style="padding: 8px 12px 8px 0; color:#64748b; white-space:nowrap; vertical-align:top;">Time</td>
+            <td style="padding: 8px 0; font-weight:600;">${formatTime(event.start_time)} – ${formatTime(event.end_time)}</td>
+          </tr>
+          ${event.notes ? `
+          <tr>
+            <td style="padding: 8px 12px 8px 0; color:#64748b; white-space:nowrap; vertical-align:top;">Notes</td>
+            <td style="padding: 8px 0;">${event.notes}</td>
+          </tr>` : ''}
+        </table>
+
+        <a href="${link}" style="display:inline-block; background:#16a34a; color:#fff; font-size:18px; font-weight:600; padding:16px 32px; border-radius:6px; text-decoration:none;">
+          RSVP Now &rarr;
+        </a>
+
+        <p style="font-size: 15px; color: #64748b; margin: 24px 0 8px;">
+          You can see who else is coming right on the RSVP page — no sign-in required.
+        </p>
+        <p style="font-size: 13px; color: #94a3b8; margin: 4px 0 0;">
+          Your personal link: ${link}
+        </p>
+      </div>
+    `
+  });
+}
+
+function formatEventDate(dateStr) {
+  const d = new Date(dateStr + 'T12:00:00');
+  return d.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+}
+
+function formatTime(t) {
+  if (!t) return '';
+  const [h, m] = t.split(':').map(Number);
+  const suffix = h >= 12 ? 'PM' : 'AM';
+  const hour = h % 12 || 12;
+  return m === 0 ? `${hour} ${suffix}` : `${hour}:${String(m).padStart(2, '0')} ${suffix}`;
+}
+
+module.exports = { sendMagicLink, sendRsvpInvite, formatEventDate, formatTime };

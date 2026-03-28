@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dunedin Euchre – Dashboard</title>
+  <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body class="admin-page">
+
+<%- include('../partials/admin-nav', { active: 'dashboard' }) %>
+
+<main class="admin-main">
+  <div class="admin-content">
+
+    <% if (flash) { %>
+      <div class="flash-msg"><%= flash %></div>
+    <% } %>
+
+    <!-- ── Current event overview ── -->
+    <section class="card admin-card" style="margin-bottom:1.5rem;">
+      <div class="card-header">
+        <h2 class="card-title">Current Event</h2>
+        <button class="btn-secondary" onclick="toggleForm('create-form')">+ New Event</button>
+      </div>
+
+      <% if (event) { %>
+        <div class="event-meta" style="margin-bottom:1.5rem;">
+          <div class="event-meta-row">
+            <span class="meta-label">Date</span>
+            <span class="meta-value"><strong><%= formatEventDate(event.event_date) %></strong></span>
+          </div>
+          <div class="event-meta-row">
+            <span class="meta-label">Location</span>
+            <span class="meta-value"><%= event.location_name %></span>
+          </div>
+          <div class="event-meta-row">
+            <span class="meta-label">Time</span>
+            <span class="meta-value"><%= formatTime(event.start_time) %> – <%= formatTime(event.end_time) %></span>
+          </div>
+          <% if (event.notes) { %>
+            <div class="event-meta-row">
+              <span class="meta-label">Notes</span>
+              <span class="meta-value"><%= event.notes %></span>
+            </div>
+          <% } %>
+          <% if (event.location_image) { %>
+            <div class="event-meta-row">
+              <span class="meta-label">Image</span>
+              <span class="meta-value"><img src="/uploads/<%= event.location_image %>" alt="Location" style="max-height:80px;border-radius:4px;"></span>
+            </div>
+          <% } %>
+        </div>
+
+        <!-- RSVP counts -->
+        <div class="admin-counts">
+          <div class="admin-count-box count-yes"><span class="count-num"><%= counts.yes %></span><span class="count-lbl">Yes</span></div>
+          <div class="admin-count-box count-maybe"><span class="count-num"><%= counts.maybe %></span><span class="count-lbl">Maybe</span></div>
+          <div class="admin-count-box count-no"><span class="count-num"><%= counts.no %></span><span class="count-lbl">No</span></div>
+          <div class="admin-count-box count-none"><span class="count-num"><%= counts.none %></span><span class="count-lbl">No response</span></div>
+        </div>
+
+        <!-- Action buttons -->
+        <div class="admin-actions" style="margin-top:1.25rem;">
+          <form method="POST" action="/admin/event/<%= event.id %>/notify"
+                onsubmit="return confirm('Send RSVP invites to all <%= roster.length %> active participants?')">
+            <button type="submit" class="btn-primary">
+              &#128231; Send RSVP Invites (<%= roster.length %> participants)
+            </button>
+          </form>
+          <a href="/event/<%= event.id %>" target="_blank" class="btn-secondary">View public roster</a>
+          <button class="btn-secondary" onclick="toggleForm('edit-form')">Edit event</button>
+        </div>
+
+      <% } else { %>
+        <p style="color:#64748b;font-size:1.05rem;">No events yet. Create the first one below.</p>
+      <% } %>
+
+      <!-- Create event form -->
+      <div id="create-form" class="collapsible-form" style="display:none;">
+        <hr style="margin:1.5rem 0;border-color:#e2e8f0;">
+        <h3 style="margin-bottom:1rem;">Create New Event</h3>
+        <form method="POST" action="/admin/event" enctype="multipart/form-data">
+          <%- include('../partials/event-form', { event: null }) %>
+          <button type="submit" class="btn-primary" style="margin-top:1rem;">Create Event</button>
+          <button type="button" class="btn-secondary" onclick="toggleForm('create-form')">Cancel</button>
+        </form>
+      </div>
+
+      <!-- Edit event form -->
+      <% if (event) { %>
+        <div id="edit-form" class="collapsible-form" style="display:none;">
+          <hr style="margin:1.5rem 0;border-color:#e2e8f0;">
+          <h3 style="margin-bottom:1rem;">Edit Event</h3>
+          <form method="POST" action="/admin/event/<%= event.id %>/update" enctype="multipart/form-data">
+            <%- include('../partials/event-form', { event: event }) %>
+            <button type="submit" class="btn-primary" style="margin-top:1rem;">Save Changes</button>
+            <button type="button" class="btn-secondary" onclick="toggleForm('edit-form')">Cancel</button>
+          </form>
+        </div>
+      <% } %>
+    </section>
+
+    <!-- ── Response list ── -->
+    <% if (event && roster.length > 0) { %>
+      <section class="card admin-card">
+        <h2 class="card-title" style="margin-bottom:1rem;">Responses</h2>
+        <div class="admin-table-wrap">
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Response</th>
+                <th>Comment</th>
+                <th>Last updated</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% roster.forEach(function(p) { %>
+                <tr class="<%= p.status ? 'row-' + p.status : 'row-none' %>">
+                  <td><%= p.name %></td>
+                  <td>
+                    <% if (p.status === 'yes') { %>
+                      <span class="status-pill pill-yes">✓ Yes</span>
+                    <% } else if (p.status === 'no') { %>
+                      <span class="status-pill pill-no">✕ No</span>
+                    <% } else if (p.status === 'maybe') { %>
+                      <span class="status-pill pill-maybe">? Maybe</span>
+                    <% } else { %>
+                      <span class="status-pill pill-none">No response</span>
+                    <% } %>
+                  </td>
+                  <td class="comment-cell"><%= p.comment || '' %></td>
+                  <td class="date-cell">
+                    <% if (p.updated_at) { %>
+                      <%= new Date(p.updated_at + 'Z').toLocaleDateString('en-US', {month:'short',day:'numeric'}) %>
+                    <% } else { %>—<% } %>
+                  </td>
+                </tr>
+              <% }); %>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    <% } %>
+
+  </div>
+</main>
+
+<script>
+function toggleForm(id) {
+  const el = document.getElementById(id);
+  if (el.style.display === 'none') {
+    el.style.display = 'block';
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } else {
+    el.style.display = 'none';
+  }
+}
+</script>
+<script src="/js/admin.js"></script>
+</body>
+</html>
