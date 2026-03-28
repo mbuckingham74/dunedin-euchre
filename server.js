@@ -18,6 +18,10 @@ if (!fs.existsSync(uploadsDir)) {
 
 const app = express();
 
+// Trust one proxy hop (Nginx Proxy Manager) so express-rate-limit
+// and session cookies work correctly with X-Forwarded-For / X-Forwarded-Proto
+app.set('trust proxy', 1);
+
 // ── View engine ──────────────────────────────────────────────
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
