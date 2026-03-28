@@ -33,6 +33,7 @@ app.use(express.urlencoded({ extended: true }));
 // ── Static files ─────────────────────────────────────────────
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/uploads', express.static(uploadsDir));
+app.use('/images', express.static(path.join(__dirname, 'images')));
 
 // ── Session store (SQLite-backed, survives restarts) ─────────
 class SQLiteStore extends session.Store {
