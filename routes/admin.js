@@ -12,7 +12,8 @@ const { requireAdmin } = require('../middleware/auth');
 const { sendMagicLink, sendRsvpInvite, formatEventDate, formatTime } = require('../services/email');
 
 const BASE_URL = process.env.BASE_URL || 'https://dunedin-euchre.com';
-const ADMIN_EMAIL = process.env.ADMIN_EMAIL || '';
+const ADMIN_EMAILS = (process.env.ADMIN_EMAIL || '')
+  .split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
 
 // ── File upload (location images) ────────────────────────────
 const storage = multer.diskStorage({
@@ -74,7 +75,7 @@ router.post('/request-link', magicLinkLimiter, async (req, res) => {
   const email = (req.body.email || '').trim().toLowerCase();
 
   // Always show "sent" regardless of whether email matches (no enumeration)
-  if (email !== ADMIN_EMAIL.toLowerCase()) {
+  if (!ADMIN_EMAILS.includes(email)) {
     return res.render('admin/login', { error: null, sent: true });
   }
 
