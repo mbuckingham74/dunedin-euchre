@@ -1,0 +1,19 @@
+services:
+  dunedin-euchre:
+    build: .
+    container_name: dunedin-euchre
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - data:/app/data
+      - uploads:/app/uploads
+    networks:
+      - npm_network
+
+volumes:
+  data:
+  uploads:
+
+networks:
+  npm_network:
+    external: true

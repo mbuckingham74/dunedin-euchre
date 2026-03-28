@@ -2,8 +2,12 @@
 
 const Database = require('better-sqlite3');
 const path = require('path');
+const fs = require('fs');
 
-const dbPath = path.join(__dirname, '..', 'euchre.db');
+// In Docker the DB lives in the mounted data/ volume; locally falls back to project root
+const dbDir = path.join(__dirname, '..', 'data');
+if (!fs.existsSync(dbDir)) fs.mkdirSync(dbDir, { recursive: true });
+const dbPath = path.join(dbDir, 'euchre.db');
 const db = new Database(dbPath);
 
 // Enable WAL mode for better concurrent read performance

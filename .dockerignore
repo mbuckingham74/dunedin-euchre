@@ -1,0 +1,14 @@
+node_modules/
+.env
+data/
+uploads/
+logs/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+.git/
+.gitignore
+deploy.sh
+nginx-vhost-example.conf
+scripts/
