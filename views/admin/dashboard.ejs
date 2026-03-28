@@ -80,6 +80,22 @@
               <% } %>
             </span>
           </div>
+          <% if (event.public_slug) { %>
+            <div class="event-meta-row">
+              <span class="meta-label">Public slug</span>
+              <span class="meta-value"><code><%= event.public_slug %></code></span>
+            </div>
+          <% } %>
+          <div class="event-meta-row">
+            <span class="meta-label">Public roster</span>
+            <span class="meta-value">
+              <% if (isPublicRosterVisible(event)) { %>
+                <span class="status-pill pill-yes">Names visible</span>
+              <% } else { %>
+                <span class="status-pill pill-none">Names hidden</span>
+              <% } %>
+            </span>
+          </div>
           <% if (arrivalNotes) { %>
             <div class="event-meta-row">
               <span class="meta-label">Arrival notes</span>

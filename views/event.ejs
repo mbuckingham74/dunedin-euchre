@@ -42,46 +42,52 @@
       <span class="count-badge count-none"><%= summary.pending %> Pending</span>
     </div>
 
-    <div class="public-roster-grid">
-      <section class="public-roster-section">
-        <h4 class="public-roster-heading">Coming</h4>
-        <% if (groupedRoster.yes.length > 0) { %>
-          <ul class="public-roster-list">
-            <% groupedRoster.yes.forEach(function(entry) { %>
-              <li class="public-roster-item"><%= entry.name %></li>
-            <% }); %>
-          </ul>
-        <% } else { %>
-          <p class="public-roster-empty">No confirmations yet.</p>
-        <% } %>
-      </section>
+    <% if (showPublicRoster) { %>
+      <div class="public-roster-grid">
+        <section class="public-roster-section">
+          <h4 class="public-roster-heading">Coming</h4>
+          <% if (groupedRoster.yes.length > 0) { %>
+            <ul class="public-roster-list">
+              <% groupedRoster.yes.forEach(function(entry) { %>
+                <li class="public-roster-item"><%= entry.name %></li>
+              <% }); %>
+            </ul>
+          <% } else { %>
+            <p class="public-roster-empty">No confirmations yet.</p>
+          <% } %>
+        </section>
 
-      <section class="public-roster-section">
-        <h4 class="public-roster-heading">Maybe</h4>
-        <% if (groupedRoster.maybe.length > 0) { %>
-          <ul class="public-roster-list">
-            <% groupedRoster.maybe.forEach(function(entry) { %>
-              <li class="public-roster-item"><%= entry.name %></li>
-            <% }); %>
-          </ul>
-        <% } else { %>
-          <p class="public-roster-empty">No maybes yet.</p>
-        <% } %>
-      </section>
+        <section class="public-roster-section">
+          <h4 class="public-roster-heading">Maybe</h4>
+          <% if (groupedRoster.maybe.length > 0) { %>
+            <ul class="public-roster-list">
+              <% groupedRoster.maybe.forEach(function(entry) { %>
+                <li class="public-roster-item"><%= entry.name %></li>
+              <% }); %>
+            </ul>
+          <% } else { %>
+            <p class="public-roster-empty">No maybes yet.</p>
+          <% } %>
+        </section>
 
-      <section class="public-roster-section">
-        <h4 class="public-roster-heading">Can't make it</h4>
-        <% if (groupedRoster.no.length > 0) { %>
-          <ul class="public-roster-list">
-            <% groupedRoster.no.forEach(function(entry) { %>
-              <li class="public-roster-item"><%= entry.name %></li>
-            <% }); %>
-          </ul>
-        <% } else { %>
-          <p class="public-roster-empty">No declines yet.</p>
-        <% } %>
-      </section>
-    </div>
+        <section class="public-roster-section">
+          <h4 class="public-roster-heading">Can't make it</h4>
+          <% if (groupedRoster.no.length > 0) { %>
+            <ul class="public-roster-list">
+              <% groupedRoster.no.forEach(function(entry) { %>
+                <li class="public-roster-item"><%= entry.name %></li>
+              <% }); %>
+            </ul>
+          <% } else { %>
+            <p class="public-roster-empty">No declines yet.</p>
+          <% } %>
+        </section>
+      </div>
+    <% } else { %>
+      <div class="public-roster-privacy">
+        <p class="public-roster-empty" style="margin:0;">Attendee names are hidden for this event. RSVP counts are still shown above.</p>
+      </div>
+    <% } %>
   </section>
 </main>
 </body>

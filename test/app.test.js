@@ -9,6 +9,7 @@ const test = require('node:test');
 
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dunedin-euchre-'));
 process.env.DB_PATH = path.join(tempDir, 'test.db');
+process.env.UPLOADS_DIR = path.join(tempDir, 'uploads');
 process.env.NODE_ENV = 'test';
 process.env.SESSION_SECRET = 'test-session-secret';
 process.env.ADMIN_EMAIL = 'admin@example.com';
@@ -29,6 +30,11 @@ const db = require('../db/database');
 
 let server;
 let baseUrl;
+
+function resetUploadsDirectory() {
+  fs.rmSync(process.env.UPLOADS_DIR, { recursive: true, force: true });
+  fs.mkdirSync(process.env.UPLOADS_DIR, { recursive: true });
+}
 
 function resetDatabase() {
   db.exec(`
@@ -60,6 +66,7 @@ function insertParticipant(overrides = {}) {
 function insertEvent(overrides = {}) {
   const event = {
     title: 'Dunedin Euchre Night',
+    public_slug: null,
     event_date: '2026-04-15',
     location_name: 'Dunedin Community Center',
     location_address: null,
@@ -70,12 +77,14 @@ function insertEvent(overrides = {}) {
     notes: null,
     arrival_notes: null,
     is_published: 0,
+    show_public_roster: 0,
     ...overrides
   };
 
   const result = db.prepare(`
     INSERT INTO events (
       title,
+      public_slug,
       event_date,
       location_name,
       location_address,
@@ -85,11 +94,13 @@ function insertEvent(overrides = {}) {
       end_time,
       notes,
       arrival_notes,
-      is_published
+      is_published,
+      show_public_roster
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     event.title,
+    event.public_slug,
     event.event_date,
     event.location_name,
     event.location_address,
@@ -99,7 +110,8 @@ function insertEvent(overrides = {}) {
     event.end_time,
     event.notes,
     event.arrival_notes,
-    event.is_published
+    event.is_published,
+    event.show_public_roster
   );
 
   return db.prepare('SELECT * FROM events WHERE id = ?').get(result.lastInsertRowid);
@@ -142,6 +154,7 @@ test.before(async () => {
 
 test.beforeEach(() => {
   resetDatabase();
+  resetUploadsDirectory();
 });
 
 test.after(async () => {
@@ -176,7 +189,7 @@ test('event-scoped RSVP submissions write to the requested event', async () => {
   });
 });
 
-test('public event page renders correct metadata for published events', async () => {
+test('public slug pages render published event metadata and /event/:id remains a fallback', async () => {
   const yesParticipant = insertParticipant();
   const noParticipant = insertParticipant({
     name: 'Bob Example',
@@ -190,22 +203,26 @@ test('public event page renders correct metadata for published events', async ()
   });
   const event = insertEvent({
     title: 'Spring Euchre Social',
+    public_slug: 'spring-euchre-social',
     location_name: 'Harbor Hall',
     location_address: '123 Main St\nDunedin, FL 34698',
     location_image: 'venue-photo.png',
     map_image: 'map-shot.png',
     arrival_notes: 'Use the west entrance and park beside the tennis courts.',
     notes: 'Use the west entrance and park beside the tennis courts.',
-    is_published: 1
+    is_published: 1,
+    show_public_roster: 1
   });
 
   insertResponse(yesParticipant.id, event.id, { status: 'yes', comment: 'I can bring snacks.' });
   insertResponse(noParticipant.id, event.id, { status: 'no', comment: 'Out of town.' });
 
-  const response = await fetch(`${baseUrl}/event/${event.id}`);
+  const response = await fetch(`${baseUrl}/e/${event.public_slug}`);
   const body = await response.text();
+  const fallbackResponse = await fetch(`${baseUrl}/event/${event.id}`);
 
   assert.equal(response.status, 200);
+  assert.equal(fallbackResponse.status, 200);
   assert.match(body, /Spring Euchre Social/);
   assert.match(body, /Harbor Hall/);
   assert.match(body, /123 Main St/);
@@ -234,7 +251,8 @@ test('public event page does not expose freeform RSVP comments', async () => {
   const participant = insertParticipant();
   const event = insertEvent({
     title: 'Private Comment Test',
-    is_published: 1
+    is_published: 1,
+    show_public_roster: 1
   });
 
   insertResponse(participant.id, event.id, {
@@ -247,6 +265,43 @@ test('public event page does not expose freeform RSVP comments', async () => {
 
   assert.equal(response.status, 200);
   assert.doesNotMatch(body, /Please save me the quiet corner table\./);
+});
+
+test('public event page can hide attendee names while still showing RSVP summary counts', async () => {
+  const yesParticipant = insertParticipant();
+  const maybeParticipant = insertParticipant({
+    name: 'Bob Example',
+    email: 'bob@example.com',
+    rsvp_token: 'bob-token'
+  });
+  const event = insertEvent({
+    title: 'Hidden Roster Night',
+    public_slug: 'hidden-roster-night',
+    is_published: 1,
+    show_public_roster: 0
+  });
+
+  insertResponse(yesParticipant.id, event.id, {
+    status: 'yes',
+    comment: 'Count me in.'
+  });
+  insertResponse(maybeParticipant.id, event.id, {
+    status: 'maybe',
+    comment: 'I need to confirm with my ride.'
+  });
+
+  const response = await fetch(`${baseUrl}/e/${event.public_slug}`);
+  const body = await response.text();
+
+  assert.equal(response.status, 200);
+  assert.match(body, />1 Yes</);
+  assert.match(body, />1 Maybe</);
+  assert.match(body, />0 No</);
+  assert.match(body, /Attendee names are hidden for this event/);
+  assert.doesNotMatch(body, /Alice Example/);
+  assert.doesNotMatch(body, /Bob Example/);
+  assert.doesNotMatch(body, /Count me in\./);
+  assert.doesNotMatch(body, /I need to confirm with my ride\./);
 });
 
 test('legacy token-only RSVP links stop guessing when multiple events exist', async () => {
@@ -311,6 +366,191 @@ test('participant create route reactivates instead of duplicating an existing em
     email: 'alice@example.com',
     active: 1
   }]);
+});
+
+test('admin event create and update routes persist slug and roster visibility settings', async () => {
+  const cookie = await signInAsAdmin();
+
+  const createResponse = await fetch(`${baseUrl}/admin/event`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      cookie
+    },
+    body: new URLSearchParams({
+      title: 'Summer Social',
+      public_slug: ' Summer Social 2026 ',
+      event_date: '2026-06-20',
+      location_name: 'Legion Hall',
+      location_address: '456 Sunset Ave',
+      start_time: '18:30',
+      end_time: '21:30',
+      arrival_notes: 'Use the side door.',
+      is_published: '1',
+      show_public_roster: '1'
+    }),
+    redirect: 'manual'
+  });
+
+  assert.equal(createResponse.status, 302);
+  const created = db.prepare(`
+    SELECT public_slug, show_public_roster
+    FROM events
+    WHERE title = ?
+  `).get('Summer Social');
+
+  assert.deepEqual(created, {
+    public_slug: 'summer-social-2026',
+    show_public_roster: 1
+  });
+
+  const eventId = db.prepare('SELECT id FROM events WHERE title = ?').get('Summer Social').id;
+  const updateResponse = await fetch(`${baseUrl}/admin/event/${eventId}/update`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      cookie
+    },
+    body: new URLSearchParams({
+      title: 'Summer Social',
+      public_slug: '',
+      event_date: '2026-06-20',
+      location_name: 'Legion Hall',
+      location_address: '456 Sunset Ave',
+      start_time: '18:30',
+      end_time: '21:30',
+      arrival_notes: 'Use the side door.',
+      is_published: '1'
+    }),
+    redirect: 'manual'
+  });
+
+  assert.equal(updateResponse.status, 302);
+  const updated = db.prepare(`
+    SELECT public_slug, show_public_roster
+    FROM events
+    WHERE id = ?
+  `).get(eventId);
+
+  assert.deepEqual(updated, {
+    public_slug: null,
+    show_public_roster: 0
+  });
+});
+
+test('admin event routes reject duplicate public slugs', async () => {
+  insertEvent({
+    title: 'Existing Slug Event',
+    public_slug: 'spring-social'
+  });
+  const cookie = await signInAsAdmin();
+
+  const response = await fetch(`${baseUrl}/admin/event`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      cookie
+    },
+    body: new URLSearchParams({
+      title: 'Conflicting Event',
+      public_slug: 'Spring Social',
+      event_date: '2026-07-20',
+      location_name: 'Harbor Hall',
+      start_time: '18:00',
+      end_time: '21:00'
+    }),
+    redirect: 'manual'
+  });
+
+  assert.equal(response.status, 302);
+  const eventCount = db.prepare('SELECT COUNT(*) AS count FROM events').get().count;
+  assert.equal(eventCount, 1);
+});
+
+test('admin event update can remove existing uploaded images and delete the files', async () => {
+  const cookie = await signInAsAdmin();
+  const event = insertEvent({
+    location_image: 'existing-location.png',
+    map_image: 'existing-map.png'
+  });
+  const locationPath = path.join(process.env.UPLOADS_DIR, event.location_image);
+  const mapPath = path.join(process.env.UPLOADS_DIR, event.map_image);
+
+  fs.writeFileSync(locationPath, 'old location image');
+  fs.writeFileSync(mapPath, 'old map image');
+
+  const response = await fetch(`${baseUrl}/admin/event/${event.id}/update`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      cookie
+    },
+    body: new URLSearchParams({
+      title: event.title,
+      event_date: event.event_date,
+      location_name: event.location_name,
+      location_address: event.location_address || '',
+      start_time: event.start_time,
+      end_time: event.end_time,
+      arrival_notes: event.arrival_notes || '',
+      remove_location_image: '1',
+      remove_map_image: '1'
+    }),
+    redirect: 'manual'
+  });
+
+  assert.equal(response.status, 302);
+  const updated = db.prepare(`
+    SELECT location_image, map_image
+    FROM events
+    WHERE id = ?
+  `).get(event.id);
+
+  assert.deepEqual(updated, {
+    location_image: null,
+    map_image: null
+  });
+  assert.equal(fs.existsSync(locationPath), false);
+  assert.equal(fs.existsSync(mapPath), false);
+});
+
+test('admin event update deletes replaced image files after a new upload succeeds', async () => {
+  const cookie = await signInAsAdmin();
+  const event = insertEvent({
+    location_image: 'old-location.png'
+  });
+  const oldLocationPath = path.join(process.env.UPLOADS_DIR, event.location_image);
+  fs.writeFileSync(oldLocationPath, 'old location image');
+
+  const form = new FormData();
+  form.set('title', event.title);
+  form.set('public_slug', '');
+  form.set('event_date', event.event_date);
+  form.set('location_name', event.location_name);
+  form.set('location_address', event.location_address || '');
+  form.set('start_time', event.start_time);
+  form.set('end_time', event.end_time);
+  form.set('arrival_notes', event.arrival_notes || '');
+  form.set('location_image', new Blob(['new location image'], { type: 'image/png' }), 'new-location.png');
+
+  const response = await fetch(`${baseUrl}/admin/event/${event.id}/update`, {
+    method: 'POST',
+    headers: { cookie },
+    body: form,
+    redirect: 'manual'
+  });
+
+  assert.equal(response.status, 302);
+  const updated = db.prepare(`
+    SELECT location_image
+    FROM events
+    WHERE id = ?
+  `).get(event.id);
+
+  assert.match(updated.location_image, /^location_image-/);
+  assert.notEqual(updated.location_image, 'old-location.png');
+  assert.equal(fs.existsSync(oldLocationPath), false);
+  assert.equal(fs.existsSync(path.join(process.env.UPLOADS_DIR, updated.location_image)), true);
 });
 
 test('stats page shows a placeholder instead of 1.0 for participants with no responses', async () => {

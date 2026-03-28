@@ -122,6 +122,24 @@ const migrations = [
         ON responses(event_id);
       `);
     }
+  },
+  {
+    id: '004_event_public_slug_and_roster_visibility',
+    up(db) {
+      addColumnIfMissing(db, 'events', 'public_slug', 'public_slug TEXT');
+      addColumnIfMissing(
+        db,
+        'events',
+        'show_public_roster',
+        'show_public_roster INTEGER NOT NULL DEFAULT 0 CHECK(show_public_roster IN (0, 1))'
+      );
+
+      db.exec(`
+        CREATE UNIQUE INDEX IF NOT EXISTS events_public_slug_unique
+        ON events(public_slug COLLATE NOCASE)
+        WHERE public_slug IS NOT NULL AND TRIM(public_slug) != ''
+      `);
+    }
   }
 ];
 

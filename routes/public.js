@@ -4,7 +4,12 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db/database');
 const { formatEventDate, formatTime } = require('../services/email');
-const { getArrivalNotes, getEventTitle, isEventPublished } = require('../services/events');
+const {
+  getArrivalNotes,
+  getEventTitle,
+  isEventPublished,
+  isPublicRosterVisible
+} = require('../services/events');
 const { buildPublicEventPath, buildRsvpPath } = require('../services/links');
 
 const MAX_CHANGES = 5;
@@ -22,6 +27,10 @@ function getParticipantByToken(token) {
 
 function getEventById(eventId) {
   return db.prepare('SELECT * FROM events WHERE id = ?').get(eventId);
+}
+
+function getEventBySlug(publicSlug) {
+  return db.prepare('SELECT * FROM events WHERE public_slug = ? COLLATE NOCASE').get(publicSlug);
 }
 
 function getLegacyRsvpEventOptions() {
@@ -91,6 +100,16 @@ function groupPublicRoster(roster) {
   };
 }
 
+function emptyGroupedRoster() {
+  return { yes: [], maybe: [], no: [] };
+}
+
+function renderNotFound(res) {
+  return res.status(404).send(
+    '<h1 style="font-family:sans-serif;padding:2rem">Event not found.</h1>'
+  );
+}
+
 function renderRsvpPage(res, participant, event) {
   const roster = getRoster(event.id);
   const myResponse = roster.find(r => r.id === participant.id);
@@ -147,6 +166,25 @@ function saveRsvpResponse(res, participant, event, body) {
   ).get(participant.id, event.id);
 
   return res.json({ ok: true, roster, changesUsed: updated.change_count, maxChanges: MAX_CHANGES });
+}
+
+function renderPublicEventPage(res, event) {
+  const summary = getRsvpSummary(event.id);
+  const showPublicRoster = isPublicRosterVisible(event);
+  const groupedRoster = showPublicRoster
+    ? groupPublicRoster(getPublicRoster(event.id))
+    : emptyGroupedRoster();
+
+  return res.render('event', {
+    event,
+    summary,
+    groupedRoster,
+    showPublicRoster,
+    formatEventDate,
+    formatTime,
+    eventTitle: getEventTitle(event),
+    arrivalNotes: getArrivalNotes(event)
+  });
 }
 
 // ── GET /rsvp/:token ─────────────────────────────────────────
@@ -221,28 +259,24 @@ router.post('/rsvp/:token/:eventId', express.json(), (req, res) => {
   return saveRsvpResponse(res, participant, event, req.body);
 });
 
+// ── GET /e/:slug ─────────────────────────────────────────────
+router.get('/e/:slug', (req, res) => {
+  const event = getEventBySlug(req.params.slug);
+  if (!event || !isEventPublished(event)) {
+    return renderNotFound(res);
+  }
+
+  return renderPublicEventPage(res, event);
+});
+
 // ── GET /event/:id ───────────────────────────────────────────
 router.get('/event/:id', (req, res) => {
   const event = getEventById(req.params.id);
   if (!event || !isEventPublished(event)) {
-    return res.status(404).send(
-      '<h1 style="font-family:sans-serif;padding:2rem">Event not found.</h1>'
-    );
+    return renderNotFound(res);
   }
 
-  const summary = getRsvpSummary(event.id);
-  const roster = getPublicRoster(event.id);
-  const groupedRoster = groupPublicRoster(roster);
-
-  res.render('event', {
-    event,
-    summary,
-    groupedRoster,
-    formatEventDate,
-    formatTime,
-    eventTitle: getEventTitle(event),
-    arrivalNotes: getArrivalNotes(event)
-  });
+  return renderPublicEventPage(res, event);
 });
 
 module.exports = router;

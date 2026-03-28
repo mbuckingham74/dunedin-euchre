@@ -20,11 +20,13 @@ function buildRsvpUrl(baseUrl, participantOrToken, eventOrId) {
 }
 
 function buildPublicEventPath(eventOrId) {
-  const eventId = typeof eventOrId === 'object'
-    ? eventOrId.id
-    : eventOrId;
+  if (typeof eventOrId === 'object' && eventOrId) {
+    const publicSlug = (eventOrId.public_slug || '').trim();
+    if (publicSlug) return `/e/${encodeURIComponent(publicSlug)}`;
+    return `/event/${eventOrId.id}`;
+  }
 
-  return `/event/${eventId}`;
+  return `/event/${eventOrId}`;
 }
 
 function buildPublicEventUrl(baseUrl, eventOrId) {

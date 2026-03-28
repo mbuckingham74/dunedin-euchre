@@ -10,6 +10,18 @@
   >
 </div>
 
+<div class="form-group" style="margin-top:0.75rem;">
+  <label class="form-label">Public URL slug <span style="font-weight:400;color:#64748b;">(optional)</span></label>
+  <input
+    type="text"
+    name="public_slug"
+    class="form-input"
+    placeholder="e.g. april-2026-euchre"
+    value="<%= event ? (event.public_slug || '') : '' %>"
+  >
+  <p style="margin:0.45rem 0 0;font-size:0.9rem;color:#64748b;">If set, the public event page uses <code>/e/your-slug</code>. Leave blank to keep the ID-based URL.</p>
+</div>
+
 <div class="form-row" style="margin-top:0.75rem;">
   <div class="form-group">
     <label class="form-label">Date</label>
@@ -83,8 +95,12 @@
     <% if (event && event.location_image) { %>
       <div class="event-upload-preview">
         <img src="/uploads/<%= event.location_image %>" alt="Current venue photo" class="event-upload-preview-image">
-        <span class="event-upload-preview-text">Upload a new photo to replace this one.</span>
+        <span class="event-upload-preview-text">Upload a new photo to replace this one, or remove it below.</span>
       </div>
+      <label class="form-checkbox" style="margin-top:0.5rem;">
+        <input type="checkbox" name="remove_location_image" value="1">
+        <span>Remove current venue photo</span>
+      </label>
     <% } %>
     <input type="file" name="location_image" class="form-input" accept="image/*">
   </div>
@@ -94,12 +110,22 @@
     <% if (event && event.map_image) { %>
       <div class="event-upload-preview">
         <img src="/uploads/<%= event.map_image %>" alt="Current map image" class="event-upload-preview-image">
-        <span class="event-upload-preview-text">Upload a new screenshot to replace this one.</span>
+        <span class="event-upload-preview-text">Upload a new screenshot to replace this one, or remove it below.</span>
       </div>
+      <label class="form-checkbox" style="margin-top:0.5rem;">
+        <input type="checkbox" name="remove_map_image" value="1">
+        <span>Remove current map image</span>
+      </label>
     <% } %>
     <input type="file" name="map_image" class="form-input" accept="image/*">
   </div>
 </div>
+
+<label class="form-checkbox" style="margin-top:1rem;">
+  <input type="checkbox" name="show_public_roster" value="1" <%= event && Number(event.show_public_roster) ? 'checked' : '' %>>
+  <span>Show attendee names on the public event page</span>
+</label>
+<p style="margin:0.45rem 0 0;font-size:0.9rem;color:#64748b;">RSVP counts stay public when the page is published. Names stay hidden unless you enable this.</p>
 
 <label class="form-checkbox" style="margin-top:1rem;">
   <input type="checkbox" name="is_published" value="1" <%= event && Number(event.is_published) ? 'checked' : '' %>>

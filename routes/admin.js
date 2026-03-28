@@ -10,15 +10,22 @@ const { v4: uuidv4 } = require('uuid');
 const db = require('../db/database');
 const { requireAdmin } = require('../middleware/auth');
 const { sendMagicLink, sendRsvpInvite, formatEventDate, formatTime } = require('../services/email');
-const { getArrivalNotes, getEventTitle, isEventPublished } = require('../services/events');
+const {
+  getArrivalNotes,
+  getEventTitle,
+  isEventPublished,
+  isPublicRosterVisible,
+  normalizePublicSlug
+} = require('../services/events');
 const { buildPublicEventPath, buildRsvpPath } = require('../services/links');
+const { getUploadsDir } = require('../services/uploads');
 
 const router = express.Router();
 
 const BASE_URL = process.env.BASE_URL || 'https://dunedin-euchre.com';
 const ADMIN_EMAILS = (process.env.ADMIN_EMAIL || '')
   .split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
-const uploadsDir = path.join(__dirname, '..', 'uploads');
+const uploadsDir = getUploadsDir();
 
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
@@ -63,6 +70,10 @@ function getEventById(eventId) {
   return db.prepare('SELECT * FROM events WHERE id = ?').get(eventId);
 }
 
+function getEventByPublicSlug(publicSlug) {
+  return db.prepare('SELECT * FROM events WHERE public_slug = ? COLLATE NOCASE').get(publicSlug);
+}
+
 function listEvents() {
   return db.prepare('SELECT * FROM events ORDER BY event_date DESC, id DESC').all();
 }
@@ -89,13 +100,15 @@ function normalizeText(value) {
 function normalizeEventInput(body) {
   return {
     title: normalizeText(body.title),
+    public_slug: normalizePublicSlug(body.public_slug),
     event_date: (body.event_date || '').trim(),
     location_name: normalizeText(body.location_name),
     location_address: normalizeText(body.location_address),
     start_time: (body.start_time || '').trim(),
     end_time: (body.end_time || '').trim(),
     arrival_notes: normalizeText(body.arrival_notes),
-    is_published: body.is_published ? 1 : 0
+    is_published: body.is_published ? 1 : 0,
+    show_public_roster: body.show_public_roster ? 1 : 0
   };
 }
 
@@ -139,6 +152,15 @@ function cleanupUploadedFiles(files) {
   for (const filename of getUploadedFilenames(files)) {
     removeUploadedFile(filename);
   }
+}
+
+function resolveUpdatedImage(existingFilename, uploadedFilename, removeRequested) {
+  const nextFilename = uploadedFilename || (removeRequested ? null : existingFilename);
+  const replacedFilename = existingFilename && existingFilename !== nextFilename
+    ? existingFilename
+    : null;
+
+  return { nextFilename, replacedFilename };
 }
 
 function getParticipantByEmail(email) {
@@ -251,6 +273,7 @@ router.get('/dashboard', requireAdmin, (req, res) => {
     getEventTitle,
     getArrivalNotes,
     isEventPublished,
+    isPublicRosterVisible,
     buildPublicEventPath,
     baseUrl: BASE_URL,
     flash: req.session.flash || null
@@ -270,9 +293,16 @@ router.post('/event', requireAdmin, eventUpload, (req, res) => {
     return res.redirect('/admin/dashboard');
   }
 
+  if (eventInput.public_slug && getEventByPublicSlug(eventInput.public_slug)) {
+    cleanupUploadedFiles(req.files);
+    req.session.flash = 'That public URL slug is already in use.';
+    return res.redirect('/admin/dashboard');
+  }
+
   const result = db.prepare(`
     INSERT INTO events (
       title,
+      public_slug,
       event_date,
       location_name,
       location_address,
@@ -282,11 +312,13 @@ router.post('/event', requireAdmin, eventUpload, (req, res) => {
       end_time,
       arrival_notes,
       notes,
-      is_published
+      is_published,
+      show_public_roster
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     eventInput.title,
+    eventInput.public_slug,
     eventInput.event_date,
     eventInput.location_name,
     eventInput.location_address,
@@ -296,7 +328,8 @@ router.post('/event', requireAdmin, eventUpload, (req, res) => {
     eventInput.end_time,
     eventInput.arrival_notes,
     eventInput.arrival_notes,
-    eventInput.is_published
+    eventInput.is_published,
+    eventInput.show_public_roster
   );
 
   req.session.flash = 'Event created successfully.';
@@ -318,14 +351,30 @@ router.post('/event/:id/update', requireAdmin, eventUpload, (req, res) => {
     return res.redirect(buildDashboardRedirect(existing.id));
   }
 
+  const conflictingEvent = eventInput.public_slug ? getEventByPublicSlug(eventInput.public_slug) : null;
+  if (conflictingEvent && conflictingEvent.id !== existing.id) {
+    cleanupUploadedFiles(req.files);
+    req.session.flash = 'That public URL slug is already in use.';
+    return res.redirect(buildDashboardRedirect(existing.id));
+  }
+
   const uploadedLocationImage = getUploadedFilename(req.files, 'location_image');
   const uploadedMapImage = getUploadedFilename(req.files, 'map_image');
-  const locationImage = uploadedLocationImage || existing.location_image;
-  const mapImage = uploadedMapImage || existing.map_image;
+  const locationImageUpdate = resolveUpdatedImage(
+    existing.location_image,
+    uploadedLocationImage,
+    Boolean(req.body.remove_location_image)
+  );
+  const mapImageUpdate = resolveUpdatedImage(
+    existing.map_image,
+    uploadedMapImage,
+    Boolean(req.body.remove_map_image)
+  );
 
   db.prepare(`
     UPDATE events
     SET title = ?,
+        public_slug = ?,
         event_date = ?,
         location_name = ?,
         location_address = ?,
@@ -335,28 +384,31 @@ router.post('/event/:id/update', requireAdmin, eventUpload, (req, res) => {
         end_time = ?,
         arrival_notes = ?,
         notes = ?,
-        is_published = ?
+        is_published = ?,
+        show_public_roster = ?
     WHERE id = ?
   `).run(
     eventInput.title,
+    eventInput.public_slug,
     eventInput.event_date,
     eventInput.location_name,
     eventInput.location_address,
-    locationImage,
-    mapImage,
+    locationImageUpdate.nextFilename,
+    mapImageUpdate.nextFilename,
     eventInput.start_time,
     eventInput.end_time,
     eventInput.arrival_notes,
     eventInput.arrival_notes,
     eventInput.is_published,
+    eventInput.show_public_roster,
     existing.id
   );
 
-  if (uploadedLocationImage && existing.location_image) {
-    removeUploadedFile(existing.location_image);
+  if (locationImageUpdate.replacedFilename) {
+    removeUploadedFile(locationImageUpdate.replacedFilename);
   }
-  if (uploadedMapImage && existing.map_image) {
-    removeUploadedFile(existing.map_image);
+  if (mapImageUpdate.replacedFilename) {
+    removeUploadedFile(mapImageUpdate.replacedFilename);
   }
 
   req.session.flash = 'Event updated.';

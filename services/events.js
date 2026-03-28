@@ -21,8 +21,27 @@ function isEventPublished(event) {
   return Boolean(event && Number(event.is_published));
 }
 
+function isPublicRosterVisible(event) {
+  return Boolean(event && Number(event.show_public_roster));
+}
+
+function normalizePublicSlug(value) {
+  const trimmed = (value || '').trim().toLowerCase();
+  if (!trimmed) return null;
+
+  const slug = trimmed
+    .replace(/[_\s]+/g, '-')
+    .replace(/[^a-z0-9-]/g, '')
+    .replace(/-+/g, '-')
+    .replace(/^-+|-+$/g, '');
+
+  return slug || null;
+}
+
 module.exports = {
   getArrivalNotes,
   getEventTitle,
-  isEventPublished
+  isEventPublished,
+  isPublicRosterVisible,
+  normalizePublicSlug
 };
