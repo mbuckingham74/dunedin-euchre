@@ -140,6 +140,34 @@ const migrations = [
         WHERE public_slug IS NOT NULL AND TRIM(public_slug) != ''
       `);
     }
+  },
+  {
+    id: '005_event_public_slug_history',
+    up(db) {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS event_public_slugs (
+          id          INTEGER PRIMARY KEY AUTOINCREMENT,
+          event_id    INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+          slug        TEXT NOT NULL,
+          is_current  INTEGER NOT NULL DEFAULT 1 CHECK(is_current IN (0, 1)),
+          created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE UNIQUE INDEX IF NOT EXISTS event_public_slugs_slug_unique
+        ON event_public_slugs(slug COLLATE NOCASE);
+
+        CREATE UNIQUE INDEX IF NOT EXISTS event_public_slugs_current_event_unique
+        ON event_public_slugs(event_id)
+        WHERE is_current = 1;
+      `);
+
+      db.exec(`
+        INSERT OR IGNORE INTO event_public_slugs (event_id, slug, is_current)
+        SELECT id, public_slug, 1
+        FROM events
+        WHERE public_slug IS NOT NULL AND TRIM(public_slug) != ''
+      `);
+    }
   }
 ];
 

@@ -15,9 +15,13 @@ const {
   getEventTitle,
   isEventPublished,
   isPublicRosterVisible,
-  normalizePublicSlug
+  parsePublicSlugInput
 } = require('../services/events');
 const { buildPublicEventPath, buildRsvpPath } = require('../services/links');
+const {
+  isPublicSlugConflictError,
+  reserveEventPublicSlug
+} = require('../services/public-slugs');
 const { getUploadsDir } = require('../services/uploads');
 
 const router = express.Router();
@@ -70,10 +74,6 @@ function getEventById(eventId) {
   return db.prepare('SELECT * FROM events WHERE id = ?').get(eventId);
 }
 
-function getEventByPublicSlug(publicSlug) {
-  return db.prepare('SELECT * FROM events WHERE public_slug = ? COLLATE NOCASE').get(publicSlug);
-}
-
 function listEvents() {
   return db.prepare('SELECT * FROM events ORDER BY event_date DESC, id DESC').all();
 }
@@ -98,9 +98,12 @@ function normalizeText(value) {
 }
 
 function normalizeEventInput(body) {
+  const publicSlug = parsePublicSlugInput(body.public_slug);
+
   return {
     title: normalizeText(body.title),
-    public_slug: normalizePublicSlug(body.public_slug),
+    public_slug: publicSlug.value,
+    public_slug_error: publicSlug.error,
     event_date: (body.event_date || '').trim(),
     location_name: normalizeText(body.location_name),
     location_address: normalizeText(body.location_address),
@@ -112,14 +115,25 @@ function normalizeEventInput(body) {
   };
 }
 
-function validateEventInput(eventInput) {
-  return Boolean(
+function getEventValidationError(eventInput) {
+  if (!(
     eventInput.title &&
     eventInput.event_date &&
     eventInput.location_name &&
     eventInput.start_time &&
     eventInput.end_time
-  );
+  )) {
+    return 'Title, date, location name, and start/end time are required.';
+  }
+
+  return eventInput.public_slug_error || null;
+}
+
+function isPublicSlugUniqueConstraint(error) {
+  return Boolean(error && (
+    error.code === 'SQLITE_CONSTRAINT_UNIQUE' ||
+    error.code === 'SQLITE_CONSTRAINT_PRIMARYKEY'
+  ));
 }
 
 function getUploadedFilename(files, fieldName) {
@@ -287,53 +301,62 @@ router.post('/event', requireAdmin, eventUpload, (req, res) => {
   const locationImage = getUploadedFilename(req.files, 'location_image');
   const mapImage = getUploadedFilename(req.files, 'map_image');
 
-  if (!validateEventInput(eventInput)) {
+  const validationError = getEventValidationError(eventInput);
+  if (validationError) {
     cleanupUploadedFiles(req.files);
-    req.session.flash = 'Title, date, location name, and start/end time are required.';
+    req.session.flash = validationError;
     return res.redirect('/admin/dashboard');
   }
 
-  if (eventInput.public_slug && getEventByPublicSlug(eventInput.public_slug)) {
+  try {
+    const result = db.transaction(() => {
+      const created = db.prepare(`
+        INSERT INTO events (
+          title,
+          public_slug,
+          event_date,
+          location_name,
+          location_address,
+          location_image,
+          map_image,
+          start_time,
+          end_time,
+          arrival_notes,
+          notes,
+          is_published,
+          show_public_roster
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        eventInput.title,
+        eventInput.public_slug,
+        eventInput.event_date,
+        eventInput.location_name,
+        eventInput.location_address,
+        locationImage,
+        mapImage,
+        eventInput.start_time,
+        eventInput.end_time,
+        eventInput.arrival_notes,
+        eventInput.arrival_notes,
+        eventInput.is_published,
+        eventInput.show_public_roster
+      );
+
+      reserveEventPublicSlug(created.lastInsertRowid, eventInput.public_slug);
+      return created;
+    })();
+
+    req.session.flash = 'Event created successfully.';
+    return res.redirect(buildDashboardRedirect(result.lastInsertRowid));
+  } catch (error) {
     cleanupUploadedFiles(req.files);
-    req.session.flash = 'That public URL slug is already in use.';
-    return res.redirect('/admin/dashboard');
+    if (isPublicSlugConflictError(error) || isPublicSlugUniqueConstraint(error)) {
+      req.session.flash = 'That public URL slug is already in use, including any older redirected event links.';
+      return res.redirect('/admin/dashboard');
+    }
+    throw error;
   }
-
-  const result = db.prepare(`
-    INSERT INTO events (
-      title,
-      public_slug,
-      event_date,
-      location_name,
-      location_address,
-      location_image,
-      map_image,
-      start_time,
-      end_time,
-      arrival_notes,
-      notes,
-      is_published,
-      show_public_roster
-    )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
-    eventInput.title,
-    eventInput.public_slug,
-    eventInput.event_date,
-    eventInput.location_name,
-    eventInput.location_address,
-    locationImage,
-    mapImage,
-    eventInput.start_time,
-    eventInput.end_time,
-    eventInput.arrival_notes,
-    eventInput.arrival_notes,
-    eventInput.is_published,
-    eventInput.show_public_roster
-  );
-
-  req.session.flash = 'Event created successfully.';
-  res.redirect(buildDashboardRedirect(result.lastInsertRowid));
 });
 
 // ── POST /admin/event/:id/update ─────────────────────────────
@@ -345,16 +368,10 @@ router.post('/event/:id/update', requireAdmin, eventUpload, (req, res) => {
   }
 
   const eventInput = normalizeEventInput(req.body);
-  if (!validateEventInput(eventInput)) {
+  const validationError = getEventValidationError(eventInput);
+  if (validationError) {
     cleanupUploadedFiles(req.files);
-    req.session.flash = 'Title, date, location name, and start/end time are required.';
-    return res.redirect(buildDashboardRedirect(existing.id));
-  }
-
-  const conflictingEvent = eventInput.public_slug ? getEventByPublicSlug(eventInput.public_slug) : null;
-  if (conflictingEvent && conflictingEvent.id !== existing.id) {
-    cleanupUploadedFiles(req.files);
-    req.session.flash = 'That public URL slug is already in use.';
+    req.session.flash = validationError;
     return res.redirect(buildDashboardRedirect(existing.id));
   }
 
@@ -371,38 +388,51 @@ router.post('/event/:id/update', requireAdmin, eventUpload, (req, res) => {
     Boolean(req.body.remove_map_image)
   );
 
-  db.prepare(`
-    UPDATE events
-    SET title = ?,
-        public_slug = ?,
-        event_date = ?,
-        location_name = ?,
-        location_address = ?,
-        location_image = ?,
-        map_image = ?,
-        start_time = ?,
-        end_time = ?,
-        arrival_notes = ?,
-        notes = ?,
-        is_published = ?,
-        show_public_roster = ?
-    WHERE id = ?
-  `).run(
-    eventInput.title,
-    eventInput.public_slug,
-    eventInput.event_date,
-    eventInput.location_name,
-    eventInput.location_address,
-    locationImageUpdate.nextFilename,
-    mapImageUpdate.nextFilename,
-    eventInput.start_time,
-    eventInput.end_time,
-    eventInput.arrival_notes,
-    eventInput.arrival_notes,
-    eventInput.is_published,
-    eventInput.show_public_roster,
-    existing.id
-  );
+  try {
+    db.transaction(() => {
+      db.prepare(`
+        UPDATE events
+        SET title = ?,
+            public_slug = ?,
+            event_date = ?,
+            location_name = ?,
+            location_address = ?,
+            location_image = ?,
+            map_image = ?,
+            start_time = ?,
+            end_time = ?,
+            arrival_notes = ?,
+            notes = ?,
+            is_published = ?,
+            show_public_roster = ?
+        WHERE id = ?
+      `).run(
+        eventInput.title,
+        eventInput.public_slug,
+        eventInput.event_date,
+        eventInput.location_name,
+        eventInput.location_address,
+        locationImageUpdate.nextFilename,
+        mapImageUpdate.nextFilename,
+        eventInput.start_time,
+        eventInput.end_time,
+        eventInput.arrival_notes,
+        eventInput.arrival_notes,
+        eventInput.is_published,
+        eventInput.show_public_roster,
+        existing.id
+      );
+
+      reserveEventPublicSlug(existing.id, eventInput.public_slug);
+    })();
+  } catch (error) {
+    cleanupUploadedFiles(req.files);
+    if (isPublicSlugConflictError(error) || isPublicSlugUniqueConstraint(error)) {
+      req.session.flash = 'That public URL slug is already in use, including any older redirected event links.';
+      return res.redirect(buildDashboardRedirect(existing.id));
+    }
+    throw error;
+  }
 
   if (locationImageUpdate.replacedFilename) {
     removeUploadedFile(locationImageUpdate.replacedFilename);

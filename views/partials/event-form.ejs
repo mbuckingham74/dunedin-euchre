@@ -19,7 +19,7 @@
     placeholder="e.g. april-2026-euchre"
     value="<%= event ? (event.public_slug || '') : '' %>"
   >
-  <p style="margin:0.45rem 0 0;font-size:0.9rem;color:#64748b;">If set, the public event page uses <code>/e/your-slug</code>. Leave blank to keep the ID-based URL.</p>
+  <p style="margin:0.45rem 0 0;font-size:0.9rem;color:#64748b;">If set, the public event page uses <code>/e/your-slug</code>. We normalize this to lowercase letters, numbers, and hyphens, and older slug links keep redirecting if you change it later.</p>
 </div>
 
 <div class="form-row" style="margin-top:0.75rem;">

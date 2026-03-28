@@ -11,6 +11,7 @@ const {
   isPublicRosterVisible
 } = require('../services/events');
 const { buildPublicEventPath, buildRsvpPath } = require('../services/links');
+const { getEventByPublicSlug } = require('../services/public-slugs');
 
 const MAX_CHANGES = 5;
 
@@ -27,10 +28,6 @@ function getParticipantByToken(token) {
 
 function getEventById(eventId) {
   return db.prepare('SELECT * FROM events WHERE id = ?').get(eventId);
-}
-
-function getEventBySlug(publicSlug) {
-  return db.prepare('SELECT * FROM events WHERE public_slug = ? COLLATE NOCASE').get(publicSlug);
 }
 
 function getLegacyRsvpEventOptions() {
@@ -261,9 +258,15 @@ router.post('/rsvp/:token/:eventId', express.json(), (req, res) => {
 
 // ── GET /e/:slug ─────────────────────────────────────────────
 router.get('/e/:slug', (req, res) => {
-  const event = getEventBySlug(req.params.slug);
+  const event = getEventByPublicSlug(req.params.slug);
   if (!event || !isEventPublished(event)) {
     return renderNotFound(res);
+  }
+
+  const canonicalPath = buildPublicEventPath(event);
+  const requestedPath = `/e/${encodeURIComponent(req.params.slug)}`;
+  if (canonicalPath !== requestedPath) {
+    return res.redirect(canonicalPath);
   }
 
   return renderPublicEventPage(res, event);

@@ -40,6 +40,7 @@ function resetDatabase() {
   db.exec(`
     DELETE FROM responses;
     DELETE FROM participants;
+    DELETE FROM event_public_slugs;
     DELETE FROM events;
     DELETE FROM admin_tokens;
     DELETE FROM sessions;
@@ -113,6 +114,13 @@ function insertEvent(overrides = {}) {
     event.is_published,
     event.show_public_roster
   );
+
+  if (event.public_slug) {
+    db.prepare(`
+      INSERT INTO event_public_slugs (event_id, slug, is_current)
+      VALUES (?, ?, 1)
+    `).run(result.lastInsertRowid, event.public_slug);
+  }
 
   return db.prepare('SELECT * FROM events WHERE id = ?').get(result.lastInsertRowid);
 }
@@ -368,7 +376,7 @@ test('participant create route reactivates instead of duplicating an existing em
   }]);
 });
 
-test('admin event create and update routes persist slug and roster visibility settings', async () => {
+test('admin event create and update routes persist slug settings and keep old slug links working after removal', async () => {
   const cookie = await signInAsAdmin();
 
   const createResponse = await fetch(`${baseUrl}/admin/event`, {
@@ -436,13 +444,66 @@ test('admin event create and update routes persist slug and roster visibility se
     public_slug: null,
     show_public_roster: 0
   });
+
+  const oldSlugResponse = await fetch(`${baseUrl}/e/summer-social-2026`, {
+    redirect: 'manual'
+  });
+
+  assert.equal(oldSlugResponse.status, 302);
+  assert.equal(oldSlugResponse.headers.get('location'), `/event/${eventId}`);
 });
 
-test('admin event routes reject duplicate public slugs', async () => {
-  insertEvent({
-    title: 'Existing Slug Event',
-    public_slug: 'spring-social'
+test('changing a slug keeps older public slug links working via redirect', async () => {
+  const cookie = await signInAsAdmin();
+  const event = insertEvent({
+    title: 'Slug Redirect Event',
+    public_slug: 'spring-social',
+    is_published: 1,
+    show_public_roster: 1
   });
+
+  const updateResponse = await fetch(`${baseUrl}/admin/event/${event.id}/update`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      cookie
+    },
+    body: new URLSearchParams({
+      title: event.title,
+      public_slug: 'summer-social',
+      event_date: event.event_date,
+      location_name: event.location_name,
+      location_address: event.location_address || '',
+      start_time: event.start_time,
+      end_time: event.end_time,
+      arrival_notes: event.arrival_notes || '',
+      is_published: '1',
+      show_public_roster: '1'
+    }),
+    redirect: 'manual'
+  });
+
+  assert.equal(updateResponse.status, 302);
+
+  const oldSlugResponse = await fetch(`${baseUrl}/e/spring-social`, {
+    redirect: 'manual'
+  });
+  const currentSlugResponse = await fetch(`${baseUrl}/e/summer-social`);
+
+  assert.equal(oldSlugResponse.status, 302);
+  assert.equal(oldSlugResponse.headers.get('location'), '/e/summer-social');
+  assert.equal(currentSlugResponse.status, 200);
+});
+
+test('admin event routes reject duplicate public slugs, including older redirected ones', async () => {
+  const existing = insertEvent({
+    title: 'Existing Slug Event',
+    public_slug: 'summer-social'
+  });
+  db.prepare(`
+    INSERT INTO event_public_slugs (event_id, slug, is_current)
+    VALUES (?, ?, 0)
+  `).run(existing.id, 'spring-social');
   const cookie = await signInAsAdmin();
 
   const response = await fetch(`${baseUrl}/admin/event`, {
@@ -465,6 +526,62 @@ test('admin event routes reject duplicate public slugs', async () => {
   assert.equal(response.status, 302);
   const eventCount = db.prepare('SELECT COUNT(*) AS count FROM events').get().count;
   assert.equal(eventCount, 1);
+});
+
+test('admin event slug handling transliterates unicode and rejects reserved route slugs', async () => {
+  const cookie = await signInAsAdmin();
+
+  const transliteratedResponse = await fetch(`${baseUrl}/admin/event`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      cookie
+    },
+    body: new URLSearchParams({
+      title: 'Cafe Social',
+      public_slug: ' Café Social 2026 ',
+      event_date: '2026-08-20',
+      location_name: 'Harbor Hall',
+      start_time: '18:00',
+      end_time: '21:00'
+    }),
+    redirect: 'manual'
+  });
+
+  assert.equal(transliteratedResponse.status, 302);
+  const transliterated = db.prepare(`
+    SELECT public_slug
+    FROM events
+    WHERE title = ?
+  `).get('Cafe Social');
+  assert.deepEqual(transliterated, {
+    public_slug: 'cafe-social-2026'
+  });
+
+  const reservedResponse = await fetch(`${baseUrl}/admin/event`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      cookie
+    },
+    body: new URLSearchParams({
+      title: 'Reserved Slug Event',
+      public_slug: 'e',
+      event_date: '2026-09-20',
+      location_name: 'Harbor Hall',
+      start_time: '18:00',
+      end_time: '21:00'
+    }),
+    redirect: 'manual'
+  });
+
+  assert.equal(reservedResponse.status, 302);
+  const rejectedCount = db.prepare(`
+    SELECT COUNT(*) AS count
+    FROM events
+    WHERE title = ?
+  `).get('Reserved Slug Event').count;
+  assert.equal(rejectedCount, 0);
 });
 
 test('admin event update can remove existing uploaded images and delete the files', async () => {
