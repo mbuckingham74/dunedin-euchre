@@ -27,6 +27,15 @@ function getEventByPublicSlug(publicSlug) {
   `).get(publicSlug);
 }
 
+function listEventPublicSlugs(eventId) {
+  return db.prepare(`
+    SELECT slug, is_current, created_at
+    FROM event_public_slugs
+    WHERE event_id = ?
+    ORDER BY is_current DESC, id DESC
+  `).all(eventId);
+}
+
 function reserveEventPublicSlug(eventId, publicSlug) {
   db.prepare(`
     UPDATE event_public_slugs
@@ -75,5 +84,6 @@ function isPublicSlugConflictError(error) {
 module.exports = {
   getEventByPublicSlug,
   isPublicSlugConflictError,
+  listEventPublicSlugs,
   reserveEventPublicSlug
 };

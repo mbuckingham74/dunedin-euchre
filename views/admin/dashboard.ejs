@@ -85,6 +85,28 @@
               <span class="meta-label">Public slug</span>
               <span class="meta-value"><code><%= event.public_slug %></code></span>
             </div>
+          <% } else if (publicSlugHistory.length > 0) { %>
+            <div class="event-meta-row">
+              <span class="meta-label">Public slug</span>
+              <span class="meta-value" style="color:#64748b;">None active. Using the event ID fallback URL.</span>
+            </div>
+          <% } %>
+          <% if (previousPublicSlugs.length > 0) { %>
+            <div class="event-meta-row">
+              <span class="meta-label">Older public URLs</span>
+              <span class="meta-value meta-value-multiline">
+                <% previousPublicSlugs.forEach(function(entry, index) { %>
+                  <span style="display:block;<%= index > 0 ? 'margin-top:0.45rem;' : '' %>">
+                    <a href="/e/<%= entry.slug %>" target="_blank" class="rsvp-link-preview"><%= baseUrl %>/e/<%= entry.slug %></a>
+                    <% if (isEventPublished(event)) { %>
+                      <span style="color:#64748b;"> redirects to the current public page.</span>
+                    <% } else { %>
+                      <span style="color:#64748b;"> stays reserved for this event while the page is draft.</span>
+                    <% } %>
+                  </span>
+                <% }); %>
+              </span>
+            </div>
           <% } %>
           <div class="event-meta-row">
             <span class="meta-label">Public roster</span>

@@ -20,6 +20,7 @@ const {
 const { buildPublicEventPath, buildRsvpPath } = require('../services/links');
 const {
   isPublicSlugConflictError,
+  listEventPublicSlugs,
   reserveEventPublicSlug
 } = require('../services/public-slugs');
 const { getUploadsDir } = require('../services/uploads');
@@ -271,15 +272,21 @@ router.get('/dashboard', requireAdmin, (req, res) => {
 
   let roster = [];
   let counts = { yes: 0, no: 0, maybe: 0, none: 0 };
+  let publicSlugHistory = [];
+  let previousPublicSlugs = [];
 
   if (event) {
     ({ roster, counts } = getRosterWithCounts(event.id));
+    publicSlugHistory = listEventPublicSlugs(event.id);
+    previousPublicSlugs = publicSlugHistory.filter(entry => !Number(entry.is_current));
   }
 
   res.render('admin/dashboard', {
     event,
     roster,
     counts,
+    publicSlugHistory,
+    previousPublicSlugs,
     allEvents: listEvents(),
     selectedEventId: event ? event.id : null,
     formatEventDate,

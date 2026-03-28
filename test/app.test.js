@@ -448,9 +448,17 @@ test('admin event create and update routes persist slug settings and keep old sl
   const oldSlugResponse = await fetch(`${baseUrl}/e/summer-social-2026`, {
     redirect: 'manual'
   });
+  const dashboardResponse = await fetch(`${baseUrl}/admin/dashboard?eventId=${eventId}`, {
+    headers: { cookie }
+  });
+  const dashboardBody = await dashboardResponse.text();
 
   assert.equal(oldSlugResponse.status, 302);
   assert.equal(oldSlugResponse.headers.get('location'), `/event/${eventId}`);
+  assert.equal(dashboardResponse.status, 200);
+  assert.match(dashboardBody, /None active\. Using the event ID fallback URL\./);
+  assert.match(dashboardBody, /Older public URLs/);
+  assert.match(dashboardBody, /http:\/\/127\.0\.0\.1\/e\/summer-social-2026/);
 });
 
 test('changing a slug keeps older public slug links working via redirect', async () => {
@@ -489,10 +497,18 @@ test('changing a slug keeps older public slug links working via redirect', async
     redirect: 'manual'
   });
   const currentSlugResponse = await fetch(`${baseUrl}/e/summer-social`);
+  const dashboardResponse = await fetch(`${baseUrl}/admin/dashboard?eventId=${event.id}`, {
+    headers: { cookie }
+  });
+  const dashboardBody = await dashboardResponse.text();
 
   assert.equal(oldSlugResponse.status, 302);
   assert.equal(oldSlugResponse.headers.get('location'), '/e/summer-social');
   assert.equal(currentSlugResponse.status, 200);
+  assert.equal(dashboardResponse.status, 200);
+  assert.match(dashboardBody, /<code>summer-social<\/code>/);
+  assert.match(dashboardBody, /http:\/\/127\.0\.0\.1\/e\/spring-social/);
+  assert.match(dashboardBody, /redirects to the current public page\./);
 });
 
 test('admin event routes reject duplicate public slugs, including older redirected ones', async () => {
