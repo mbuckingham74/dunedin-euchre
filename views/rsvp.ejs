@@ -191,8 +191,8 @@
 </footer>
 
 <script>
-  const TOKEN     = '<%= participant.rsvp_token %>';
   const MY_PID    = <%= participant.id %>;
+  const RSVP_POST_PATH = <%- JSON.stringify(rsvpPath) %>;
   const MAX_CHANGES = <%= maxChanges %>;
   let changesLeft = <%= changesLeft %>;
   let selectedStatus = '<%= (myResponse && myResponse.status) ? myResponse.status : '' %>';

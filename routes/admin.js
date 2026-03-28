@@ -10,6 +10,7 @@ const rateLimit = require('express-rate-limit');
 const db = require('../db/database');
 const { requireAdmin } = require('../middleware/auth');
 const { sendMagicLink, sendRsvpInvite, formatEventDate, formatTime } = require('../services/email');
+const { buildRsvpPath } = require('../services/links');
 
 const BASE_URL = process.env.BASE_URL || 'https://dunedin-euchre.com';
 const ADMIN_EMAILS = (process.env.ADMIN_EMAIL || '')
@@ -44,6 +45,14 @@ function getCurrentEvent() {
   return db.prepare('SELECT * FROM events ORDER BY event_date DESC, id DESC LIMIT 1').get();
 }
 
+function normalizeEmail(email) {
+  return (email || '').trim().toLowerCase();
+}
+
+function getParticipantByEmail(email) {
+  return db.prepare('SELECT * FROM participants WHERE email = ? COLLATE NOCASE').get(email);
+}
+
 function getRosterWithCounts(eventId) {
   const roster = db.prepare(`
     SELECT p.id, p.name, p.email, p.rsvp_token,
@@ -72,17 +81,12 @@ router.get('/', (req, res) => {
 
 // ── POST /admin/request-link ─────────────────────────────────
 router.post('/request-link', magicLinkLimiter, async (req, res) => {
-  const email = (req.body.email || '').trim().toLowerCase();
+  const email = normalizeEmail(req.body.email);
 
   // Always show "sent" regardless of whether email matches (no enumeration)
   if (!ADMIN_EMAILS.includes(email)) {
     return res.render('admin/login', { error: null, sent: true });
   }
-
-  // Expire any existing unused tokens
-  db.prepare(`
-    UPDATE admin_tokens SET used = 1 WHERE used = 0 AND expires_at > datetime('now')
-  `).run();
 
   const token = uuidv4();
   const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
@@ -180,9 +184,12 @@ router.get('/participants', requireAdmin, (req, res) => {
   const participants = db.prepare(
     'SELECT * FROM participants ORDER BY active DESC, name ASC'
   ).all();
+  const currentEvent = getCurrentEvent();
 
   res.render('admin/participants', {
     participants,
+    currentEvent,
+    buildRsvpPath,
     baseUrl: BASE_URL,
     flash: req.session.flash || null
   });
@@ -191,20 +198,66 @@ router.get('/participants', requireAdmin, (req, res) => {
 
 // ── POST /admin/participants ──────────────────────────────────
 router.post('/participants', requireAdmin, (req, res) => {
-  const { name, email } = req.body;
+  const name = (req.body.name || '').trim();
+  const email = normalizeEmail(req.body.email);
+
+  if (!name || !email) {
+    req.session.flash = 'Name and email are required.';
+    return res.redirect('/admin/participants');
+  }
+
+  const existing = getParticipantByEmail(email);
+  if (existing) {
+    if (existing.active) {
+      req.session.flash = `${existing.name} already exists with that email.`;
+      return res.redirect('/admin/participants');
+    }
+
+    db.prepare(`
+      UPDATE participants
+      SET name = ?, active = 1
+      WHERE id = ?
+    `).run(name, existing.id);
+
+    req.session.flash = `${name} reactivated.`;
+    return res.redirect('/admin/participants');
+  }
+
   const token = uuidv4();
   db.prepare('INSERT INTO participants (name, email, rsvp_token) VALUES (?, ?, ?)')
-    .run(name.trim(), email.trim().toLowerCase(), token);
+    .run(name, email, token);
 
-  req.session.flash = `${name.trim()} added.`;
+  req.session.flash = `${name} added.`;
   res.redirect('/admin/participants');
 });
 
 // ── POST /admin/participants/:id/update ───────────────────────
 router.post('/participants/:id/update', requireAdmin, (req, res) => {
-  const { name, email } = req.body;
+  const name = (req.body.name || '').trim();
+  const email = normalizeEmail(req.body.email);
+
+  if (!name || !email) {
+    req.session.flash = 'Name and email are required.';
+    return res.redirect('/admin/participants');
+  }
+
+  const existing = db.prepare('SELECT * FROM participants WHERE id = ?').get(req.params.id);
+  if (!existing) {
+    req.session.flash = 'Participant not found.';
+    return res.redirect('/admin/participants');
+  }
+
+  const conflict = db.prepare(`
+    SELECT * FROM participants
+    WHERE email = ? COLLATE NOCASE AND id != ?
+  `).get(email, req.params.id);
+  if (conflict) {
+    req.session.flash = `${conflict.name} already uses that email.`;
+    return res.redirect('/admin/participants');
+  }
+
   db.prepare('UPDATE participants SET name = ?, email = ? WHERE id = ?')
-    .run(name.trim(), email.trim().toLowerCase(), req.params.id);
+    .run(name, email, req.params.id);
 
   req.session.flash = 'Participant updated.';
   res.redirect('/admin/participants');
@@ -270,7 +323,7 @@ router.get('/stats', requireAdmin, (req, res) => {
     attendanceRate: totalEvents > 0
       ? Math.round((row.yes_count || 0) / totalEvents * 100)
       : null,
-    avgChanges: row.avg_changes ? row.avg_changes.toFixed(1) : '1.0'
+    avgChanges: row.avg_changes === null ? null : Number(row.avg_changes.toFixed(1))
   }));
 
   res.render('admin/stats', { stats, totalEvents, events, formatEventDate });

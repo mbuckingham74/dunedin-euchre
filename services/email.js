@@ -1,6 +1,7 @@
 'use strict';
 
 const { Resend } = require('resend');
+const { buildRsvpUrl } = require('./links');
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 const FROM = process.env.FROM_EMAIL || 'admin@dunedin-euchre.com';
@@ -33,7 +34,7 @@ async function sendMagicLink(toEmail, token) {
 }
 
 async function sendRsvpInvite(participant, event) {
-  const link = `${BASE_URL}/rsvp/${participant.rsvp_token}`;
+  const link = buildRsvpUrl(BASE_URL, participant, event);
   const dateStr = formatEventDate(event.event_date);
 
   await resend.emails.send({

@@ -38,7 +38,7 @@ submitBtn.addEventListener('click', async () => {
   setFeedback('', '');
 
   try {
-    const resp = await fetch(`/rsvp/${TOKEN}`, {
+    const resp = await fetch(RSVP_POST_PATH, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

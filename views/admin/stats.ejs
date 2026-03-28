@@ -46,7 +46,7 @@
                 <tr
                   data-name="<%= s.name %>"
                   data-attendance="<%= s.attendanceRate !== null ? s.attendanceRate : -1 %>"
-                  data-changes="<%= s.avgChanges %>"
+                  data-changes="<%= s.avgChanges !== null ? s.avgChanges : -1 %>"
                 >
                   <td><%= s.name %></td>
                   <td>
@@ -63,7 +63,7 @@
                     <%= s.yesCount %> / <%= totalEvents %>
                   </td>
                   <td style="color:#64748b;text-align:center;">
-                    <%= s.avgChanges %>
+                    <%= s.avgChanges !== null ? s.avgChanges.toFixed(1) : '—' %>
                   </td>
                 </tr>
               <% }); %>

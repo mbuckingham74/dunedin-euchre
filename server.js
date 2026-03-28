@@ -47,9 +47,10 @@ class SQLiteStore extends session.Store {
         expired INTEGER NOT NULL
       )
     `);
-    setInterval(() => {
+    this.cleanupTimer = setInterval(() => {
       this.db.prepare('DELETE FROM sessions WHERE expired < ?').run(Date.now());
     }, 60 * 1000);
+    this.cleanupTimer.unref();
   }
 
   get(sid, cb) {
@@ -116,6 +117,11 @@ app.use((err, req, res, next) => {
 
 // ── Start ─────────────────────────────────────────────────────
 const PORT = process.env.PORT || 3456;
-app.listen(PORT, () => {
-  console.log(`Dunedin Euchre running on port ${PORT}`);
-});
+
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`Dunedin Euchre running on port ${PORT}`);
+  });
+}
+
+module.exports = { app };

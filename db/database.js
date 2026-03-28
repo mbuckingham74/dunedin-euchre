@@ -4,10 +4,13 @@ const Database = require('better-sqlite3');
 const path = require('path');
 const fs = require('fs');
 
-// In Docker the DB lives in the mounted data/ volume; locally falls back to project root
-const dbDir = path.join(__dirname, '..', 'data');
+// In Docker the DB lives in the mounted data/ volume; tests can override it with DB_PATH.
+const dbPath = process.env.DB_PATH
+  ? path.resolve(process.env.DB_PATH)
+  : path.join(__dirname, '..', 'data', 'euchre.db');
+const dbDir = path.dirname(dbPath);
+
 if (!fs.existsSync(dbDir)) fs.mkdirSync(dbDir, { recursive: true });
-const dbPath = path.join(dbDir, 'euchre.db');
 const db = new Database(dbPath);
 
 // Enable WAL mode for better concurrent read performance
@@ -53,5 +56,24 @@ db.exec(`
     used        INTEGER NOT NULL DEFAULT 0
   );
 `);
+
+const duplicateParticipantEmails = db.prepare(`
+  SELECT LOWER(email) AS email_key, COUNT(*) AS count
+  FROM participants
+  GROUP BY LOWER(email)
+  HAVING COUNT(*) > 1
+`).all();
+
+if (duplicateParticipantEmails.length === 0) {
+  db.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS participants_email_unique
+    ON participants(email COLLATE NOCASE)
+  `);
+} else {
+  console.warn(
+    'Skipping participants_email_unique index because duplicate participant emails already exist:',
+    duplicateParticipantEmails.map(row => row.email_key).join(', ')
+  );
+}
 
 module.exports = db;

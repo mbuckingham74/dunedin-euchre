@@ -4,6 +4,7 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db/database');
 const { formatEventDate, formatTime } = require('../services/email');
+const { buildRsvpPath } = require('../services/links');
 
 const MAX_CHANGES = 5;
 
@@ -12,10 +13,22 @@ router.get('/', (req, res) => res.redirect('/admin'));
 
 // ── Helpers ──────────────────────────────────────────────────
 
-function getCurrentEvent() {
+function getParticipantByToken(token) {
+  return db.prepare(
+    'SELECT * FROM participants WHERE rsvp_token = ? AND active = 1'
+  ).get(token);
+}
+
+function getEventById(eventId) {
+  return db.prepare('SELECT * FROM events WHERE id = ?').get(eventId);
+}
+
+function getLegacyRsvpEventOptions() {
   return db.prepare(`
-    SELECT * FROM events ORDER BY event_date DESC, id DESC LIMIT 1
-  `).get();
+    SELECT id FROM events
+    ORDER BY event_date DESC, id DESC
+    LIMIT 2
+  `).all();
 }
 
 function getRoster(eventId) {
@@ -28,23 +41,7 @@ function getRoster(eventId) {
   `).all(eventId);
 }
 
-// ── GET /rsvp/:token ─────────────────────────────────────────
-router.get('/rsvp/:token', (req, res) => {
-  const participant = db.prepare(
-    'SELECT * FROM participants WHERE rsvp_token = ? AND active = 1'
-  ).get(req.params.token);
-
-  if (!participant) {
-    return res.status(404).send(
-      '<h1 style="font-family:sans-serif;padding:2rem">Link not found or no longer active.</h1>'
-    );
-  }
-
-  const event = getCurrentEvent();
-  if (!event) {
-    return res.render('no-event', { participant });
-  }
-
+function renderRsvpPage(res, participant, event) {
   const roster = getRoster(event.id);
   const myResponse = roster.find(r => r.id === participant.id);
 
@@ -56,22 +53,13 @@ router.get('/rsvp/:token', (req, res) => {
     maxChanges: MAX_CHANGES,
     formatEventDate,
     formatTime,
-    baseUrl: process.env.BASE_URL || ''
+    baseUrl: process.env.BASE_URL || '',
+    rsvpPath: buildRsvpPath(participant, event)
   });
-});
+}
 
-// ── POST /rsvp/:token ────────────────────────────────────────
-router.post('/rsvp/:token', express.json(), (req, res) => {
-  const participant = db.prepare(
-    'SELECT * FROM participants WHERE rsvp_token = ? AND active = 1'
-  ).get(req.params.token);
-
-  if (!participant) return res.status(404).json({ error: 'Link not found.' });
-
-  const event = getCurrentEvent();
-  if (!event) return res.status(400).json({ error: 'No active event.' });
-
-  const { status, comment } = req.body;
+function saveRsvpResponse(res, participant, event, body) {
+  const { status, comment } = body;
   if (!['yes', 'no', 'maybe'].includes(status)) {
     return res.status(400).json({ error: 'Invalid status.' });
   }
@@ -105,7 +93,79 @@ router.post('/rsvp/:token', express.json(), (req, res) => {
     'SELECT * FROM responses WHERE participant_id = ? AND event_id = ?'
   ).get(participant.id, event.id);
 
-  res.json({ ok: true, roster, changesUsed: updated.change_count, maxChanges: MAX_CHANGES });
+  return res.json({ ok: true, roster, changesUsed: updated.change_count, maxChanges: MAX_CHANGES });
+}
+
+// ── GET /rsvp/:token ─────────────────────────────────────────
+router.get('/rsvp/:token', (req, res) => {
+  const participant = getParticipantByToken(req.params.token);
+
+  if (!participant) {
+    return res.status(404).send(
+      '<h1 style="font-family:sans-serif;padding:2rem">Link not found or no longer active.</h1>'
+    );
+  }
+
+  const events = getLegacyRsvpEventOptions();
+  if (events.length === 0) {
+    return res.render('no-event', { participant });
+  }
+
+  if (events.length === 1) {
+    return res.redirect(buildRsvpPath(participant, events[0].id));
+  }
+
+  res.status(410).render('legacy-rsvp', { participant });
+});
+
+// ── GET /rsvp/:token/:eventId ────────────────────────────────
+router.get('/rsvp/:token/:eventId', (req, res) => {
+  const participant = getParticipantByToken(req.params.token);
+
+  if (!participant) {
+    return res.status(404).send(
+      '<h1 style="font-family:sans-serif;padding:2rem">Link not found or no longer active.</h1>'
+    );
+  }
+
+  const event = getEventById(req.params.eventId);
+  if (!event) {
+    return res.status(404).send(
+      '<h1 style="font-family:sans-serif;padding:2rem">Event not found.</h1>'
+    );
+  }
+
+  return renderRsvpPage(res, participant, event);
+});
+
+// ── POST /rsvp/:token ────────────────────────────────────────
+router.post('/rsvp/:token', express.json(), (req, res) => {
+  const participant = getParticipantByToken(req.params.token);
+
+  if (!participant) return res.status(404).json({ error: 'Link not found.' });
+
+  const events = getLegacyRsvpEventOptions();
+  if (events.length === 0) return res.status(400).json({ error: 'No active event.' });
+  if (events.length > 1) {
+    return res.status(410).json({
+      error: 'This RSVP link is outdated. Please use the latest invite email.'
+    });
+  }
+
+  const event = getEventById(events[0].id);
+  return saveRsvpResponse(res, participant, event, req.body);
+});
+
+// ── POST /rsvp/:token/:eventId ───────────────────────────────
+router.post('/rsvp/:token/:eventId', express.json(), (req, res) => {
+  const participant = getParticipantByToken(req.params.token);
+
+  if (!participant) return res.status(404).json({ error: 'Link not found.' });
+
+  const event = getEventById(req.params.eventId);
+  if (!event) return res.status(404).json({ error: 'Event not found.' });
+
+  return saveRsvpResponse(res, participant, event, req.body);
 });
 
 // ── GET /event/:id ───────────────────────────────────────────
