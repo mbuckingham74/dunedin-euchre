@@ -1,24 +1,47 @@
 <div class="form-group">
-  <label class="form-label">Date</label>
+  <label class="form-label">Event title</label>
   <input
-    type="date"
-    name="event_date"
+    type="text"
+    name="title"
     class="form-input"
     required
-    value="<%= event ? event.event_date : '' %>"
+    placeholder="e.g. April Euchre Night"
+    value="<%= event ? event.title : 'Dunedin Euchre Night' %>"
   >
 </div>
 
+<div class="form-row" style="margin-top:0.75rem;">
+  <div class="form-group">
+    <label class="form-label">Date</label>
+    <input
+      type="date"
+      name="event_date"
+      class="form-input"
+      required
+      value="<%= event ? event.event_date : '' %>"
+    >
+  </div>
+  <div class="form-group">
+    <label class="form-label">Location name</label>
+    <input
+      type="text"
+      name="location_name"
+      class="form-input"
+      required
+      placeholder="e.g. Dunedin Community Center"
+      value="<%= event ? event.location_name : '' %>"
+    >
+  </div>
+</div>
+
 <div class="form-group" style="margin-top:0.75rem;">
-  <label class="form-label">Location name</label>
-  <input
-    type="text"
-    name="location_name"
+  <label class="form-label">Location address <span style="font-weight:400;color:#64748b;">(optional)</span></label>
+  <textarea
+    name="location_address"
     class="form-input"
-    required
-    placeholder="e.g. Dunedin Community Center"
-    value="<%= event ? event.location_name : '' %>"
-  >
+    rows="3"
+    placeholder="e.g. 123 Main St&#10;Dunedin, FL 34698"
+  ><%= event ? (event.location_address || '') : '' %></textarea>
 </div>
 
 <div class="form-row" style="margin-top:0.75rem;">
@@ -45,22 +68,40 @@
 </div>
 
 <div class="form-group" style="margin-top:0.75rem;">
-  <label class="form-label">Notes <span style="font-weight:400;color:#64748b;">(shown prominently on RSVP page)</span></label>
+  <label class="form-label">Arrival / parking notes <span style="font-weight:400;color:#64748b;">(optional)</span></label>
   <textarea
-    name="notes"
+    name="arrival_notes"
     class="form-input"
     rows="3"
-    placeholder="e.g. Bring a sweater, the AC runs cold. Parking in Lot B."
-  ><%= event ? (event.notes || '') : '' %></textarea>
+    placeholder="e.g. Park in Lot B and use the west entrance."
+  ><%= event ? ((event.arrival_notes || event.notes) || '') : '' %></textarea>
 </div>
 
-<div class="form-group" style="margin-top:0.75rem;">
-  <label class="form-label">Building entrance photo <span style="font-weight:400;color:#64748b;">(optional)</span></label>
-  <% if (event && event.location_image) { %>
-    <div style="margin-bottom:0.5rem;">
-      <img src="/uploads/<%= event.location_image %>" alt="Current image" style="max-height:100px;border-radius:4px;">
-      <span style="font-size:0.85rem;color:#64748b;display:block;margin-top:0.25rem;">Upload a new photo to replace this one.</span>
-    </div>
-  <% } %>
-  <input type="file" name="location_image" class="form-input" accept="image/*">
+<div class="form-row" style="margin-top:0.75rem;">
+  <div class="form-group">
+    <label class="form-label">Venue photo <span style="font-weight:400;color:#64748b;">(optional)</span></label>
+    <% if (event && event.location_image) { %>
+      <div class="event-upload-preview">
+        <img src="/uploads/<%= event.location_image %>" alt="Current venue photo" class="event-upload-preview-image">
+        <span class="event-upload-preview-text">Upload a new photo to replace this one.</span>
+      </div>
+    <% } %>
+    <input type="file" name="location_image" class="form-input" accept="image/*">
+  </div>
+
+  <div class="form-group">
+    <label class="form-label">Map image <span style="font-weight:400;color:#64748b;">(optional)</span></label>
+    <% if (event && event.map_image) { %>
+      <div class="event-upload-preview">
+        <img src="/uploads/<%= event.map_image %>" alt="Current map image" class="event-upload-preview-image">
+        <span class="event-upload-preview-text">Upload a new screenshot to replace this one.</span>
+      </div>
+    <% } %>
+    <input type="file" name="map_image" class="form-input" accept="image/*">
+  </div>
 </div>
+
+<label class="form-checkbox" style="margin-top:1rem;">
+  <input type="checkbox" name="is_published" value="1" <%= event && Number(event.is_published) ? 'checked' : '' %>>
+  <span>Publish public event page</span>
+</label>

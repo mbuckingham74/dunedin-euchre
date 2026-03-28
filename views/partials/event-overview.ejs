@@ -1,0 +1,54 @@
+<section class="card event-card">
+  <p class="event-kicker">Upcoming event</p>
+  <h2 class="event-title"><%= eventTitle %></h2>
+  <p class="event-date-heading"><%= formatEventDate(event.event_date) %></p>
+
+  <div class="event-meta">
+    <div class="event-meta-row">
+      <span class="meta-label">Time</span>
+      <span class="meta-value"><%= formatTime(event.start_time) %> – <%= formatTime(event.end_time) %></span>
+    </div>
+    <div class="event-meta-row">
+      <span class="meta-label">Venue</span>
+      <span class="meta-value"><%= event.location_name %></span>
+    </div>
+    <% if (event.location_address) { %>
+      <div class="event-meta-row">
+        <span class="meta-label">Address</span>
+        <span class="meta-value meta-value-multiline"><%= event.location_address %></span>
+      </div>
+    <% } %>
+  </div>
+
+  <% if (arrivalNotes) { %>
+    <div class="event-notes">
+      <span class="notes-label">Arrival notes</span>
+      <p class="notes-text"><%= arrivalNotes %></p>
+    </div>
+  <% } %>
+
+  <% if (event.location_image || event.map_image) { %>
+    <div class="event-media-grid">
+      <% if (event.location_image) { %>
+        <div class="event-media-card">
+          <p class="location-image-caption">Venue photo</p>
+          <img
+            src="/uploads/<%= event.location_image %>"
+            alt="Venue for <%= eventTitle %>"
+            class="location-image"
+          >
+        </div>
+      <% } %>
+      <% if (event.map_image) { %>
+        <div class="event-media-card">
+          <p class="location-image-caption">Map image</p>
+          <img
+            src="/uploads/<%= event.map_image %>"
+            alt="Map for <%= eventTitle %>"
+            class="location-image"
+          >
+        </div>
+      <% } %>
+    </div>
+  <% } %>
+</section>

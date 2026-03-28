@@ -59,28 +59,64 @@ function insertParticipant(overrides = {}) {
 
 function insertEvent(overrides = {}) {
   const event = {
+    title: 'Dunedin Euchre Night',
     event_date: '2026-04-15',
     location_name: 'Dunedin Community Center',
+    location_address: null,
     location_image: null,
+    map_image: null,
     start_time: '18:00',
     end_time: '21:00',
     notes: null,
+    arrival_notes: null,
+    is_published: 0,
     ...overrides
   };
 
   const result = db.prepare(`
-    INSERT INTO events (event_date, location_name, location_image, start_time, end_time, notes)
-    VALUES (?, ?, ?, ?, ?, ?)
+    INSERT INTO events (
+      title,
+      event_date,
+      location_name,
+      location_address,
+      location_image,
+      map_image,
+      start_time,
+      end_time,
+      notes,
+      arrival_notes,
+      is_published
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
+    event.title,
     event.event_date,
     event.location_name,
+    event.location_address,
     event.location_image,
+    event.map_image,
     event.start_time,
     event.end_time,
-    event.notes
+    event.notes,
+    event.arrival_notes,
+    event.is_published
   );
 
   return db.prepare('SELECT * FROM events WHERE id = ?').get(result.lastInsertRowid);
+}
+
+function insertResponse(participantId, eventId, overrides = {}) {
+  const response = {
+    status: 'yes',
+    comment: null,
+    change_count: 1,
+    ...overrides
+  };
+
+  db.prepare(`
+    INSERT INTO responses (participant_id, event_id, status, comment, change_count)
+    VALUES (?, ?, ?, ?, ?)
+  `).run(participantId, eventId, response.status, response.comment, response.change_count);
 }
 
 async function signInAsAdmin() {
@@ -138,6 +174,79 @@ test('event-scoped RSVP submissions write to the requested event', async () => {
     status: 'yes',
     comment: 'See you there'
   });
+});
+
+test('public event page renders correct metadata for published events', async () => {
+  const yesParticipant = insertParticipant();
+  const noParticipant = insertParticipant({
+    name: 'Bob Example',
+    email: 'bob@example.com',
+    rsvp_token: 'bob-token'
+  });
+  insertParticipant({
+    name: 'Cara Pending',
+    email: 'cara@example.com',
+    rsvp_token: 'cara-token'
+  });
+  const event = insertEvent({
+    title: 'Spring Euchre Social',
+    location_name: 'Harbor Hall',
+    location_address: '123 Main St\nDunedin, FL 34698',
+    location_image: 'venue-photo.png',
+    map_image: 'map-shot.png',
+    arrival_notes: 'Use the west entrance and park beside the tennis courts.',
+    notes: 'Use the west entrance and park beside the tennis courts.',
+    is_published: 1
+  });
+
+  insertResponse(yesParticipant.id, event.id, { status: 'yes', comment: 'I can bring snacks.' });
+  insertResponse(noParticipant.id, event.id, { status: 'no', comment: 'Out of town.' });
+
+  const response = await fetch(`${baseUrl}/event/${event.id}`);
+  const body = await response.text();
+
+  assert.equal(response.status, 200);
+  assert.match(body, /Spring Euchre Social/);
+  assert.match(body, /Harbor Hall/);
+  assert.match(body, /123 Main St/);
+  assert.match(body, /Dunedin, FL 34698/);
+  assert.match(body, /Use the west entrance and park beside the tennis courts\./);
+  assert.match(body, /\/uploads\/venue-photo\.png/);
+  assert.match(body, /\/uploads\/map-shot\.png/);
+  assert.match(body, />1 Yes</);
+  assert.match(body, />0 Maybe</);
+  assert.match(body, />1 No</);
+  assert.match(body, />1 Pending</);
+  assert.match(body, /Alice Example/);
+  assert.match(body, /Bob Example/);
+  assert.doesNotMatch(body, /Cara Pending/);
+});
+
+test('unpublished events are not publicly accessible', async () => {
+  const event = insertEvent({ is_published: 0 });
+
+  const response = await fetch(`${baseUrl}/event/${event.id}`);
+
+  assert.equal(response.status, 404);
+});
+
+test('public event page does not expose freeform RSVP comments', async () => {
+  const participant = insertParticipant();
+  const event = insertEvent({
+    title: 'Private Comment Test',
+    is_published: 1
+  });
+
+  insertResponse(participant.id, event.id, {
+    status: 'yes',
+    comment: 'Please save me the quiet corner table.'
+  });
+
+  const response = await fetch(`${baseUrl}/event/${event.id}`);
+  const body = await response.text();
+
+  assert.equal(response.status, 200);
+  assert.doesNotMatch(body, /Please save me the quiet corner table\./);
 });
 
 test('legacy token-only RSVP links stop guessing when multiple events exist', async () => {

@@ -1,7 +1,7 @@
 'use strict';
 
 const { Resend } = require('resend');
-const { buildRsvpUrl } = require('./links');
+const { buildPublicEventUrl, buildRsvpUrl } = require('./links');
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 const FROM = process.env.FROM_EMAIL || 'admin@dunedin-euchre.com';
@@ -36,11 +36,16 @@ async function sendMagicLink(toEmail, token) {
 async function sendRsvpInvite(participant, event) {
   const link = buildRsvpUrl(BASE_URL, participant, event);
   const dateStr = formatEventDate(event.event_date);
+  const eventTitle = (event.title || '').trim() || `Dunedin Euchre on ${dateStr}`;
+  const arrivalNotes = (event.arrival_notes || event.notes || '').trim();
+  const publicEventLink = Number(event.is_published)
+    ? buildPublicEventUrl(BASE_URL, event)
+    : '';
 
   await resend.emails.send({
     from: FROM,
     to: participant.email,
-    subject: `Dunedin Euchre – RSVP for ${dateStr}`,
+    subject: `Dunedin Euchre – RSVP for ${eventTitle}`,
     html: `
       <div style="font-family: Georgia, serif; max-width: 520px; margin: 0 auto; padding: 32px; color: #1e293b;">
         <h2 style="margin: 0 0 8px; font-size: 24px;">Dunedin Euchre</h2>
@@ -55,6 +60,10 @@ async function sendRsvpInvite(participant, event) {
 
         <table style="width:100%; border-collapse:collapse; margin: 0 0 24px; font-size:17px;">
           <tr>
+            <td style="padding: 8px 12px 8px 0; color:#64748b; white-space:nowrap; vertical-align:top;">Event</td>
+            <td style="padding: 8px 0; font-weight:600;">${eventTitle}</td>
+          </tr>
+          <tr>
             <td style="padding: 8px 12px 8px 0; color:#64748b; white-space:nowrap; vertical-align:top;">Date</td>
             <td style="padding: 8px 0; font-weight:600;">${dateStr}</td>
           </tr>
@@ -66,10 +75,15 @@ async function sendRsvpInvite(participant, event) {
             <td style="padding: 8px 12px 8px 0; color:#64748b; white-space:nowrap; vertical-align:top;">Time</td>
             <td style="padding: 8px 0; font-weight:600;">${formatTime(event.start_time)} – ${formatTime(event.end_time)}</td>
           </tr>
-          ${event.notes ? `
+          ${event.location_address ? `
           <tr>
-            <td style="padding: 8px 12px 8px 0; color:#64748b; white-space:nowrap; vertical-align:top;">Notes</td>
-            <td style="padding: 8px 0;">${event.notes}</td>
+            <td style="padding: 8px 12px 8px 0; color:#64748b; white-space:nowrap; vertical-align:top;">Address</td>
+            <td style="padding: 8px 0;">${event.location_address.replace(/\n/g, '<br>')}</td>
+          </tr>` : ''}
+          ${arrivalNotes ? `
+          <tr>
+            <td style="padding: 8px 12px 8px 0; color:#64748b; white-space:nowrap; vertical-align:top;">Arrival notes</td>
+            <td style="padding: 8px 0;">${arrivalNotes}</td>
           </tr>` : ''}
         </table>
 
@@ -80,6 +94,10 @@ async function sendRsvpInvite(participant, event) {
         <p style="font-size: 15px; color: #64748b; margin: 24px 0 8px;">
           You can see who else is coming right on the RSVP page — no sign-in required.
         </p>
+        ${publicEventLink ? `
+        <p style="font-size: 15px; color: #64748b; margin: 0 0 8px;">
+          Public event page: <a href="${publicEventLink}" style="color:#2563eb;">${publicEventLink}</a>
+        </p>` : ''}
         <p style="font-size: 13px; color: #94a3b8; margin: 4px 0 0;">
           Your personal link: ${link}
         </p>

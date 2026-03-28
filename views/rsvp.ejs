@@ -27,37 +27,13 @@
   <!-- LEFT COLUMN: event info + form -->
   <div class="rsvp-left">
 
-    <section class="card event-card">
-      <h2 class="event-date-heading"><%= formatEventDate(event.event_date) %></h2>
-      <div class="event-meta">
-        <div class="event-meta-row">
-          <span class="meta-label">Location</span>
-          <span class="meta-value"><%= event.location_name %></span>
-        </div>
-        <div class="event-meta-row">
-          <span class="meta-label">Time</span>
-          <span class="meta-value"><%= formatTime(event.start_time) %> – <%= formatTime(event.end_time) %></span>
-        </div>
-      </div>
-
-      <% if (event.notes) { %>
-        <div class="event-notes">
-          <span class="notes-label">Note</span>
-          <p class="notes-text"><%= event.notes %></p>
-        </div>
-      <% } %>
-
-      <% if (event.location_image) { %>
-        <div class="location-image-wrap">
-          <p class="location-image-caption">Building entrance</p>
-          <img
-            src="/uploads/<%= event.location_image %>"
-            alt="Entrance to <%= event.location_name %>"
-            class="location-image"
-          >
-        </div>
-      <% } %>
-    </section>
+    <%- include('./partials/event-overview', {
+      event,
+      formatEventDate,
+      formatTime,
+      eventTitle,
+      arrivalNotes
+    }) %>
 
     <!-- RSVP Form -->
     <section class="card rsvp-form-card" id="rsvp-form-section">
@@ -187,7 +163,9 @@
 </main>
 
 <footer class="site-footer">
-  <a href="/event/<%= event.id %>">View public roster</a>
+  <% if (publicEventPath) { %>
+    <a href="<%= publicEventPath %>">View public event page</a>
+  <% } %>
 </footer>
 
 <script>

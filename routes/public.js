@@ -4,7 +4,8 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db/database');
 const { formatEventDate, formatTime } = require('../services/email');
-const { buildRsvpPath } = require('../services/links');
+const { getArrivalNotes, getEventTitle, isEventPublished } = require('../services/events');
+const { buildPublicEventPath, buildRsvpPath } = require('../services/links');
 
 const MAX_CHANGES = 5;
 
@@ -41,6 +42,55 @@ function getRoster(eventId) {
   `).all(eventId);
 }
 
+function getPublicRoster(eventId) {
+  return db.prepare(`
+    SELECT p.id, p.name, r.status, r.updated_at
+    FROM responses r
+    JOIN participants p ON p.id = r.participant_id
+    WHERE r.event_id = ? AND p.active = 1
+    ORDER BY
+      CASE r.status
+        WHEN 'yes' THEN 1
+        WHEN 'maybe' THEN 2
+        WHEN 'no' THEN 3
+        ELSE 4
+      END,
+      p.name ASC
+  `).all(eventId);
+}
+
+function getRsvpSummary(eventId) {
+  const row = db.prepare(`
+    SELECT
+      COUNT(p.id) AS invited_count,
+      SUM(CASE WHEN r.status = 'yes' THEN 1 ELSE 0 END) AS yes_count,
+      SUM(CASE WHEN r.status = 'maybe' THEN 1 ELSE 0 END) AS maybe_count,
+      SUM(CASE WHEN r.status = 'no' THEN 1 ELSE 0 END) AS no_count
+    FROM participants p
+    LEFT JOIN responses r ON r.participant_id = p.id AND r.event_id = ?
+    WHERE p.active = 1
+  `).get(eventId);
+
+  const summary = {
+    invited: row && row.invited_count ? row.invited_count : 0,
+    yes: row && row.yes_count ? row.yes_count : 0,
+    maybe: row && row.maybe_count ? row.maybe_count : 0,
+    no: row && row.no_count ? row.no_count : 0
+  };
+
+  summary.responded = summary.yes + summary.maybe + summary.no;
+  summary.pending = Math.max(summary.invited - summary.responded, 0);
+  return summary;
+}
+
+function groupPublicRoster(roster) {
+  return {
+    yes: roster.filter(entry => entry.status === 'yes'),
+    maybe: roster.filter(entry => entry.status === 'maybe'),
+    no: roster.filter(entry => entry.status === 'no')
+  };
+}
+
 function renderRsvpPage(res, participant, event) {
   const roster = getRoster(event.id);
   const myResponse = roster.find(r => r.id === participant.id);
@@ -54,6 +104,9 @@ function renderRsvpPage(res, participant, event) {
     formatEventDate,
     formatTime,
     baseUrl: process.env.BASE_URL || '',
+    eventTitle: getEventTitle(event),
+    arrivalNotes: getArrivalNotes(event),
+    publicEventPath: isEventPublished(event) ? buildPublicEventPath(event) : null,
     rsvpPath: buildRsvpPath(participant, event)
   });
 }
@@ -170,18 +223,26 @@ router.post('/rsvp/:token/:eventId', express.json(), (req, res) => {
 
 // ── GET /event/:id ───────────────────────────────────────────
 router.get('/event/:id', (req, res) => {
-  const event = db.prepare('SELECT * FROM events WHERE id = ?').get(req.params.id);
-  if (!event) return res.status(404).send('<h1 style="font-family:sans-serif;padding:2rem">Event not found.</h1>');
-
-  const roster = getRoster(event.id);
-
-  const counts = { yes: 0, no: 0, maybe: 0, none: 0 };
-  for (const r of roster) {
-    if (r.status) counts[r.status]++;
-    else counts.none++;
+  const event = getEventById(req.params.id);
+  if (!event || !isEventPublished(event)) {
+    return res.status(404).send(
+      '<h1 style="font-family:sans-serif;padding:2rem">Event not found.</h1>'
+    );
   }
 
-  res.render('event', { event, roster, counts, formatEventDate, formatTime });
+  const summary = getRsvpSummary(event.id);
+  const roster = getPublicRoster(event.id);
+  const groupedRoster = groupPublicRoster(roster);
+
+  res.render('event', {
+    event,
+    summary,
+    groupedRoster,
+    formatEventDate,
+    formatTime,
+    eventTitle: getEventTitle(event),
+    arrivalNotes: getArrivalNotes(event)
+  });
 });
 
 module.exports = router;

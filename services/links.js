@@ -19,4 +19,21 @@ function buildRsvpUrl(baseUrl, participantOrToken, eventOrId) {
   return `${normalizeBaseUrl(baseUrl)}${buildRsvpPath(participantOrToken, eventOrId)}`;
 }
 
-module.exports = { buildRsvpPath, buildRsvpUrl };
+function buildPublicEventPath(eventOrId) {
+  const eventId = typeof eventOrId === 'object'
+    ? eventOrId.id
+    : eventOrId;
+
+  return `/event/${eventId}`;
+}
+
+function buildPublicEventUrl(baseUrl, eventOrId) {
+  return `${normalizeBaseUrl(baseUrl)}${buildPublicEventPath(eventOrId)}`;
+}
+
+module.exports = {
+  buildPublicEventPath,
+  buildPublicEventUrl,
+  buildRsvpPath,
+  buildRsvpUrl
+};

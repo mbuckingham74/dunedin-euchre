@@ -19,15 +19,38 @@
 
     <img src="/images/dunedin-logo-transparent.png" alt="Dunedin Euchre" class="dashboard-logo">
 
-    <!-- ── Current event overview ── -->
     <section class="card admin-card" style="margin-bottom:1.5rem;">
       <div class="card-header">
-        <h2 class="card-title">Current Event</h2>
+        <h2 class="card-title">Event Details</h2>
         <button class="btn-secondary" onclick="toggleForm('create-form')">+ New Event</button>
       </div>
 
+      <% if (allEvents.length > 0) { %>
+        <form method="GET" action="/admin/dashboard" class="inline-form event-selector-form">
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">View event</label>
+              <select name="eventId" class="form-input">
+                <% allEvents.forEach(function(item) { %>
+                  <option value="<%= item.id %>" <%= selectedEventId === item.id ? 'selected' : '' %>>
+                    <%= item.event_date %> · <%= getEventTitle(item) %>
+                  </option>
+                <% }); %>
+              </select>
+            </div>
+            <button type="submit" class="btn-secondary" style="align-self:flex-end;">Load</button>
+          </div>
+        </form>
+      <% } %>
+
       <% if (event) { %>
+        <% const publicPath = buildPublicEventPath(event); %>
+        <% const arrivalNotes = getArrivalNotes(event); %>
         <div class="event-meta" style="margin-bottom:1.5rem;">
+          <div class="event-meta-row">
+            <span class="meta-label">Title</span>
+            <span class="meta-value"><strong><%= getEventTitle(event) %></strong></span>
+          </div>
           <div class="event-meta-row">
             <span class="meta-label">Date</span>
             <span class="meta-value"><strong><%= formatEventDate(event.event_date) %></strong></span>
@@ -36,25 +59,52 @@
             <span class="meta-label">Location</span>
             <span class="meta-value"><%= event.location_name %></span>
           </div>
+          <% if (event.location_address) { %>
+            <div class="event-meta-row">
+              <span class="meta-label">Address</span>
+              <span class="meta-value meta-value-multiline"><%= event.location_address %></span>
+            </div>
+          <% } %>
           <div class="event-meta-row">
             <span class="meta-label">Time</span>
             <span class="meta-value"><%= formatTime(event.start_time) %> – <%= formatTime(event.end_time) %></span>
           </div>
-          <% if (event.notes) { %>
+          <div class="event-meta-row">
+            <span class="meta-label">Public page</span>
+            <span class="meta-value">
+              <% if (isEventPublished(event)) { %>
+                <span class="status-pill pill-yes">Published</span>
+                <a href="<%= publicPath %>" target="_blank" class="rsvp-link-preview" style="margin-left:0.5rem;"><%= baseUrl + publicPath %></a>
+              <% } else { %>
+                <span class="status-pill pill-none">Draft</span>
+              <% } %>
+            </span>
+          </div>
+          <% if (arrivalNotes) { %>
             <div class="event-meta-row">
-              <span class="meta-label">Notes</span>
-              <span class="meta-value"><%= event.notes %></span>
-            </div>
-          <% } %>
-          <% if (event.location_image) { %>
-            <div class="event-meta-row">
-              <span class="meta-label">Image</span>
-              <span class="meta-value"><img src="/uploads/<%= event.location_image %>" alt="Location" style="max-height:80px;border-radius:4px;"></span>
+              <span class="meta-label">Arrival notes</span>
+              <span class="meta-value meta-value-multiline"><%= arrivalNotes %></span>
             </div>
           <% } %>
         </div>
 
-        <!-- RSVP counts -->
+        <% if (event.location_image || event.map_image) { %>
+          <div class="event-media-grid admin-event-media-grid" style="margin-bottom:1.5rem;">
+            <% if (event.location_image) { %>
+              <div class="event-media-card">
+                <p class="location-image-caption">Venue photo</p>
+                <img src="/uploads/<%= event.location_image %>" alt="Venue photo" class="location-image">
+              </div>
+            <% } %>
+            <% if (event.map_image) { %>
+              <div class="event-media-card">
+                <p class="location-image-caption">Map image</p>
+                <img src="/uploads/<%= event.map_image %>" alt="Map image" class="location-image">
+              </div>
+            <% } %>
+          </div>
+        <% } %>
+
         <div class="admin-counts">
           <div class="admin-count-box count-yes"><span class="count-num"><%= counts.yes %></span><span class="count-lbl">Yes</span></div>
           <div class="admin-count-box count-maybe"><span class="count-num"><%= counts.maybe %></span><span class="count-lbl">Maybe</span></div>
@@ -62,7 +112,6 @@
           <div class="admin-count-box count-none"><span class="count-num"><%= counts.none %></span><span class="count-lbl">No response</span></div>
         </div>
 
-        <!-- Action buttons -->
         <div class="admin-actions" style="margin-top:1.25rem;">
           <form method="POST" action="/admin/event/<%= event.id %>/notify"
                 onsubmit="return confirm('Send RSVP invites to all <%= roster.length %> active participants?')">
@@ -70,15 +119,15 @@
               &#128231; Send RSVP Invites (<%= roster.length %> participants)
             </button>
           </form>
-          <a href="/event/<%= event.id %>" target="_blank" class="btn-secondary">View public roster</a>
+          <% if (isEventPublished(event)) { %>
+            <a href="<%= publicPath %>" target="_blank" class="btn-secondary">View public page</a>
+          <% } %>
           <button class="btn-secondary" onclick="toggleForm('edit-form')">Edit event</button>
         </div>
-
       <% } else { %>
         <p style="color:#64748b;font-size:1.05rem;">No events yet. Create the first one below.</p>
       <% } %>
 
-      <!-- Create event form -->
       <div id="create-form" class="collapsible-form" style="display:none;">
         <hr style="margin:1.5rem 0;border-color:#e2e8f0;">
         <h3 style="margin-bottom:1rem;">Create New Event</h3>
@@ -89,7 +138,6 @@
         </form>
       </div>
 
-      <!-- Edit event form -->
       <% if (event) { %>
         <div id="edit-form" class="collapsible-form" style="display:none;">
           <hr style="margin:1.5rem 0;border-color:#e2e8f0;">
@@ -103,7 +151,6 @@
       <% } %>
     </section>
 
-    <!-- ── Response list ── -->
     <% if (event && roster.length > 0) { %>
       <section class="card admin-card">
         <h2 class="card-title" style="margin-bottom:1rem;">Responses</h2>

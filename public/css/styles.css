@@ -93,6 +93,7 @@ body {
   color: var(--gray-500);
   font-size: 0.9rem;
 }
+.site-footer:empty { display: none; }
 .site-footer a { color: var(--blue); }
 
 /* ── RSVP two-column layout ──────────────────────────────── */
@@ -121,10 +122,25 @@ body {
 /* ── Event details ───────────────────────────────────────── */
 .event-date-heading {
   font-size: 1.3rem;
-  font-weight: 700;
-  color: var(--gray-900);
+  font-weight: 600;
+  color: var(--gray-700);
   margin-bottom: 1rem;
   line-height: 1.3;
+}
+.event-kicker {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--blue);
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+}
+.event-title {
+  font-size: 1.9rem;
+  font-weight: 700;
+  color: var(--gray-900);
+  line-height: 1.2;
+  margin-bottom: 0.5rem;
 }
 .event-meta { margin-bottom: 1rem; }
 .event-meta-row {
@@ -141,6 +157,10 @@ body {
   flex-shrink: 0;
 }
 .meta-value { font-weight: 600; }
+.meta-value-multiline {
+  white-space: pre-line;
+  line-height: 1.5;
+}
 
 .event-notes {
   background: #fefce8;
@@ -162,6 +182,7 @@ body {
   font-size: 1rem;
   color: var(--gray-700);
   margin: 0;
+  white-space: pre-line;
 }
 
 .location-image-wrap { margin-top: 1rem; }
@@ -175,6 +196,18 @@ body {
   border-radius: 6px;
   border: 1px solid var(--gray-200);
   display: block;
+}
+.event-media-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+}
+.event-media-card {
+  background: var(--gray-50);
+  border: 1px solid var(--gray-200);
+  border-radius: 6px;
+  padding: 0.85rem;
 }
 
 /* ── RSVP Form ───────────────────────────────────────────── */
@@ -459,6 +492,12 @@ body {
   .dashboard-logo { display: none; }
 }
 .admin-card { }
+.event-selector-form {
+  margin-bottom: 1.25rem;
+}
+.admin-event-media-grid {
+  margin-top: 0;
+}
 
 .card-header {
   display: flex;
@@ -595,6 +634,32 @@ input[type="file"].form-input { padding: 0.4rem; }
 .inline-form .form-row {
   align-items: flex-end;
 }
+.form-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  color: var(--gray-700);
+  font-family: system-ui, sans-serif;
+  font-size: 0.95rem;
+}
+.form-checkbox input {
+  width: 1rem;
+  height: 1rem;
+}
+.event-upload-preview {
+  margin-bottom: 0.5rem;
+}
+.event-upload-preview-image {
+  max-height: 110px;
+  border-radius: 4px;
+  border: 1px solid var(--gray-200);
+}
+.event-upload-preview-text {
+  font-size: 0.85rem;
+  color: var(--gray-500);
+  display: block;
+  margin-top: 0.25rem;
+}
 
 /* ── Buttons ─────────────────────────────────────────────── */
 .btn-primary {
@@ -720,6 +785,58 @@ input[type="file"].form-input { padding: 0.4rem; }
   color: var(--gray-700);
 }
 
+/* ── Public event page ───────────────────────────────────── */
+.event-page-main {
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 1.5rem;
+}
+.public-page-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+.public-summary-copy {
+  color: var(--gray-500);
+  margin: 0;
+}
+.public-roster-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 1rem;
+}
+.public-roster-section {
+  border: 1px solid var(--gray-200);
+  border-radius: 6px;
+  padding: 1rem;
+  background: var(--gray-50);
+}
+.public-roster-heading {
+  font-size: 1rem;
+  margin-bottom: 0.75rem;
+}
+.public-roster-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.public-roster-item {
+  padding: 0.35rem 0;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+  font-weight: 600;
+}
+.public-roster-item:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+.public-roster-empty {
+  color: var(--gray-500);
+  margin: 0;
+}
+
 /* ── Responsive ──────────────────────────────────────────── */
 @media (max-width: 900px) {
   .rsvp-layout {
@@ -733,6 +850,14 @@ input[type="file"].form-input { padding: 0.4rem; }
 
 @media (max-width: 640px) {
   html { font-size: 16px; }
+  .site-header { padding: 1.2rem 1rem; }
+  .header-inner {
+    gap: 0.85rem;
+    flex-wrap: wrap;
+  }
+  .site-title { font-size: 1.8rem; }
+  .header-sub { font-size: 1.1rem; }
+  .event-title { font-size: 1.55rem; }
   .admin-nav-inner { gap: 1rem; }
   .admin-nav-brand { font-size: 0.9rem; }
   .nav-link { padding: 0.35rem 0.5rem; font-size: 0.875rem; }
@@ -740,4 +865,5 @@ input[type="file"].form-input { padding: 0.4rem; }
   .admin-counts { gap: 0.5rem; }
   .admin-count-box { min-width: 70px; }
   .count-num { font-size: 1.5rem; }
+  .event-page-main { padding: 1rem; }
 }

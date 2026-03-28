@@ -21,9 +21,46 @@
 
     <div class="card admin-card" style="margin-bottom:1.5rem;">
       <div class="card-header">
+        <h2 class="card-title">RSVP Link Event</h2>
+      </div>
+
+      <% if (allEvents.length > 0) { %>
+        <form method="GET" action="/admin/participants" class="inline-form">
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Generate links for</label>
+              <select name="eventId" class="form-input">
+                <% allEvents.forEach(function(item) { %>
+                  <option value="<%= item.id %>" <%= selectedEvent && selectedEvent.id === item.id ? 'selected' : '' %>>
+                    <%= item.event_date %> · <%= getEventTitle(item) %>
+                  </option>
+                <% }); %>
+              </select>
+            </div>
+            <button type="submit" class="btn-secondary" style="align-self:flex-end;">Load</button>
+          </div>
+        </form>
+
+        <% if (selectedEvent) { %>
+          <p style="margin-top:0.85rem;color:#475569;">
+            Links below point to <strong><%= getEventTitle(selectedEvent) %></strong>.
+            <% if (isEventPublished(selectedEvent)) { %>
+              Public page:
+              <a href="<%= buildPublicEventPath(selectedEvent) %>" target="_blank"><%= baseUrl + buildPublicEventPath(selectedEvent) %></a>
+            <% } %>
+          </p>
+        <% } %>
+      <% } else { %>
+        <p style="color:#64748b;">Create an event before generating RSVP links.</p>
+      <% } %>
+    </div>
+
+    <div class="card admin-card" style="margin-bottom:1.5rem;">
+      <div class="card-header">
         <h2 class="card-title">Add Participant</h2>
       </div>
       <form method="POST" action="/admin/participants" class="inline-form">
+        <input type="hidden" name="selected_event_id" value="<%= selectedEvent ? selectedEvent.id : '' %>">
         <div class="form-row">
           <div class="form-group">
             <label class="form-label">Name</label>
@@ -62,7 +99,7 @@
                 <td id="name-cell-<%= p.id %>"><%= p.name %></td>
                 <td id="email-cell-<%= p.id %>"><%= p.email %></td>
                 <td>
-                  <% const link = currentEvent ? baseUrl + buildRsvpPath(p, currentEvent) : null; %>
+                  <% const link = selectedEvent ? baseUrl + buildRsvpPath(p, selectedEvent) : null; %>
                   <% if (p.active && link) { %>
                     <a href="<%= link %>" target="_blank" class="rsvp-link-preview"><%= link %></a>
                     <button class="btn-copy btn-sm" data-copy="<%= link %>" title="Copy link">Copy</button>
@@ -81,9 +118,10 @@
                 </td>
                 <td class="actions-cell">
                   <% if (p.active) { %>
-                    <button class="btn-sm btn-secondary" onclick="openEditModal(<%= p.id %>, '<%= p.name.replace(/'/g, "\\'") %>', '<%= p.email %>')">Edit</button>
+                    <button class="btn-sm btn-secondary" onclick="openEditModal(<%= p.id %>, '<%= p.name.replace(/'/g, "\\'") %>', '<%= p.email %>', '<%= selectedEvent ? selectedEvent.id : '' %>')">Edit</button>
                     <form method="POST" action="/admin/participants/<%= p.id %>/delete" style="display:inline;"
                           onsubmit="return confirm('Remove <%= p.name %>?')">
+                      <input type="hidden" name="selected_event_id" value="<%= selectedEvent ? selectedEvent.id : '' %>">
                       <button type="submit" class="btn-sm btn-danger">Remove</button>
                     </form>
                   <% } %>
@@ -98,11 +136,11 @@
   </div>
 </main>
 
-<!-- Edit modal -->
 <div id="edit-modal" class="modal-overlay" style="display:none;" onclick="closeEditModal(event)">
   <div class="modal-box" onclick="event.stopPropagation()">
     <h3 style="margin-bottom:1rem;">Edit Participant</h3>
     <form id="edit-form" method="POST" action="">
+      <input type="hidden" id="edit-selected-event-id" name="selected_event_id" value="">
       <div class="form-group">
         <label class="form-label">Name</label>
         <input type="text" id="edit-name" name="name" class="form-input" required>
@@ -120,10 +158,11 @@
 </div>
 
 <script>
-function openEditModal(id, name, email) {
+function openEditModal(id, name, email, selectedEventId) {
   document.getElementById('edit-form').action = '/admin/participants/' + id + '/update';
   document.getElementById('edit-name').value = name;
   document.getElementById('edit-email').value = email;
+  document.getElementById('edit-selected-event-id').value = selectedEventId;
   document.getElementById('edit-modal').style.display = 'flex';
 }
 function closeEditModal(e) {

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Dunedin Euchre – <%= formatEventDate(event.event_date) %></title>
+  <title>Dunedin Euchre – <%= eventTitle %></title>
   <link rel="stylesheet" href="/css/styles.css">
   <link rel="manifest" href="/manifest.json">
   <meta name="theme-color" content="#0081A7">
@@ -17,66 +17,72 @@
   </div>
 </header>
 
-<main style="max-width:680px;margin:0 auto;padding:1.5rem;">
+<main class="event-page-main">
+  <%- include('./partials/event-overview', {
+    event,
+    formatEventDate,
+    formatTime,
+    eventTitle,
+    arrivalNotes
+  }) %>
 
-  <section class="card event-card" style="margin-bottom:1.5rem;">
-    <h2 class="event-date-heading"><%= formatEventDate(event.event_date) %></h2>
-    <div class="event-meta">
-      <div class="event-meta-row">
-        <span class="meta-label">Location</span>
-        <span class="meta-value"><%= event.location_name %></span>
+  <section class="card roster-card" style="margin-top:1.5rem;">
+    <div class="public-page-header">
+      <div>
+        <p class="event-kicker" style="margin-bottom:0.35rem;">Invitee summary</p>
+        <h3 class="roster-heading" style="margin-bottom:0;">RSVP summary</h3>
       </div>
-      <div class="event-meta-row">
-        <span class="meta-label">Time</span>
-        <span class="meta-value"><%= formatTime(event.start_time) %> – <%= formatTime(event.end_time) %></span>
-      </div>
+      <p class="public-summary-copy"><strong><%= summary.responded %></strong> of <strong><%= summary.invited %></strong> invited players have responded.</p>
     </div>
-    <% if (event.notes) { %>
-      <div class="event-notes">
-        <span class="notes-label">Note</span>
-        <p class="notes-text"><%= event.notes %></p>
-      </div>
-    <% } %>
-    <% if (event.location_image) { %>
-      <div class="location-image-wrap">
-        <p class="location-image-caption">Building entrance</p>
-        <img src="/uploads/<%= event.location_image %>" alt="Entrance" class="location-image">
-      </div>
-    <% } %>
-  </section>
 
-  <section class="card roster-card">
-    <h3 class="roster-heading">Attendance</h3>
     <div class="roster-counts">
-      <span class="count-badge count-yes"><%= counts.yes %> Yes</span>
-      <span class="count-badge count-maybe"><%= counts.maybe %> Maybe</span>
-      <span class="count-badge count-no"><%= counts.no %> No</span>
-      <span class="count-badge count-none"><%= counts.none %> Pending</span>
+      <span class="count-badge count-yes"><%= summary.yes %> Yes</span>
+      <span class="count-badge count-maybe"><%= summary.maybe %> Maybe</span>
+      <span class="count-badge count-no"><%= summary.no %> No</span>
+      <span class="count-badge count-none"><%= summary.pending %> Pending</span>
     </div>
 
-    <ul class="roster-list">
-      <% roster.forEach(function(p) { %>
-        <li class="roster-item roster-<%= p.status || 'none' %>" data-pid="<%= p.id %>">
-          <span class="roster-name"><%= p.name %></span>
-          <span class="roster-status">
-            <% if (p.status === 'yes') { %>
-              <span class="status-pill pill-yes">✓ Yes</span>
-            <% } else if (p.status === 'no') { %>
-              <span class="status-pill pill-no">✕ No</span>
-            <% } else if (p.status === 'maybe') { %>
-              <span class="status-pill pill-maybe">? Maybe</span>
-            <% } else { %>
-              <span class="status-pill pill-none">—</span>
-            <% } %>
-          </span>
-          <% if (p.comment) { %>
-            <span class="roster-comment">"<%= p.comment %>"</span>
-          <% } %>
-        </li>
-      <% }); %>
-    </ul>
-  </section>
+    <div class="public-roster-grid">
+      <section class="public-roster-section">
+        <h4 class="public-roster-heading">Coming</h4>
+        <% if (groupedRoster.yes.length > 0) { %>
+          <ul class="public-roster-list">
+            <% groupedRoster.yes.forEach(function(entry) { %>
+              <li class="public-roster-item"><%= entry.name %></li>
+            <% }); %>
+          </ul>
+        <% } else { %>
+          <p class="public-roster-empty">No confirmations yet.</p>
+        <% } %>
+      </section>
 
+      <section class="public-roster-section">
+        <h4 class="public-roster-heading">Maybe</h4>
+        <% if (groupedRoster.maybe.length > 0) { %>
+          <ul class="public-roster-list">
+            <% groupedRoster.maybe.forEach(function(entry) { %>
+              <li class="public-roster-item"><%= entry.name %></li>
+            <% }); %>
+          </ul>
+        <% } else { %>
+          <p class="public-roster-empty">No maybes yet.</p>
+        <% } %>
+      </section>
+
+      <section class="public-roster-section">
+        <h4 class="public-roster-heading">Can't make it</h4>
+        <% if (groupedRoster.no.length > 0) { %>
+          <ul class="public-roster-list">
+            <% groupedRoster.no.forEach(function(entry) { %>
+              <li class="public-roster-item"><%= entry.name %></li>
+            <% }); %>
+          </ul>
+        <% } else { %>
+          <p class="public-roster-empty">No declines yet.</p>
+        <% } %>
+      </section>
+    </div>
+  </section>
 </main>
 </body>
 </html>
