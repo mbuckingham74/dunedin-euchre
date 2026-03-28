@@ -38,7 +38,7 @@ body {
 
 /* ── Logo ────────────────────────────────────────────────── */
 .site-logo {
-  height: 44px;
+  height: 77px;
   width: auto;
   display: block;
   flex-shrink: 0;
@@ -54,7 +54,7 @@ body {
 .site-header {
   background: var(--blue);
   color: #fff;
-  padding: 0.9rem 1.5rem;
+  padding: 1.6rem 2.6rem;
   position: sticky;
   top: 0;
   z-index: 100;
@@ -65,15 +65,15 @@ body {
   margin: 0 auto;
   display: flex;
   align-items: center;
-  gap: 1rem;
+  gap: 1.75rem;
 }
 .site-title {
-  font-size: 1.25rem;
+  font-size: 2.2rem;
   font-weight: 700;
   letter-spacing: -0.01em;
 }
 .header-sub {
-  font-size: 0.95rem;
+  font-size: 1.65rem;
   opacity: 0.8;
 }
 
@@ -108,7 +108,7 @@ body {
 
 .rsvp-left {
   position: sticky;
-  top: 74px; /* clears the sticky header */
+  top: 132px; /* clears the sticky header */
   display: flex;
   flex-direction: column;
   gap: 1.25rem;
@@ -442,6 +442,21 @@ body {
 .nav-logout:hover { color: #f87171; background: rgba(248,113,113,0.1); }
 
 /* ── Admin layout ────────────────────────────────────────── */
+.dashboard-top {
+  display: flex;
+  gap: 1.5rem;
+  align-items: flex-start;
+  margin-bottom: 1.5rem;
+}
+.dashboard-logo {
+  width: 200px;
+  flex-shrink: 0;
+  margin-top: 0.5rem;
+}
+.dashboard-top > .card {
+  margin-bottom: 0 !important;
+}
+
 .admin-page { background: var(--cream); }
 .admin-main { padding: 1.5rem; }
 .admin-content {

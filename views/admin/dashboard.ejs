@@ -18,7 +18,9 @@
     <% } %>
 
     <!-- ── Current event overview ── -->
-    <section class="card admin-card" style="margin-bottom:1.5rem;">
+    <div class="dashboard-top">
+      <img src="/images/dunedin-logo-transparent.png" alt="Dunedin Euchre" class="dashboard-logo">
+      <section class="card admin-card" style="flex:1;margin-bottom:1.5rem;">
       <div class="card-header">
         <h2 class="card-title">Current Event</h2>
         <button class="btn-secondary" onclick="toggleForm('create-form')">+ New Event</button>
@@ -99,7 +101,8 @@
           </form>
         </div>
       <% } %>
-    </section>
+      </section>
+    </div>
 
     <!-- ── Response list ── -->
     <% if (event && roster.length > 0) { %>
