@@ -17,12 +17,12 @@
 
     <section class="card admin-card" style="margin-bottom:1.5rem;">
       <h2 class="card-title">Historical Attendance</h2>
-      <p style="color:#64748b;margin-top:0.25rem;margin-bottom:1.5rem;">
+      <p style="color:var(--gray-500);margin-top:0.25rem;margin-bottom:1.5rem;">
         Based on <strong><%= totalEvents %></strong> event<%= totalEvents === 1 ? '' : 's' %> on record.
       </p>
 
       <% if (totalEvents === 0) { %>
-        <p style="color:#64748b;">No events recorded yet.</p>
+        <p style="color:var(--gray-500);">No events recorded yet.</p>
       <% } else { %>
 
         <div style="margin-bottom:1rem;display:flex;gap:0.5rem;flex-wrap:wrap;">
@@ -56,13 +56,13 @@
                         <span class="attendance-pct"><%= s.attendanceRate %>%</span>
                       </div>
                     <% } else { %>
-                      <span style="color:#94a3b8;">—</span>
+                      <span style="color:var(--gray-400);">—</span>
                     <% } %>
                   </td>
-                  <td style="color:#64748b;">
+                  <td style="color:var(--gray-500);">
                     <%= s.yesCount %> / <%= totalEvents %>
                   </td>
-                  <td style="color:#64748b;text-align:center;">
+                  <td style="color:var(--gray-500);text-align:center;">
                     <%= s.avgChanges !== null ? s.avgChanges.toFixed(1) : '—' %>
                   </td>
                 </tr>
@@ -79,9 +79,9 @@
         <h2 class="card-title" style="margin-bottom:1rem;">Event History</h2>
         <ul style="list-style:none;padding:0;margin:0;">
           <% events.slice().reverse().forEach(function(e) { %>
-            <li style="padding:0.6rem 0;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;gap:1rem;flex-wrap:wrap;">
+            <li style="padding:0.6rem 0;border-bottom:1px solid var(--gray-100);display:flex;align-items:center;gap:1rem;flex-wrap:wrap;">
               <span style="font-weight:600;"><%= formatEventDate(e.event_date) %></span>
-              <span style="color:#64748b;"><%= e.location_name %></span>
+              <span style="color:var(--gray-500);"><%= e.location_name %></span>
               <a href="/event/<%= e.id %>" target="_blank" class="btn-sm btn-secondary">View roster</a>
             </li>
           <% }); %>

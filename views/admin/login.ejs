@@ -6,7 +6,11 @@
   <title>Dunedin Euchre – Admin Sign In</title>
   <link rel="stylesheet" href="/css/styles.css">
   <style>
-    body { background: #f1f5f9; }
+    body {
+      background:
+        radial-gradient(circle at top, rgba(72,202,228,0.18) 0%, transparent 32%),
+        linear-gradient(180deg, var(--gray-50) 0%, var(--cream) 38%, var(--gray-100) 100%);
+    }
     .login-wrap {
       max-width: 420px;
       margin: 6rem auto;
@@ -15,30 +19,30 @@
     .login-title {
       font-size: 1.5rem;
       font-weight: 700;
-      color: #1e293b;
+      color: var(--gray-900);
       margin-bottom: 0.5rem;
     }
     .login-sub {
       font-size: 1rem;
-      color: #64748b;
+      color: var(--gray-500);
       margin-bottom: 2rem;
     }
     .sent-box {
-      background: #f0fdf4;
-      border: 1px solid #bbf7d0;
+      background: var(--success-bg);
+      border: 1px solid var(--success-border);
       border-radius: 8px;
       padding: 1.5rem;
       font-size: 1.05rem;
-      color: #15803d;
+      color: var(--success-text);
       line-height: 1.6;
     }
     .error-box {
-      background: #fef2f2;
-      border: 1px solid #fecaca;
+      background: var(--danger-bg);
+      border: 1px solid var(--danger-border);
       border-radius: 8px;
       padding: 1rem 1.25rem;
       font-size: 1rem;
-      color: #b91c1c;
+      color: var(--danger-text);
       margin-bottom: 1.25rem;
     }
   </style>

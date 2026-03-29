@@ -1045,7 +1045,7 @@ test('stats page shows a placeholder instead of 1.0 for participants with no res
   assert.equal(response.status, 200);
   const body = await response.text();
   assert.doesNotMatch(body, />1\.0<\/td>/);
-  assert.match(body, /<td style="color:#64748b;text-align:center;">\s*—\s*<\/td>/);
+  assert.match(body, /<td style="[^"]*text-align:center;?">\s*—\s*<\/td>/);
 });
 
 test('events admin page shows the recurring schedule and recorded events', async () => {

@@ -110,7 +110,7 @@
                   </div>
 
                   <div class="form-group" style="margin-top:0.75rem;">
-                    <label class="form-label">Venue photo <span style="font-weight:400;color:#64748b;">(optional)</span></label>
+                    <label class="form-label">Venue photo <span style="font-weight:400;color:var(--gray-500);">(optional)</span></label>
                     <% if (location.location_image) { %>
                       <div class="event-upload-preview">
                         <img src="/uploads/<%= location.location_image %>" alt="Current venue photo" class="event-upload-preview-image">
@@ -179,7 +179,7 @@
             >
           </div>
           <div class="form-group">
-            <label class="form-label">Venue photo <span style="font-weight:400;color:#64748b;">(optional)</span></label>
+            <label class="form-label">Venue photo <span style="font-weight:400;color:var(--gray-500);">(optional)</span></label>
             <input type="file" name="location_image" class="form-input" accept="image/*">
           </div>
         </div>
@@ -194,7 +194,7 @@
             placeholder="e.g. 123 Main St&#10;Dunedin, FL 34698"
             data-location-address-input
           ></textarea>
-          <p style="margin:0.45rem 0 0;font-size:0.9rem;color:#64748b;">This address drives the embedded map and the “Open map” link used on event pages.</p>
+          <p style="margin:0.45rem 0 0;font-size:0.9rem;color:var(--gray-500);">This address drives the embedded map and the “Open map” link used on event pages.</p>
         </div>
 
         <div class="location-preview-card" data-address-preview hidden>

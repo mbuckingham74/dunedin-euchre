@@ -4,8 +4,8 @@
   "description": "Monthly euchre tournament RSVP",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#f1f5f9",
-  "theme_color": "#2563eb",
+  "background_color": "#f4fcfe",
+  "theme_color": "#0077b6",
   "orientation": "any",
   "icons": [
     {
