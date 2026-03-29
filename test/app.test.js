@@ -401,11 +401,47 @@ test('dashboard shows the full roster even when no event is selected', async () 
 
   assert.equal(response.status, 200);
   const body = await response.text();
-  assert.match(body, /href="\/admin\/dashboard#roster"/);
+  assert.match(body, /href="\/admin\/roster"/);
   assert.match(body, /<section id="roster" class="card admin-card admin-anchor-section"/);
   assert.match(body, /Roster/);
   assert.match(body, /Everyone currently signed up to receive RSVP invitations\./);
   assert.match(body, /<strong>2<\/strong>\s*active participants will receive event invites\./);
+  assert.match(body, /Alice Invitee/);
+  assert.match(body, /alice\.invitee@example\.com/);
+  assert.match(body, /Bob Invitee/);
+  assert.match(body, /bob\.invitee@example\.com/);
+  assert.doesNotMatch(body, /Inactive Invitee/);
+  assert.doesNotMatch(body, /inactive\.invitee@example\.com/);
+});
+
+test('roster page shows the global invite list from the database', async () => {
+  insertParticipant({
+    name: 'Alice Invitee',
+    email: 'alice.invitee@example.com',
+    rsvp_token: 'alice-invitee-token'
+  });
+  insertParticipant({
+    name: 'Bob Invitee',
+    email: 'bob.invitee@example.com',
+    rsvp_token: 'bob-invitee-token'
+  });
+  insertParticipant({
+    name: 'Inactive Invitee',
+    email: 'inactive.invitee@example.com',
+    rsvp_token: 'inactive-invitee-token',
+    active: 0
+  });
+  const cookie = await signInAsAdmin();
+
+  const response = await fetch(`${baseUrl}/admin/roster`, {
+    headers: { cookie }
+  });
+
+  assert.equal(response.status, 200);
+  const body = await response.text();
+  assert.match(body, /Global Roster/);
+  assert.match(body, /Everyone currently signed up to receive RSVP invitations\./);
+  assert.match(body, /<strong>2<\/strong>\s*active participants?\./);
   assert.match(body, /Alice Invitee/);
   assert.match(body, /alice\.invitee@example\.com/);
   assert.match(body, /Bob Invitee/);

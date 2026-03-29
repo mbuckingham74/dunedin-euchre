@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dunedin Euchre – Roster</title>
+  <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body class="admin-page">
+
+<%- include('../partials/admin-nav', { active: 'roster' }) %>
+
+<main class="admin-main">
+  <div class="admin-content">
+
+    <img src="/images/dunedin-logo-transparent.png" alt="Dunedin Euchre" class="dashboard-logo">
+
+    <section class="card admin-card">
+      <div class="card-header">
+        <div class="admin-card-header-text">
+          <h2 class="card-title">Global Roster</h2>
+          <p class="admin-card-copy">Everyone currently signed up to receive RSVP invitations.</p>
+        </div>
+        <a href="/admin/participants" class="btn-secondary">Manage participants</a>
+      </div>
+
+      <% if (inviteParticipants.length > 0) { %>
+        <p class="admin-card-note" style="margin-bottom:1rem;">
+          <strong><%= inviteParticipants.length %></strong> active participant<%= inviteParticipants.length === 1 ? '' : 's' %>.
+        </p>
+        <div class="admin-table-wrap">
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Email</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% inviteParticipants.forEach(function(participant) { %>
+                <tr>
+                  <td><%= participant.name %></td>
+                  <td>
+                    <a href="mailto:<%= participant.email %>" class="admin-email-link"><%= participant.email %></a>
+                  </td>
+                </tr>
+              <% }); %>
+            </tbody>
+          </table>
+        </div>
+      <% } else { %>
+        <p class="admin-card-note">No one is on the roster yet. Add participants to start sending invitations.</p>
+      <% } %>
+    </section>
+
+  </div>
+</main>
+
+<script src="/js/admin.js"></script>
+</body>
+</html>

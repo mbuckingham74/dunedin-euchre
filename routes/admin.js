@@ -335,6 +335,13 @@ router.get('/dashboard', requireAdmin, (req, res) => {
   delete req.session.flash;
 });
 
+// ── GET /admin/roster ────────────────────────────────────────
+router.get('/roster', requireAdmin, (req, res) => {
+  res.render('admin/roster', {
+    inviteParticipants: listActiveParticipants()
+  });
+});
+
 // ── POST /admin/event ─────────────────────────────────────────
 router.post('/event', requireAdmin, eventUpload, (req, res) => {
   const eventInput = normalizeEventInput(req.body);
