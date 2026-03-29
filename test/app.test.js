@@ -1066,6 +1066,7 @@ test('events admin page shows the recurring schedule and recorded events', async
   assert.match(body, /Create event/);
   assert.match(body, /scheduled-create-modal/);
   assert.match(body, /create-modal-2026-04-25/);
+  assert.match(body, /Event Notes/);
   assert.doesNotMatch(body, /Create from dashboard/);
 });
 

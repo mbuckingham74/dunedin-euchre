@@ -1208,7 +1208,8 @@ input[type="file"].form-input { padding: 0.4rem; }
   font-family: system-ui, sans-serif;
 }
 .scheduled-create-modal-box {
-  max-width: 720px;
+  max-width: 960px;
+  padding: 2rem;
 }
 .scheduled-create-modal-header {
   margin-bottom: 1rem;
