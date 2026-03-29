@@ -550,7 +550,7 @@ body.modal-open {
 }
 .dashboard-logo {
   position: absolute;
-  right: calc(100% + 3rem);
+  right: calc(100% - 6rem);
   top: 0;
   width: 450px;
 }
