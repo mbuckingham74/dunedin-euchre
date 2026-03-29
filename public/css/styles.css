@@ -550,9 +550,9 @@ body.modal-open {
 }
 .dashboard-logo {
   position: absolute;
-  right: calc(100% + 1.5rem);
+  right: calc(100% + 3rem);
   top: 0;
-  width: 360px;
+  width: 450px;
 }
 @media (max-width: 1560px) {
   .dashboard-logo { display: none; }
