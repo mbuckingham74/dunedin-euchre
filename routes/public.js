@@ -20,8 +20,10 @@ const {
 
 const MAX_CHANGES = 5;
 
-// ── Root redirect ─────────────────────────────────────────────
-router.get('/', (req, res) => res.redirect('/admin'));
+// ── Root landing page ─────────────────────────────────────────
+router.get('/', (req, res) => {
+  res.render('landing');
+});
 
 // ── Helpers ──────────────────────────────────────────────────
 

@@ -221,6 +221,17 @@ test.beforeEach(() => {
   resetUploadsDirectory();
 });
 
+test('root shows the landing page instead of redirecting to admin', async () => {
+  const response = await fetch(`${baseUrl}/`, {
+    redirect: 'manual'
+  });
+  const body = await response.text();
+
+  assert.equal(response.status, 200);
+  assert.match(body, /Request an Invite/);
+  assert.match(body, /mailto:michael\.buckingham74@gmail\.com/);
+});
+
 test.after(async () => {
   if (server) {
     await new Promise(resolve => server.close(resolve));
