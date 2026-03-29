@@ -35,6 +35,9 @@ body {
   line-height: 1.6;
   min-height: 100vh;
 }
+body.modal-open {
+  overflow: hidden;
+}
 
 /* ── Logo ────────────────────────────────────────────────── */
 .site-logo {
@@ -1203,6 +1206,18 @@ input[type="file"].form-input { padding: 0.4rem; }
   color: var(--gray-500);
   font-size: 0.9rem;
   font-family: system-ui, sans-serif;
+}
+.scheduled-create-modal-box {
+  max-width: 720px;
+}
+.scheduled-create-modal-header {
+  margin-bottom: 1rem;
+}
+.scheduled-create-card-modal {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 0;
 }
 
 /* ── Modal ───────────────────────────────────────────────── */

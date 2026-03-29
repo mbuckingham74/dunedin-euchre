@@ -1064,6 +1064,8 @@ test('events admin page shows the recurring schedule and recorded events', async
   assert.match(body, /Spring Euchre Social/);
   assert.match(body, new RegExp(`/admin/dashboard\\?eventId=${event.id}`));
   assert.match(body, /Create event/);
+  assert.match(body, /scheduled-create-modal/);
+  assert.match(body, /create-modal-2026-04-25/);
   assert.doesNotMatch(body, /Create from dashboard/);
 });
 

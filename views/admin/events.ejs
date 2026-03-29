@@ -110,7 +110,7 @@
                       <button
                         type="button"
                         class="btn-sm btn-secondary"
-                        onclick="toggleScheduledCreateForm('create-form-<%= entry.dateKey %>')"
+                        onclick="openScheduledCreateModal('<%= entry.dateKey %>')"
                       >
                         Create event
                       </button>
@@ -120,11 +120,23 @@
                   </div>
                   <% if (locations.length > 0) { %>
                     <div
-                      id="create-form-<%= entry.dateKey %>"
-                      class="scheduled-create-form"
-                      style="display:<%= activeCreateDate === entry.dateKey ? 'block' : 'none' %>;"
+                      id="create-modal-<%= entry.dateKey %>"
+                      class="modal-overlay scheduled-create-modal"
+                      style="display:<%= activeCreateDate === entry.dateKey ? 'flex' : 'none' %>;"
+                      role="dialog"
+                      aria-modal="true"
+                      aria-labelledby="create-modal-title-<%= entry.dateKey %>"
+                      onclick="closeScheduledCreateModal('<%= entry.dateKey %>', event)"
                     >
-                      <form method="POST" action="/admin/event" class="scheduled-create-card">
+                      <div class="modal-box scheduled-create-modal-box" onclick="event.stopPropagation()">
+                        <div class="scheduled-create-modal-header">
+                          <div class="admin-card-header-text">
+                            <h3 id="create-modal-title-<%= entry.dateKey %>" class="card-title">Create Event</h3>
+                            <p class="admin-card-copy">Make the event for <strong><%= entry.formattedDate %></strong> without losing your place in the schedule.</p>
+                          </div>
+                        </div>
+
+                        <form method="POST" action="/admin/event" class="scheduled-create-card scheduled-create-card-modal">
                         <input type="hidden" name="return_to" value="events">
                         <input type="hidden" name="title" value="Dunedin Euchre Night">
                         <input type="hidden" name="public_slug" value="">
@@ -145,7 +157,7 @@
 
                           <div class="form-group">
                             <label class="form-label">Location</label>
-                            <select name="location_id" class="form-input" required>
+                            <select name="location_id" class="form-input" required data-scheduled-create-focus>
                               <option value="">Select a saved location</option>
                               <% locations.forEach(function(location) { %>
                                 <option value="<%= location.id %>"><%= location.name %></option>
@@ -171,12 +183,13 @@
                           <button
                             type="button"
                             class="btn-sm btn-secondary"
-                            onclick="toggleScheduledCreateForm('create-form-<%= entry.dateKey %>')"
+                            onclick="closeScheduledCreateModal('<%= entry.dateKey %>')"
                           >
                             Cancel
                           </button>
                         </div>
-                      </form>
+                        </form>
+                      </div>
                     </div>
                   <% } %>
                 <% } %>
@@ -249,19 +262,73 @@
 </main>
 
 <script>
-function toggleScheduledCreateForm(id) {
-  const forms = document.querySelectorAll('.scheduled-create-form');
-  const target = document.getElementById(id);
-  if (!target) return;
+function syncScheduledCreateBodyState() {
+  const anyOpen = Array.from(document.querySelectorAll('.scheduled-create-modal'))
+    .some(modal => modal.style.display !== 'none');
 
-  const shouldOpen = target.style.display === 'none';
-  forms.forEach(form => {
-    form.style.display = 'none';
+  document.body.classList.toggle('modal-open', anyOpen);
+}
+
+function clearCreateDateParam() {
+  const url = new URL(window.location.href);
+  if (!url.searchParams.has('createDate')) return;
+
+  url.searchParams.delete('createDate');
+  const query = url.searchParams.toString();
+  const nextUrl = `${url.pathname}${query ? `?${query}` : ''}${url.hash}`;
+  window.history.replaceState({}, '', nextUrl);
+}
+
+function openScheduledCreateModal(dateKey) {
+  const modal = document.getElementById(`create-modal-${dateKey}`);
+  if (!modal) return;
+
+  document.querySelectorAll('.scheduled-create-modal').forEach(entry => {
+    entry.style.display = 'none';
   });
 
-  if (shouldOpen) {
-    target.style.display = 'block';
-    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  modal.style.display = 'flex';
+  syncScheduledCreateBodyState();
+
+  const focusTarget = modal.querySelector('[data-scheduled-create-focus]');
+  if (focusTarget) {
+    focusTarget.focus();
+  }
+}
+
+function closeScheduledCreateModal(dateKey, event) {
+  const modal = document.getElementById(`create-modal-${dateKey}`);
+  if (!modal) return;
+
+  if (!event || event.target === modal) {
+    modal.style.display = 'none';
+    syncScheduledCreateBodyState();
+    clearCreateDateParam();
+  }
+}
+
+document.addEventListener('keydown', function(event) {
+  if (event.key !== 'Escape') return;
+
+  const openModal = Array.from(document.querySelectorAll('.scheduled-create-modal'))
+    .find(modal => modal.style.display !== 'none');
+
+  if (!openModal) return;
+
+  openModal.style.display = 'none';
+  syncScheduledCreateBodyState();
+  clearCreateDateParam();
+});
+
+syncScheduledCreateBodyState();
+
+const initiallyOpenModal = Array.from(document.querySelectorAll('.scheduled-create-modal'))
+  .find(modal => modal.style.display !== 'none');
+
+if (initiallyOpenModal) {
+  const focusTarget = initiallyOpenModal.querySelector('[data-scheduled-create-focus]');
+  if (focusTarget) {
+    focusTarget.focus();
   }
 }
 </script>
