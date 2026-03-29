@@ -75,13 +75,14 @@ body.modal-open {
 
 /* ── Landing page ────────────────────────────────────────── */
 .landing-body {
+  background: #00AFB9;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 2rem 1.25rem;
 }
 .landing-shell {
-  width: min(680px, 100%);
+  width: min(1180px, 100%);
   min-height: calc(100vh - 4rem);
   display: flex;
   flex-direction: column;
@@ -90,7 +91,8 @@ body.modal-open {
   text-align: center;
 }
 .landing-logo {
-  width: min(600px, 88vw);
+  width: min(1050px, 94vw);
+  max-width: 100%;
   height: auto;
   display: block;
   margin: 0 auto 1.5rem;
@@ -98,7 +100,7 @@ body.modal-open {
 }
 .landing-copy {
   font-size: clamp(1.05rem, 2vw, 1.3rem);
-  color: var(--gray-700);
+  color: #fff;
   margin-bottom: 1.25rem;
 }
 .landing-cta {
@@ -134,7 +136,7 @@ body.modal-open {
   }
 
   .landing-logo {
-    width: min(500px, 92vw);
+    width: min(875px, 96vw);
   }
 }
 
