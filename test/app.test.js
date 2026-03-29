@@ -27,6 +27,7 @@ const serverModulePath = require.resolve('../server');
 delete require.cache[serverModulePath];
 const { app } = require('../server');
 const db = require('../db/database');
+const { buildRsvpPath } = require('../services/links');
 const {
   buildLocationMapEmbedUrl,
   buildLocationMapLinkUrl
@@ -202,6 +203,13 @@ async function signInAsAdmin() {
   return cookies[0].split(';', 1)[0];
 }
 
+function getSessionCookie(response) {
+  const cookies = response.headers.getSetCookie();
+  return cookies.length > 0
+    ? cookies[0].split(';', 1)[0]
+    : '';
+}
+
 test.before(async () => {
   server = app.listen(0);
   await once(server, 'listening');
@@ -227,12 +235,12 @@ test('health endpoint returns ok', async () => {
   assert.deepEqual(await response.json(), { ok: true });
 });
 
-test('event-scoped RSVP submissions write to the requested event', async () => {
+test('event-scoped RSVP submissions write to the invited event', async () => {
   const participant = insertParticipant();
   const olderEvent = insertEvent({ event_date: '2026-04-15' });
   insertEvent({ event_date: '2026-05-15' });
 
-  const response = await fetch(`${baseUrl}/rsvp/${participant.rsvp_token}/${olderEvent.id}`, {
+  const response = await fetch(`${baseUrl}${buildRsvpPath(participant, olderEvent)}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ status: 'yes', comment: 'See you there' })
@@ -252,7 +260,21 @@ test('event-scoped RSVP submissions write to the requested event', async () => {
   });
 });
 
-test('public slug pages render published event metadata and /event/:id remains a fallback', async () => {
+test('each participant and event gets a distinct RSVP URL', () => {
+  const alice = insertParticipant();
+  const bob = insertParticipant({
+    name: 'Bob Example',
+    email: 'bob@example.com',
+    rsvp_token: 'bob-token'
+  });
+  const springEvent = insertEvent({ event_date: '2026-04-15' });
+  const summerEvent = insertEvent({ event_date: '2026-05-15' });
+
+  assert.notEqual(buildRsvpPath(alice, springEvent), buildRsvpPath(bob, springEvent));
+  assert.notEqual(buildRsvpPath(alice, springEvent), buildRsvpPath(alice, summerEvent));
+});
+
+test('published event pages require invite access and /event/:id stays as a gated fallback', async () => {
   const yesParticipant = insertParticipant();
   const noParticipant = insertParticipant({
     name: 'Bob Example',
@@ -280,10 +302,20 @@ test('public slug pages render published event metadata and /event/:id remains a
   insertResponse(yesParticipant.id, event.id, { status: 'yes', comment: 'I can bring snacks.' });
   insertResponse(noParticipant.id, event.id, { status: 'no', comment: 'Out of town.' });
 
-  const response = await fetch(`${baseUrl}/e/${event.public_slug}`);
+  const anonymousResponse = await fetch(`${baseUrl}/e/${event.public_slug}`);
+  const rsvpResponse = await fetch(`${baseUrl}${buildRsvpPath(yesParticipant, event)}`);
+  const inviteCookie = getSessionCookie(rsvpResponse);
+  const response = await fetch(`${baseUrl}/e/${event.public_slug}`, {
+    headers: { cookie: inviteCookie }
+  });
   const body = await response.text();
-  const fallbackResponse = await fetch(`${baseUrl}/event/${event.id}`);
+  const fallbackResponse = await fetch(`${baseUrl}/event/${event.id}`, {
+    headers: { cookie: inviteCookie }
+  });
 
+  assert.equal(anonymousResponse.status, 404);
+  assert.equal(rsvpResponse.status, 200);
+  assert.ok(inviteCookie);
   assert.equal(response.status, 200);
   assert.equal(fallbackResponse.status, 200);
   assert.match(body, /Spring Euchre Social/);
@@ -310,7 +342,7 @@ test('unpublished events are not publicly accessible', async () => {
   assert.equal(response.status, 404);
 });
 
-test('public event page does not expose freeform RSVP comments', async () => {
+test('invite-only event page does not expose freeform RSVP comments', async () => {
   const participant = insertParticipant();
   const event = insertEvent({
     title: 'Private Comment Test',
@@ -323,14 +355,19 @@ test('public event page does not expose freeform RSVP comments', async () => {
     comment: 'Please save me the quiet corner table.'
   });
 
-  const response = await fetch(`${baseUrl}/event/${event.id}`);
+  const inviteResponse = await fetch(`${baseUrl}${buildRsvpPath(participant, event)}`);
+  const inviteCookie = getSessionCookie(inviteResponse);
+  const response = await fetch(`${baseUrl}/event/${event.id}`, {
+    headers: { cookie: inviteCookie }
+  });
   const body = await response.text();
 
+  assert.equal(inviteResponse.status, 200);
   assert.equal(response.status, 200);
   assert.doesNotMatch(body, /Please save me the quiet corner table\./);
 });
 
-test('public event page can hide attendee names while still showing RSVP summary counts', async () => {
+test('invite-only event page can hide attendee names while still showing RSVP summary counts', async () => {
   const yesParticipant = insertParticipant();
   const maybeParticipant = insertParticipant({
     name: 'Bob Example',
@@ -353,9 +390,14 @@ test('public event page can hide attendee names while still showing RSVP summary
     comment: 'I need to confirm with my ride.'
   });
 
-  const response = await fetch(`${baseUrl}/e/${event.public_slug}`);
+  const inviteResponse = await fetch(`${baseUrl}${buildRsvpPath(yesParticipant, event)}`);
+  const inviteCookie = getSessionCookie(inviteResponse);
+  const response = await fetch(`${baseUrl}/e/${event.public_slug}`, {
+    headers: { cookie: inviteCookie }
+  });
   const body = await response.text();
 
+  assert.equal(inviteResponse.status, 200);
   assert.equal(response.status, 200);
   assert.match(body, />1 Yes</);
   assert.match(body, />1 Maybe</);
@@ -367,7 +409,7 @@ test('public event page can hide attendee names while still showing RSVP summary
   assert.doesNotMatch(body, /I need to confirm with my ride\./);
 });
 
-test('legacy token-only RSVP links stop guessing when multiple events exist', async () => {
+test('legacy participant-wide RSVP links are rejected', async () => {
   const participant = insertParticipant();
   insertEvent({ event_date: '2026-04-15' });
   insertEvent({ event_date: '2026-05-15' });
@@ -379,6 +421,46 @@ test('legacy token-only RSVP links stop guessing when multiple events exist', as
   assert.equal(response.status, 410);
   const body = await response.text();
   assert.match(body, /out of date/i);
+});
+
+test('legacy participant-wide RSVP links cannot open an event directly anymore', async () => {
+  const participant = insertParticipant();
+  const event = insertEvent({ event_date: '2026-04-15' });
+
+  const response = await fetch(`${baseUrl}/rsvp/${participant.rsvp_token}/${event.id}`, {
+    redirect: 'manual'
+  });
+  const body = await response.text();
+
+  assert.equal(response.status, 410);
+  assert.match(body, /out of date/i);
+  assert.doesNotMatch(body, /Dunedin Community Center/);
+});
+
+test('RSVP and event pages send no-referrer headers and RSVP pages use no-referrer map embeds', async () => {
+  const participant = insertParticipant();
+  const event = insertEvent({
+    title: 'Header Test Night',
+    public_slug: 'header-test-night',
+    location_address: '123 Main St\nDunedin, FL 34698',
+    map_embed_url: buildLocationMapEmbedUrl('123 Main St\nDunedin, FL 34698'),
+    map_link_url: buildLocationMapLinkUrl('123 Main St\nDunedin, FL 34698'),
+    is_published: 1
+  });
+
+  const rsvpResponse = await fetch(`${baseUrl}${buildRsvpPath(participant, event)}`);
+  const rsvpBody = await rsvpResponse.text();
+  const inviteCookie = getSessionCookie(rsvpResponse);
+  const eventResponse = await fetch(`${baseUrl}/e/${event.public_slug}`, {
+    headers: { cookie: inviteCookie }
+  });
+
+  assert.equal(rsvpResponse.status, 200);
+  assert.equal(rsvpResponse.headers.get('referrer-policy'), 'no-referrer');
+  assert.equal(rsvpResponse.headers.get('cache-control'), 'private, no-store, max-age=0');
+  assert.match(rsvpBody, /referrerpolicy="no-referrer"/);
+  assert.equal(eventResponse.status, 200);
+  assert.equal(eventResponse.headers.get('referrer-policy'), 'no-referrer');
 });
 
 test('requesting a magic link does not invalidate another outstanding token', async () => {
@@ -649,6 +731,7 @@ test('admin event create and update routes persist slug settings and keep old sl
   });
 
   const oldSlugResponse = await fetch(`${baseUrl}/e/summer-social-2026`, {
+    headers: { cookie },
     redirect: 'manual'
   });
   const dashboardResponse = await fetch(`${baseUrl}/admin/dashboard?eventId=${eventId}`, {
@@ -660,7 +743,7 @@ test('admin event create and update routes persist slug settings and keep old sl
   assert.equal(oldSlugResponse.headers.get('location'), `/event/${eventId}`);
   assert.equal(dashboardResponse.status, 200);
   assert.match(dashboardBody, /None active\. Using the event ID fallback URL\./);
-  assert.match(dashboardBody, /Older public URLs/);
+  assert.match(dashboardBody, /Older event page URLs/);
   assert.match(dashboardBody, /http:\/\/127\.0\.0\.1\/e\/summer-social-2026/);
 });
 
@@ -697,9 +780,12 @@ test('changing a slug keeps older public slug links working via redirect', async
   assert.equal(updateResponse.status, 302);
 
   const oldSlugResponse = await fetch(`${baseUrl}/e/spring-social`, {
+    headers: { cookie },
     redirect: 'manual'
   });
-  const currentSlugResponse = await fetch(`${baseUrl}/e/summer-social`);
+  const currentSlugResponse = await fetch(`${baseUrl}/e/summer-social`, {
+    headers: { cookie }
+  });
   const dashboardResponse = await fetch(`${baseUrl}/admin/dashboard?eventId=${event.id}`, {
     headers: { cookie }
   });
@@ -711,7 +797,7 @@ test('changing a slug keeps older public slug links working via redirect', async
   assert.equal(dashboardResponse.status, 200);
   assert.match(dashboardBody, /<code>summer-social<\/code>/);
   assert.match(dashboardBody, /http:\/\/127\.0\.0\.1\/e\/spring-social/);
-  assert.match(dashboardBody, /redirects to the current public page\./);
+  assert.match(dashboardBody, /redirects to the current event page\./);
 });
 
 test('admin event routes reject duplicate public slugs, including older redirected ones', async () => {
@@ -803,7 +889,7 @@ test('admin event slug handling transliterates unicode and rejects reserved rout
   assert.equal(rejectedCount, 0);
 });
 
-test('location manager saves reusable venues and public events render the embedded map', async () => {
+test('location manager saves reusable venues and gated event pages render the embedded map', async () => {
   const cookie = await signInAsAdmin();
   const createLocationResponse = await fetch(`${baseUrl}/admin/locations`, {
     method: 'POST',
@@ -862,10 +948,12 @@ test('location manager saves reusable venues and public events render the embedd
     map_link_url: location.map_link_url
   });
 
-  const publicResponse = await fetch(`${baseUrl}/event/${event.id}`);
-  const body = await publicResponse.text();
+  const eventPageResponse = await fetch(`${baseUrl}/event/${event.id}`, {
+    headers: { cookie }
+  });
+  const body = await eventPageResponse.text();
 
-  assert.equal(publicResponse.status, 200);
+  assert.equal(eventPageResponse.status, 200);
   assert.match(body, /Harbor Hall/);
   assert.match(body, /123 Main St/);
   assert.match(body, /Dunedin, FL 34698/);

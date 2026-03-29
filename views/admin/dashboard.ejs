@@ -84,11 +84,11 @@
               </article>
 
               <article class="dashboard-detail-card">
-                <p class="dashboard-detail-label">Public links</p>
+                <p class="dashboard-detail-label">Event page links</p>
                 <% if (isEventPublished(event)) { %>
                   <a href="<%= publicPath %>" target="_blank" class="rsvp-link-preview"><%= baseUrl + publicPath %></a>
                 <% } else { %>
-                  <p class="dashboard-detail-meta">Draft only. Publish the event to show the public page.</p>
+                  <p class="dashboard-detail-meta">Draft only. Publish the event to make the event page available to invited guests.</p>
                 <% } %>
 
                 <% if (event.public_slug) { %>
@@ -99,13 +99,13 @@
 
                 <% if (previousPublicSlugs.length > 0) { %>
                   <div class="dashboard-link-list">
-                    <p class="dashboard-detail-label" style="margin-top:0.2rem;">Older public URLs</p>
+                    <p class="dashboard-detail-label" style="margin-top:0.2rem;">Older event page URLs</p>
                     <% previousPublicSlugs.forEach(function(entry) { %>
                       <div>
                         <a href="/e/<%= entry.slug %>" target="_blank" class="rsvp-link-preview"><%= baseUrl %>/e/<%= entry.slug %></a>
                         <p class="dashboard-detail-meta">
                           <%= isEventPublished(event)
-                            ? 'redirects to the current public page.'
+                            ? 'redirects to the current event page.'
                             : 'stays reserved for this event while the page is draft.' %>
                         </p>
                       </div>
@@ -130,7 +130,7 @@
                 </button>
               </form>
               <% if (isEventPublished(event)) { %>
-                <a href="<%= publicPath %>" target="_blank" class="btn-secondary">View public page</a>
+                <a href="<%= publicPath %>" target="_blank" class="btn-secondary">View event page</a>
               <% } %>
               <button class="btn-secondary" onclick="toggleForm('edit-form')">Edit event</button>
               <form
@@ -164,7 +164,7 @@
           <a href="/admin/participants" class="btn-secondary dashboard-action-button">Manage Roster</a>
           <a href="/admin/locations" class="btn-secondary dashboard-action-button">Manage Locations</a>
           <% if (event && isEventPublished(event)) { %>
-            <a href="<%= buildPublicEventPath(event) %>" target="_blank" class="btn-secondary dashboard-action-button">Open Current Public Page</a>
+            <a href="<%= buildPublicEventPath(event) %>" target="_blank" class="btn-secondary dashboard-action-button">Open Current Event Page</a>
           <% } %>
         </div>
       </section>

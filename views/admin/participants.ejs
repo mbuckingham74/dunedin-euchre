@@ -45,7 +45,7 @@
           <p style="margin-top:0.85rem;color:var(--gray-700);">
             Links below point to <strong><%= getEventTitle(selectedEvent) %></strong>.
             <% if (isEventPublished(selectedEvent)) { %>
-              Public page:
+              Event page:
               <a href="<%= buildPublicEventPath(selectedEvent) %>" target="_blank"><%= baseUrl + buildPublicEventPath(selectedEvent) %></a>
             <% } %>
           </p>

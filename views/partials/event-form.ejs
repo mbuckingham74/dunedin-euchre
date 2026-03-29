@@ -23,7 +23,7 @@
     placeholder="e.g. april-2026-euchre"
     value="<%= event ? (event.public_slug || '') : '' %>"
   >
-  <p style="margin:0.45rem 0 0;font-size:0.9rem;color:var(--gray-500);">If set, the public event page uses <code>/e/your-slug</code>. We normalize this to lowercase letters, numbers, and hyphens, and older slug links keep redirecting if you change it later.</p>
+  <p style="margin:0.45rem 0 0;font-size:0.9rem;color:var(--gray-500);">If set, the published event page uses <code>/e/your-slug</code>. We normalize this to lowercase letters, numbers, and hyphens, and older slug links keep redirecting if you change it later.</p>
 </div>
 
 <div class="form-row" style="margin-top:0.75rem;">
@@ -116,7 +116,7 @@
       class="event-map-embed location-preview-map"
       data-location-preview-map
       loading="lazy"
-      referrerpolicy="no-referrer-when-downgrade"
+      referrerpolicy="no-referrer"
       <%= selectedLocation && selectedLocation.map_embed_url ? '' : 'hidden' %>
     ></iframe>
   </div>
@@ -157,11 +157,11 @@
 
 <label class="form-checkbox" style="margin-top:1rem;">
   <input type="checkbox" name="show_public_roster" value="1" <%= event && Number(event.show_public_roster) ? 'checked' : '' %>>
-  <span>Show attendee names on the public event page</span>
+  <span>Show attendee names on the published event page</span>
 </label>
-<p style="margin:0.45rem 0 0;font-size:0.9rem;color:var(--gray-500);">RSVP counts stay public when the page is published. Names stay hidden unless you enable this.</p>
+<p style="margin:0.45rem 0 0;font-size:0.9rem;color:var(--gray-500);">RSVP counts stay visible on the published event page. Names stay hidden unless you enable this.</p>
 
 <label class="form-checkbox" style="margin-top:1rem;">
   <input type="checkbox" name="is_published" value="1" <%= event && Number(event.is_published) ? 'checked' : '' %>>
-  <span>Publish public event page</span>
+  <span>Publish event page</span>
 </label>

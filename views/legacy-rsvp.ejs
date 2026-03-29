@@ -17,7 +17,11 @@
   <div class="card">
     <h2>This RSVP link is out of date</h2>
     <p style="margin-top:1rem;font-size:1.1rem;color:var(--gray-700);">
+      <% if (participant) { %>
       Hi <strong><%= participant.name %></strong> — this older link no longer identifies which event you were invited to.
+      <% } else { %>
+      This older link no longer identifies which event you were invited to.
+      <% } %>
       Please use the latest RSVP email from the organizer.
     </p>
   </div>

@@ -1,7 +1,7 @@
 'use strict';
 
 const { Resend } = require('resend');
-const { buildPublicEventUrl, buildRsvpUrl } = require('./links');
+const { buildRsvpUrl } = require('./links');
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 const FROM = process.env.FROM_EMAIL || 'admin@dunedin-euchre.com';
@@ -38,9 +38,6 @@ async function sendRsvpInvite(participant, event) {
   const dateStr = formatEventDate(event.event_date);
   const eventTitle = (event.title || '').trim() || `Dunedin Euchre on ${dateStr}`;
   const arrivalNotes = (event.arrival_notes || event.notes || '').trim();
-  const publicEventLink = Number(event.is_published)
-    ? buildPublicEventUrl(BASE_URL, event)
-    : '';
 
   await resend.emails.send({
     from: FROM,
@@ -94,10 +91,6 @@ async function sendRsvpInvite(participant, event) {
         <p style="font-size: 15px; color: #64748b; margin: 24px 0 8px;">
           You can see who else is coming right on the RSVP page — no sign-in required.
         </p>
-        ${publicEventLink ? `
-        <p style="font-size: 15px; color: #64748b; margin: 0 0 8px;">
-          Public event page: <a href="${publicEventLink}" style="color:#2563eb;">${publicEventLink}</a>
-        </p>` : ''}
         <p style="font-size: 13px; color: #94a3b8; margin: 4px 0 0;">
           Your personal link: ${link}
         </p>

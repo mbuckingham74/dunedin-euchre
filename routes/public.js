@@ -10,9 +10,13 @@ const {
   isEventPublished,
   isPublicRosterVisible
 } = require('../services/events');
-const { buildPublicEventPath, buildRsvpPath } = require('../services/links');
+const { buildPublicEventPath, buildRsvpPath, verifyRsvpToken } = require('../services/links');
 const { applyManagedLocation } = require('../services/locations');
 const { getEventByPublicSlug } = require('../services/public-slugs');
+const {
+  grantEventPageAccess,
+  hasEventPageAccess
+} = require('../middleware/auth');
 
 const MAX_CHANGES = 5;
 
@@ -21,10 +25,16 @@ router.get('/', (req, res) => res.redirect('/admin'));
 
 // ── Helpers ──────────────────────────────────────────────────
 
-function getParticipantByToken(token) {
+function getLegacyParticipantByToken(token) {
   return db.prepare(
     'SELECT * FROM participants WHERE rsvp_token = ? AND active = 1'
   ).get(token);
+}
+
+function getParticipantById(participantId) {
+  return db.prepare(
+    'SELECT * FROM participants WHERE id = ? AND active = 1'
+  ).get(participantId);
 }
 
 function getEventById(eventId) {
@@ -42,12 +52,15 @@ function getEventById(eventId) {
   `).get(eventId));
 }
 
-function getLegacyRsvpEventOptions() {
-  return db.prepare(`
-    SELECT id FROM events
-    ORDER BY event_date DESC, id DESC
-    LIMIT 2
-  `).all();
+function getInviteByToken(token) {
+  const invite = verifyRsvpToken(token);
+  if (!invite) return null;
+
+  const participant = getParticipantById(invite.participantId);
+  const event = getEventById(invite.eventId);
+  if (!participant || !event) return null;
+
+  return { participant, event };
 }
 
 function getRoster(eventId) {
@@ -113,13 +126,27 @@ function emptyGroupedRoster() {
   return { yes: [], maybe: [], no: [] };
 }
 
+function setSensitiveResponseHeaders(res) {
+  res.set({
+    'Cache-Control': 'private, no-store, max-age=0',
+    'Pragma': 'no-cache',
+    'Referrer-Policy': 'no-referrer'
+  });
+}
+
 function renderNotFound(res) {
   return res.status(404).send(
     '<h1 style="font-family:sans-serif;padding:2rem">Event not found.</h1>'
   );
 }
 
+function renderLegacyRsvpPage(res, participant = null) {
+  setSensitiveResponseHeaders(res);
+  return res.status(410).render('legacy-rsvp', { participant });
+}
+
 function renderRsvpPage(res, participant, event) {
+  setSensitiveResponseHeaders(res);
   const roster = getRoster(event.id);
   const myResponse = roster.find(r => r.id === participant.id);
 
@@ -140,6 +167,7 @@ function renderRsvpPage(res, participant, event) {
 }
 
 function saveRsvpResponse(res, participant, event, body) {
+  setSensitiveResponseHeaders(res);
   const { status, comment } = body;
   if (!['yes', 'no', 'maybe'].includes(status)) {
     return res.status(400).json({ error: 'Invalid status.' });
@@ -178,6 +206,7 @@ function saveRsvpResponse(res, participant, event, body) {
 }
 
 function renderPublicEventPage(res, event) {
+  setSensitiveResponseHeaders(res);
   const summary = getRsvpSummary(event.id);
   const showPublicRoster = isPublicRosterVisible(event);
   const groupedRoster = showPublicRoster
@@ -196,82 +225,76 @@ function renderPublicEventPage(res, event) {
   });
 }
 
-// ── GET /rsvp/:token ─────────────────────────────────────────
-router.get('/rsvp/:token', (req, res) => {
-  const participant = getParticipantByToken(req.params.token);
-
-  if (!participant) {
-    return res.status(404).send(
-      '<h1 style="font-family:sans-serif;padding:2rem">Link not found or no longer active.</h1>'
-    );
-  }
-
-  const events = getLegacyRsvpEventOptions();
-  if (events.length === 0) {
-    return res.render('no-event', { participant });
-  }
-
-  if (events.length === 1) {
-    return res.redirect(buildRsvpPath(participant, events[0].id));
-  }
-
-  res.status(410).render('legacy-rsvp', { participant });
-});
-
 // ── GET /rsvp/:token/:eventId ────────────────────────────────
 router.get('/rsvp/:token/:eventId', (req, res) => {
-  const participant = getParticipantByToken(req.params.token);
+  const invite = getInviteByToken(req.params.token);
+  if (invite && String(invite.event.id) === String(req.params.eventId)) {
+    grantEventPageAccess(req, invite.event.id);
+    return res.redirect(buildRsvpPath(invite.participant, invite.event));
+  }
 
-  if (!participant) {
+  const participant = getLegacyParticipantByToken(req.params.token);
+  if (participant) return renderLegacyRsvpPage(res, participant);
+
+  return res.status(404).send(
+    '<h1 style="font-family:sans-serif;padding:2rem">Link not found or no longer active.</h1>'
+  );
+});
+
+// ── GET /rsvp/:token ─────────────────────────────────────────
+router.get('/rsvp/:token', (req, res) => {
+  const invite = getInviteByToken(req.params.token);
+  if (!invite) {
+    const participant = getLegacyParticipantByToken(req.params.token);
+    if (participant) return renderLegacyRsvpPage(res, participant);
+
     return res.status(404).send(
       '<h1 style="font-family:sans-serif;padding:2rem">Link not found or no longer active.</h1>'
     );
   }
 
-  const event = getEventById(req.params.eventId);
-  if (!event) {
-    return res.status(404).send(
-      '<h1 style="font-family:sans-serif;padding:2rem">Event not found.</h1>'
-    );
-  }
-
-  return renderRsvpPage(res, participant, event);
+  grantEventPageAccess(req, invite.event.id);
+  return renderRsvpPage(res, invite.participant, invite.event);
 });
 
 // ── POST /rsvp/:token ────────────────────────────────────────
 router.post('/rsvp/:token', express.json(), (req, res) => {
-  const participant = getParticipantByToken(req.params.token);
+  const invite = getInviteByToken(req.params.token);
 
-  if (!participant) return res.status(404).json({ error: 'Link not found.' });
+  if (!invite) {
+    const participant = getLegacyParticipantByToken(req.params.token);
+    if (participant) {
+      return res.status(410).json({
+        error: 'This RSVP link is outdated. Please use the latest invite email.'
+      });
+    }
 
-  const events = getLegacyRsvpEventOptions();
-  if (events.length === 0) return res.status(400).json({ error: 'No active event.' });
-  if (events.length > 1) {
+    return res.status(404).json({ error: 'Link not found.' });
+  }
+
+  grantEventPageAccess(req, invite.event.id);
+  return saveRsvpResponse(res, invite.participant, invite.event, req.body);
+});
+
+// ── POST /rsvp/:token/:eventId ───────────────────────────────
+router.post('/rsvp/:token/:eventId', express.json(), (req, res) => {
+  const participant = getLegacyParticipantByToken(req.params.token);
+  if (participant) {
     return res.status(410).json({
       error: 'This RSVP link is outdated. Please use the latest invite email.'
     });
   }
 
-  const event = getEventById(events[0].id);
-  return saveRsvpResponse(res, participant, event, req.body);
-});
-
-// ── POST /rsvp/:token/:eventId ───────────────────────────────
-router.post('/rsvp/:token/:eventId', express.json(), (req, res) => {
-  const participant = getParticipantByToken(req.params.token);
-
-  if (!participant) return res.status(404).json({ error: 'Link not found.' });
-
-  const event = getEventById(req.params.eventId);
-  if (!event) return res.status(404).json({ error: 'Event not found.' });
-
-  return saveRsvpResponse(res, participant, event, req.body);
+  return res.status(404).json({ error: 'Link not found.' });
 });
 
 // ── GET /e/:slug ─────────────────────────────────────────────
 router.get('/e/:slug', (req, res) => {
   const event = getEventByPublicSlug(req.params.slug);
   if (!event || !isEventPublished(event)) {
+    return renderNotFound(res);
+  }
+  if (!hasEventPageAccess(req, event.id)) {
     return renderNotFound(res);
   }
 
@@ -288,6 +311,9 @@ router.get('/e/:slug', (req, res) => {
 router.get('/event/:id', (req, res) => {
   const event = getEventById(req.params.id);
   if (!event || !isEventPublished(event)) {
+    return renderNotFound(res);
+  }
+  if (!hasEventPageAccess(req, event.id)) {
     return renderNotFound(res);
   }
 

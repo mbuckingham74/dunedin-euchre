@@ -18,6 +18,11 @@ if (!fs.existsSync(uploadsDir)) {
 }
 
 const app = express();
+const sessionSecret = process.env.SESSION_SECRET;
+
+if (!sessionSecret && process.env.NODE_ENV === 'production') {
+  throw new Error('SESSION_SECRET must be set in production.');
+}
 
 // Trust one proxy hop (Nginx Proxy Manager) so express-rate-limit
 // and session cookies work correctly with X-Forwarded-For / X-Forwarded-Proto
@@ -99,7 +104,7 @@ class SQLiteStore extends session.Store {
 
 app.use(session({
   store: new SQLiteStore(db),
-  secret: process.env.SESSION_SECRET || 'dev-secret-change-me',
+  secret: sessionSecret || 'dev-secret-change-me',
   resave: false,
   saveUninitialized: false,
   name: 'euchre.sid',
