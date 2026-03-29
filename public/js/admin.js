@@ -119,6 +119,15 @@ function revealLocationCreateForm(button) {
   }
 }
 
+function dismissFlashMessage(flash) {
+  if (!flash || flash.classList.contains('flash-msg-hiding')) return;
+
+  flash.classList.add('flash-msg-hiding');
+  window.setTimeout(() => {
+    flash.remove();
+  }, 400);
+}
+
 // Copy-to-clipboard for RSVP links
 document.querySelectorAll('.btn-copy').forEach(btn => {
   btn.addEventListener('click', async () => {
@@ -168,4 +177,8 @@ document.querySelectorAll('[data-location-form-toggle]').forEach(button => {
 
   button.setAttribute('aria-expanded', String(!formCard.hidden));
   button.addEventListener('click', () => revealLocationCreateForm(button));
+});
+
+document.querySelectorAll('.flash-msg').forEach(flash => {
+  window.setTimeout(() => dismissFlashMessage(flash), 15000);
 });

@@ -874,6 +874,11 @@ body {
   font-size: 1rem;
   margin-bottom: 1rem;
   font-family: system-ui, sans-serif;
+  transition: opacity 0.4s ease, transform 0.4s ease;
+}
+.flash-msg-hiding {
+  opacity: 0;
+  transform: translateY(-6px);
 }
 
 /* ── Admin table ─────────────────────────────────────────── */
