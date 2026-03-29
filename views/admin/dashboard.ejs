@@ -18,289 +18,358 @@
     <% } %>
 
     <img src="/images/dunedin-logo-transparent.png" alt="Dunedin Euchre" class="dashboard-logo">
-
-    <section class="card admin-card" style="margin-bottom:1.5rem;">
-      <div class="card-header">
-        <div class="admin-card-header-text">
-          <h2 class="card-title">Current Event</h2>
-          <p class="admin-card-copy">Review the selected game, send invites, and make quick changes from one place.</p>
-        </div>
-        <div class="admin-actions">
-          <a href="/admin/events" class="btn-secondary">Open Schedule</a>
-          <button class="btn-primary" onclick="toggleForm('create-form')">+ New Event</button>
-        </div>
-      </div>
-
-      <% if (allEvents.length > 0) { %>
-        <form method="GET" action="/admin/dashboard" class="inline-form event-selector-form">
-          <div class="form-row">
-            <div class="form-group">
-              <label class="form-label">View event</label>
-              <select name="eventId" class="form-input">
-                <% allEvents.forEach(function(item) { %>
-                  <option value="<%= item.id %>" <%= selectedEventId === item.id ? 'selected' : '' %>>
-                    <%= item.event_date %> · <%= getEventTitle(item) %>
-                  </option>
-                <% }); %>
-              </select>
-            </div>
-            <button type="submit" class="btn-secondary" style="align-self:flex-end;">Load</button>
+    <div class="dashboard-grid">
+      <section class="card admin-card dashboard-card dashboard-card-main">
+        <div class="card-header">
+          <div class="admin-card-header-text">
+            <h2 class="card-title">Current Event</h2>
+            <p class="admin-card-copy">The selected game stays front and center, with quick follow-up actions close by.</p>
           </div>
-        </form>
-      <% } %>
-
-      <% if (event) { %>
-        <% const publicPath = buildPublicEventPath(event); %>
-        <% const arrivalNotes = getArrivalNotes(event); %>
-        <div class="event-meta" style="margin-bottom:1.5rem;">
-          <div class="event-meta-row">
-            <span class="meta-label">Title</span>
-            <span class="meta-value"><strong><%= getEventTitle(event) %></strong></span>
-          </div>
-          <div class="event-meta-row">
-            <span class="meta-label">Date</span>
-            <span class="meta-value"><strong><%= formatEventDate(event.event_date) %></strong></span>
-          </div>
-          <div class="event-meta-row">
-            <span class="meta-label">Location</span>
-            <span class="meta-value"><%= event.location_name %></span>
-          </div>
-          <% if (event.location_address) { %>
-            <div class="event-meta-row">
-              <span class="meta-label">Address</span>
-              <span class="meta-value meta-value-multiline"><%= event.location_address %></span>
-            </div>
-          <% } %>
-          <div class="event-meta-row">
-            <span class="meta-label">Time</span>
-            <span class="meta-value"><%= formatTime(event.start_time) %> – <%= formatTime(event.end_time) %></span>
-          </div>
-          <div class="event-meta-row">
-            <span class="meta-label">Public page</span>
-            <span class="meta-value">
-              <% if (isEventPublished(event)) { %>
-                <span class="status-pill pill-yes">Published</span>
-                <a href="<%= publicPath %>" target="_blank" class="rsvp-link-preview" style="margin-left:0.5rem;"><%= baseUrl + publicPath %></a>
-              <% } else { %>
-                <span class="status-pill pill-none">Draft</span>
-              <% } %>
-            </span>
-          </div>
-          <% if (event.public_slug) { %>
-            <div class="event-meta-row">
-              <span class="meta-label">Public slug</span>
-              <span class="meta-value"><code><%= event.public_slug %></code></span>
-            </div>
-          <% } else if (publicSlugHistory.length > 0) { %>
-            <div class="event-meta-row">
-              <span class="meta-label">Public slug</span>
-              <span class="meta-value" style="color:#64748b;">None active. Using the event ID fallback URL.</span>
-            </div>
-          <% } %>
-          <% if (previousPublicSlugs.length > 0) { %>
-            <div class="event-meta-row">
-              <span class="meta-label">Older public URLs</span>
-              <span class="meta-value meta-value-multiline">
-                <% previousPublicSlugs.forEach(function(entry, index) { %>
-                  <span style="display:block;<%= index > 0 ? 'margin-top:0.45rem;' : '' %>">
-                    <a href="/e/<%= entry.slug %>" target="_blank" class="rsvp-link-preview"><%= baseUrl %>/e/<%= entry.slug %></a>
-                    <% if (isEventPublished(event)) { %>
-                      <span style="color:#64748b;"> redirects to the current public page.</span>
-                    <% } else { %>
-                      <span style="color:#64748b;"> stays reserved for this event while the page is draft.</span>
-                    <% } %>
-                  </span>
-                <% }); %>
-              </span>
-            </div>
-          <% } %>
-          <div class="event-meta-row">
-            <span class="meta-label">Public roster</span>
-            <span class="meta-value">
-              <% if (isPublicRosterVisible(event)) { %>
-                <span class="status-pill pill-yes">Names visible</span>
-              <% } else { %>
-                <span class="status-pill pill-none">Names hidden</span>
-              <% } %>
-            </span>
-          </div>
-          <% if (arrivalNotes) { %>
-            <div class="event-meta-row">
-              <span class="meta-label">Arrival notes</span>
-              <span class="meta-value meta-value-multiline"><%= arrivalNotes %></span>
-            </div>
-          <% } %>
         </div>
 
-        <% if (event.location_image || event.map_embed_url || event.map_image) { %>
-          <div class="event-media-grid admin-event-media-grid" style="margin-bottom:1.5rem;">
-            <% if (event.location_image) { %>
-              <div class="event-media-card">
-                <p class="location-image-caption">Venue photo</p>
-                <img src="/uploads/<%= event.location_image %>" alt="Venue photo" class="location-image">
+        <% if (allEvents.length > 0) { %>
+          <form method="GET" action="/admin/dashboard" class="inline-form event-selector-form">
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">View event</label>
+                <select name="eventId" class="form-input">
+                  <% allEvents.forEach(function(item) { %>
+                    <option value="<%= item.id %>" <%= selectedEventId === item.id ? 'selected' : '' %>>
+                      <%= item.event_date %> · <%= getEventTitle(item) %>
+                    </option>
+                  <% }); %>
+                </select>
               </div>
-            <% } %>
-            <% if (event.map_embed_url) { %>
-              <div class="event-media-card">
-                <div class="event-media-card-header">
-                  <p class="location-image-caption">Map</p>
-                  <% if (event.map_link_url) { %>
-                    <a href="<%= event.map_link_url %>" target="_blank" rel="noreferrer" class="event-map-link">Open map</a>
-                  <% } %>
-                </div>
-                <iframe
-                  src="<%= event.map_embed_url %>"
-                  title="Map for <%= getEventTitle(event) %>"
-                  class="event-map-embed"
-                  loading="lazy"
-                  referrerpolicy="no-referrer-when-downgrade"
-                ></iframe>
-              </div>
-            <% } else if (event.map_image) { %>
-              <div class="event-media-card">
-                <p class="location-image-caption">Map image</p>
-                <img src="/uploads/<%= event.map_image %>" alt="Map image" class="location-image">
-              </div>
-            <% } %>
-          </div>
+              <button type="submit" class="btn-secondary" style="align-self:flex-end;">Load</button>
+            </div>
+          </form>
         <% } %>
 
-        <div class="admin-counts">
-          <div class="admin-count-box count-yes"><span class="count-num"><%= counts.yes %></span><span class="count-lbl">Yes</span></div>
-          <div class="admin-count-box count-maybe"><span class="count-num"><%= counts.maybe %></span><span class="count-lbl">Maybe</span></div>
-          <div class="admin-count-box count-no"><span class="count-num"><%= counts.no %></span><span class="count-lbl">No</span></div>
-          <div class="admin-count-box count-none"><span class="count-num"><%= counts.none %></span><span class="count-lbl">No response</span></div>
+        <% if (event) { %>
+          <% const publicPath = buildPublicEventPath(event); %>
+          <% const arrivalNotes = getArrivalNotes(event); %>
+          <% const respondedCount = counts.yes + counts.maybe + counts.no; %>
+
+          <div class="dashboard-current-shell">
+            <div class="dashboard-current-summary">
+              <p class="dashboard-kicker">Selected event</p>
+              <h3 class="dashboard-current-title"><%= getEventTitle(event) %></h3>
+              <div class="dashboard-status-row">
+                <span class="status-pill <%= isEventPublished(event) ? 'pill-yes' : 'pill-none' %>">
+                  <%= isEventPublished(event) ? 'Published' : 'Draft' %>
+                </span>
+                <span class="status-pill <%= isPublicRosterVisible(event) ? 'pill-yes' : 'pill-none' %>">
+                  <%= isPublicRosterVisible(event) ? 'Names visible' : 'Names hidden' %>
+                </span>
+                <span class="status-pill pill-none"><%= respondedCount %> responded</span>
+              </div>
+            </div>
+
+            <div class="dashboard-detail-grid">
+              <article class="dashboard-detail-card">
+                <p class="dashboard-detail-label">When</p>
+                <p class="dashboard-detail-value"><%= formatEventDate(event.event_date) %></p>
+                <p class="dashboard-detail-meta"><%= formatTime(event.start_time) %> – <%= formatTime(event.end_time) %></p>
+              </article>
+
+              <article class="dashboard-detail-card">
+                <p class="dashboard-detail-label">Where</p>
+                <p class="dashboard-detail-value"><%= event.location_name %></p>
+                <% if (event.location_address) { %>
+                  <p class="dashboard-detail-meta dashboard-detail-multiline"><%= event.location_address %></p>
+                <% } %>
+                <% if (event.map_link_url) { %>
+                  <a href="<%= event.map_link_url %>" target="_blank" rel="noreferrer" class="event-map-link">Open map</a>
+                <% } %>
+              </article>
+
+              <article class="dashboard-detail-card">
+                <p class="dashboard-detail-label">Public links</p>
+                <% if (isEventPublished(event)) { %>
+                  <a href="<%= publicPath %>" target="_blank" class="rsvp-link-preview"><%= baseUrl + publicPath %></a>
+                <% } else { %>
+                  <p class="dashboard-detail-meta">Draft only. Publish the event to show the public page.</p>
+                <% } %>
+
+                <% if (event.public_slug) { %>
+                  <p class="dashboard-detail-meta">Active slug: <code><%= event.public_slug %></code></p>
+                <% } else if (publicSlugHistory.length > 0) { %>
+                  <p class="dashboard-detail-meta">None active. Using the event ID fallback URL.</p>
+                <% } %>
+
+                <% if (previousPublicSlugs.length > 0) { %>
+                  <div class="dashboard-link-list">
+                    <p class="dashboard-detail-label" style="margin-top:0.2rem;">Older public URLs</p>
+                    <% previousPublicSlugs.forEach(function(entry) { %>
+                      <div>
+                        <a href="/e/<%= entry.slug %>" target="_blank" class="rsvp-link-preview"><%= baseUrl %>/e/<%= entry.slug %></a>
+                        <p class="dashboard-detail-meta">
+                          <%= isEventPublished(event)
+                            ? 'redirects to the current public page.'
+                            : 'stays reserved for this event while the page is draft.' %>
+                        </p>
+                      </div>
+                    <% }); %>
+                  </div>
+                <% } %>
+              </article>
+            </div>
+
+            <% if (arrivalNotes) { %>
+              <div class="dashboard-note">
+                <span class="notes-label">Arrival notes</span>
+                <p class="notes-text"><%= arrivalNotes %></p>
+              </div>
+            <% } %>
+
+            <div class="admin-actions">
+              <form method="POST" action="/admin/event/<%= event.id %>/notify"
+                    onsubmit="return confirm('Send RSVP invites to all <%= roster.length %> active participants?')">
+                <button type="submit" class="btn-primary">
+                  &#128231; Send RSVP Invites (<%= roster.length %> participants)
+                </button>
+              </form>
+              <% if (isEventPublished(event)) { %>
+                <a href="<%= publicPath %>" target="_blank" class="btn-secondary">View public page</a>
+              <% } %>
+              <button class="btn-secondary" onclick="toggleForm('edit-form')">Edit event</button>
+              <form
+                method="POST"
+                action="/admin/event/<%= event.id %>/delete"
+                onsubmit="return confirm('Delete this event and all of its RSVP responses? This cannot be undone.')"
+              >
+                <button type="submit" class="btn-secondary btn-danger">Delete event</button>
+              </form>
+            </div>
+          </div>
+        <% } else { %>
+          <div class="dashboard-empty-state">
+            <p class="dashboard-empty-title">No events scheduled yet.</p>
+            <p class="admin-card-copy">Create the first event here, or use the schedule page to work from the recurring fourth-Saturday dates.</p>
+          </div>
+        <% } %>
+      </section>
+
+      <section class="card admin-card dashboard-card dashboard-card-side">
+        <div class="card-header">
+          <div class="admin-card-header-text">
+            <h2 class="card-title">Quick Actions</h2>
+            <p class="admin-card-copy">The most common admin tasks should stay one click away.</p>
+          </div>
         </div>
 
-        <div class="admin-actions" style="margin-top:1.25rem;">
-          <form method="POST" action="/admin/event/<%= event.id %>/notify"
-                onsubmit="return confirm('Send RSVP invites to all <%= roster.length %> active participants?')">
-            <button type="submit" class="btn-primary">
-              &#128231; Send RSVP Invites (<%= roster.length %> participants)
-            </button>
-          </form>
-          <% if (isEventPublished(event)) { %>
-            <a href="<%= publicPath %>" target="_blank" class="btn-secondary">View public page</a>
+        <div class="dashboard-action-stack">
+          <button type="button" class="btn-primary dashboard-action-button" onclick="toggleForm('create-form')">+ New Event</button>
+          <a href="/admin/events" class="btn-secondary dashboard-action-button">Open Schedule</a>
+          <a href="/admin/participants" class="btn-secondary dashboard-action-button">Manage Roster</a>
+          <a href="/admin/locations" class="btn-secondary dashboard-action-button">Manage Locations</a>
+          <% if (event && isEventPublished(event)) { %>
+            <a href="<%= buildPublicEventPath(event) %>" target="_blank" class="btn-secondary dashboard-action-button">Open Current Public Page</a>
           <% } %>
-          <button class="btn-secondary" onclick="toggleForm('edit-form')">Edit event</button>
-          <form
-            method="POST"
-            action="/admin/event/<%= event.id %>/delete"
-            onsubmit="return confirm('Delete this event and all of its RSVP responses? This cannot be undone.')"
-          >
-            <button type="submit" class="btn-secondary btn-danger">Delete event</button>
-          </form>
         </div>
-      <% } else { %>
-        <div class="dashboard-empty-state">
-          <p class="dashboard-empty-title">No events scheduled yet.</p>
-          <p class="admin-card-copy">Create the first event here, or use the schedule page to work from the recurring fourth-Saturday dates.</p>
-        </div>
-      <% } %>
+      </section>
 
-      <div id="create-form" class="collapsible-form" style="display:none;">
-        <hr style="margin:1.5rem 0;border-color:#e2e8f0;">
-        <h3 style="margin-bottom:1rem;">Create New Event</h3>
-        <form method="POST" action="/admin/event">
-          <%- include('../partials/event-form', { event: null, locations: locations }) %>
-          <button type="submit" class="btn-primary" style="margin-top:1rem;">Create Event</button>
-          <button type="button" class="btn-secondary" onclick="toggleForm('create-form')">Cancel</button>
-        </form>
-      </div>
-
-      <% if (event) { %>
-        <div id="edit-form" class="collapsible-form" style="display:none;">
-          <hr style="margin:1.5rem 0;border-color:#e2e8f0;">
-          <h3 style="margin-bottom:1rem;">Edit Event</h3>
-          <form method="POST" action="/admin/event/<%= event.id %>/update">
-            <%- include('../partials/event-form', { event: event, locations: locations }) %>
-            <button type="submit" class="btn-primary" style="margin-top:1rem;">Save Changes</button>
-            <button type="button" class="btn-secondary" onclick="toggleForm('edit-form')">Cancel</button>
-          </form>
+      <section class="card admin-card dashboard-card dashboard-card-third">
+        <div class="card-header">
+          <div class="admin-card-header-text">
+            <h2 class="card-title">RSVP Snapshot</h2>
+            <p class="admin-card-copy">A quick read on the current event response mix.</p>
+          </div>
         </div>
-      <% } %>
-    </section>
 
-    <section id="roster" class="card admin-card admin-anchor-section" style="margin-bottom:1.5rem;">
-      <div class="card-header">
-        <div class="admin-card-header-text">
-          <h2 class="card-title">Roster</h2>
-          <p class="admin-card-copy">Everyone currently signed up to receive RSVP invitations.</p>
+        <% if (event) { %>
+          <div class="admin-counts dashboard-counts">
+            <div class="admin-count-box count-yes"><span class="count-num"><%= counts.yes %></span><span class="count-lbl">Yes</span></div>
+            <div class="admin-count-box count-maybe"><span class="count-num"><%= counts.maybe %></span><span class="count-lbl">Maybe</span></div>
+            <div class="admin-count-box count-no"><span class="count-num"><%= counts.no %></span><span class="count-lbl">No</span></div>
+            <div class="admin-count-box count-none"><span class="count-num"><%= counts.none %></span><span class="count-lbl">No response</span></div>
+          </div>
+          <p class="admin-card-note dashboard-summary-note">
+            <strong><%= counts.yes + counts.maybe + counts.no %></strong> of
+            <strong><%= roster.length %></strong>
+            active participant<%= roster.length === 1 ? '' : 's' %> have responded.
+          </p>
+        <% } else { %>
+          <p class="admin-card-note">Once an event is created, response totals will show here.</p>
+        <% } %>
+      </section>
+
+      <section id="roster" class="card admin-card admin-anchor-section dashboard-card dashboard-card-third">
+        <div class="card-header">
+          <div class="admin-card-header-text">
+            <h2 class="card-title">Roster</h2>
+            <p class="admin-card-copy">Everyone currently signed up to receive RSVP invitations.</p>
+          </div>
         </div>
-        <div class="admin-cta-stack">
+
+        <% if (inviteParticipants.length > 0) { %>
+          <p class="admin-card-note dashboard-summary-note">
+            <strong><%= inviteParticipants.length %></strong> active participant<%= inviteParticipants.length === 1 ? '' : 's' %> will receive event invites.
+          </p>
+          <div class="dashboard-mini-list">
+            <% rosterPreview.forEach(function(participant) { %>
+              <div class="dashboard-mini-item">
+                <span class="dashboard-mini-title"><%= participant.name %></span>
+                <span class="dashboard-mini-meta"><%= participant.email %></span>
+              </div>
+            <% }); %>
+          </div>
+          <% if (inviteParticipants.length > rosterPreview.length) { %>
+            <p class="admin-card-note" style="margin-top:0.85rem;">+ <%= inviteParticipants.length - rosterPreview.length %> more on the roster.</p>
+          <% } %>
+        <% } else { %>
+          <p class="admin-card-note">No one is on the roster yet. Add participants to start sending invitations.</p>
+        <% } %>
+
+        <div class="admin-actions" style="margin-top:1rem;">
+          <a href="/admin/roster" class="btn-secondary">Open Full Roster</a>
           <a href="/admin/participants" class="btn-secondary">Manage Roster</a>
           <a href="/admin/participants#add-member" class="btn-secondary">Add Member To Roster</a>
         </div>
+      </section>
+
+      <section class="card admin-card dashboard-card dashboard-card-third">
+        <div class="card-header">
+          <div class="admin-card-header-text">
+            <h2 class="card-title">Locations</h2>
+            <p class="admin-card-copy">Reusable venue details for event creation.</p>
+          </div>
+        </div>
+
+        <% if (locations.length > 0) { %>
+          <p class="admin-card-note dashboard-summary-note">
+            <strong><%= locations.length %></strong> saved location<%= locations.length === 1 ? '' : 's' %> ready to use.
+          </p>
+          <div class="dashboard-mini-list">
+            <% locationHighlights.forEach(function(location) { %>
+              <div class="dashboard-mini-item">
+                <span class="dashboard-mini-title"><%= location.name %></span>
+                <span class="dashboard-mini-meta"><%= location.event_count %> event<%= location.event_count === 1 ? '' : 's' %></span>
+              </div>
+            <% }); %>
+          </div>
+        <% } else { %>
+          <p class="admin-card-note">No saved locations yet. Add the first venue to make event creation easier.</p>
+        <% } %>
+
+        <div class="admin-actions" style="margin-top:1rem;">
+          <a href="/admin/locations" class="btn-secondary">Manage Locations</a>
+          <a href="/admin/locations" class="btn-secondary">Add Location</a>
+        </div>
+      </section>
+
+      <section class="card admin-card dashboard-card dashboard-card-half">
+        <div class="card-header">
+          <div class="admin-card-header-text">
+            <h2 class="card-title">Upcoming Schedule</h2>
+            <p class="admin-card-copy">The next few fourth-Saturday slots stay visible without opening the full schedule.</p>
+          </div>
+          <a href="/admin/events" class="btn-secondary btn-sm">View All</a>
+        </div>
+
+        <div class="dashboard-schedule-list">
+          <% upcomingDashboardEntries.forEach(function(entry) { %>
+            <article class="dashboard-schedule-item">
+              <div>
+                <p class="dashboard-mini-title"><%= entry.formattedDate %></p>
+                <% if (entry.hasEvent) { %>
+                  <p class="dashboard-mini-meta"><%= getEventTitle(entry.primaryEvent) %></p>
+                <% } else { %>
+                  <p class="dashboard-mini-meta">No event created yet.</p>
+                <% } %>
+              </div>
+
+              <div class="dashboard-schedule-actions">
+                <% if (entry.hasEvent) { %>
+                  <span class="status-pill <%= isEventPublished(entry.primaryEvent) ? 'pill-yes' : 'pill-none' %>">
+                    <%= isEventPublished(entry.primaryEvent) ? 'Published' : 'Draft' %>
+                  </span>
+                  <a href="/admin/dashboard?eventId=<%= entry.primaryEvent.id %>" class="btn-sm btn-secondary">Open</a>
+                <% } else { %>
+                  <span class="status-pill pill-none">Not created</span>
+                  <a href="/admin/events#scheduled-<%= entry.dateKey %>" class="btn-sm btn-secondary">Schedule</a>
+                <% } %>
+              </div>
+            </article>
+          <% }); %>
+        </div>
+      </section>
+
+      <section class="card admin-card dashboard-card dashboard-card-half">
+        <div class="card-header">
+          <div class="admin-card-header-text">
+            <h2 class="card-title">Recent Responses</h2>
+            <p class="admin-card-copy">The latest RSVP changes for the selected event.</p>
+          </div>
+        </div>
+
+        <% if (event && recentResponses.length > 0) { %>
+          <div class="dashboard-response-list">
+            <% recentResponses.forEach(function(response) { %>
+              <article class="dashboard-response-item">
+                <div>
+                  <p class="dashboard-mini-title"><%= response.name %></p>
+                  <% if (response.comment) { %>
+                    <p class="dashboard-mini-meta"><%= response.comment %></p>
+                  <% } else { %>
+                    <p class="dashboard-mini-meta">Updated <%= new Date(response.updated_at + 'Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) %></p>
+                  <% } %>
+                </div>
+
+                <div class="dashboard-response-side">
+                  <% if (response.status === 'yes') { %>
+                    <span class="status-pill pill-yes">Yes</span>
+                  <% } else if (response.status === 'no') { %>
+                    <span class="status-pill pill-no">No</span>
+                  <% } else { %>
+                    <span class="status-pill pill-maybe">Maybe</span>
+                  <% } %>
+                  <span class="date-cell"><%= new Date(response.updated_at + 'Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) %></span>
+                </div>
+              </article>
+            <% }); %>
+          </div>
+        <% } else if (event) { %>
+          <p class="admin-card-note">No RSVP replies yet for <strong><%= getEventTitle(event) %></strong>.</p>
+        <% } else { %>
+          <p class="admin-card-note">Responses will appear here after people start replying to an event invite.</p>
+        <% } %>
+      </section>
+    </div>
+
+    <section id="create-form" class="card admin-card dashboard-form-card" style="display:none;margin-top:1.5rem;">
+      <div class="card-header">
+        <div class="admin-card-header-text">
+          <h2 class="card-title">Create New Event</h2>
+          <p class="admin-card-copy">Use the saved locations list to set up the next game.</p>
+        </div>
       </div>
 
-      <% if (inviteParticipants.length > 0) { %>
-        <p class="admin-card-note" style="margin-bottom:1rem;">
-          <strong><%= inviteParticipants.length %></strong> active participant<%= inviteParticipants.length === 1 ? '' : 's' %> will receive event invites.
-        </p>
-        <div class="admin-table-wrap">
-          <table class="admin-table">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Email</th>
-              </tr>
-            </thead>
-            <tbody>
-              <% inviteParticipants.forEach(function(participant) { %>
-                <tr>
-                  <td><%= participant.name %></td>
-                  <td>
-                    <a href="mailto:<%= participant.email %>" class="admin-email-link"><%= participant.email %></a>
-                  </td>
-                </tr>
-              <% }); %>
-            </tbody>
-          </table>
+      <form method="POST" action="/admin/event">
+        <%- include('../partials/event-form', { event: null, locations: locations }) %>
+        <div class="admin-actions" style="margin-top:1rem;">
+          <button type="submit" class="btn-primary">Create Event</button>
+          <button type="button" class="btn-secondary" onclick="toggleForm('create-form')">Cancel</button>
         </div>
-      <% } else { %>
-        <p class="admin-card-note">No one is on the roster yet. Add participants to start sending invitations.</p>
-      <% } %>
+      </form>
     </section>
 
-    <% if (event && roster.length > 0) { %>
-      <section class="card admin-card">
-        <h2 class="card-title" style="margin-bottom:1rem;">Responses</h2>
-        <div class="admin-table-wrap">
-          <table class="admin-table">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Response</th>
-                <th>Comment</th>
-                <th>Last updated</th>
-              </tr>
-            </thead>
-            <tbody>
-              <% roster.forEach(function(p) { %>
-                <tr class="<%= p.status ? 'row-' + p.status : 'row-none' %>">
-                  <td><%= p.name %></td>
-                  <td>
-                    <% if (p.status === 'yes') { %>
-                      <span class="status-pill pill-yes">✓ Yes</span>
-                    <% } else if (p.status === 'no') { %>
-                      <span class="status-pill pill-no">✕ No</span>
-                    <% } else if (p.status === 'maybe') { %>
-                      <span class="status-pill pill-maybe">? Maybe</span>
-                    <% } else { %>
-                      <span class="status-pill pill-none">No response</span>
-                    <% } %>
-                  </td>
-                  <td class="comment-cell"><%= p.comment || '' %></td>
-                  <td class="date-cell">
-                    <% if (p.updated_at) { %>
-                      <%= new Date(p.updated_at + 'Z').toLocaleDateString('en-US', {month:'short',day:'numeric'}) %>
-                    <% } else { %>—<% } %>
-                  </td>
-                </tr>
-              <% }); %>
-            </tbody>
-          </table>
+    <% if (event) { %>
+      <section id="edit-form" class="card admin-card dashboard-form-card" style="display:none;margin-top:1.5rem;">
+        <div class="card-header">
+          <div class="admin-card-header-text">
+            <h2 class="card-title">Edit Event</h2>
+            <p class="admin-card-copy">Update the event details without leaving the dashboard.</p>
+          </div>
         </div>
+
+        <form method="POST" action="/admin/event/<%= event.id %>/update">
+          <%- include('../partials/event-form', { event: event, locations: locations }) %>
+          <div class="admin-actions" style="margin-top:1rem;">
+            <button type="submit" class="btn-primary">Save Changes</button>
+            <button type="button" class="btn-secondary" onclick="toggleForm('edit-form')">Cancel</button>
+          </div>
+        </form>
       </section>
     <% } %>
 

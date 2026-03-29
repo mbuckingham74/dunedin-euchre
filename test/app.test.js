@@ -450,8 +450,11 @@ test('dashboard shows the full roster even when no event is selected', async () 
   assert.equal(response.status, 200);
   const body = await response.text();
   assert.match(body, /href="\/admin\/roster"/);
-  assert.match(body, /<section id="roster" class="card admin-card admin-anchor-section"/);
+  assert.match(body, /id="roster"/);
+  assert.match(body, /Quick Actions/);
   assert.match(body, /Roster/);
+  assert.match(body, /Locations/);
+  assert.match(body, /Upcoming Schedule/);
   assert.match(body, /Everyone currently signed up to receive RSVP invitations\./);
   assert.match(body, /Manage Roster/);
   assert.match(body, /Add Member To Roster/);

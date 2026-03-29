@@ -564,6 +564,166 @@ body {
   font-size: 1.05rem;
   font-weight: 700;
 }
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 1rem;
+}
+.dashboard-card {
+  min-width: 0;
+}
+.dashboard-card-main {
+  grid-column: span 8;
+}
+.dashboard-card-side {
+  grid-column: span 4;
+}
+.dashboard-card-third {
+  grid-column: span 4;
+}
+.dashboard-card-half {
+  grid-column: span 6;
+}
+.dashboard-current-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+}
+.dashboard-current-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+.dashboard-kicker {
+  margin: 0;
+  color: var(--blue);
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-family: system-ui, sans-serif;
+}
+.dashboard-current-title {
+  margin: 0;
+  color: var(--gray-900);
+  font-size: 1.6rem;
+  line-height: 1.15;
+}
+.dashboard-status-row {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.dashboard-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 0.85rem;
+}
+.dashboard-detail-card {
+  background: linear-gradient(180deg, #fbfdff 0%, #f8fafc 100%);
+  border: 1px solid var(--gray-200);
+  border-radius: 12px;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  min-width: 0;
+}
+.dashboard-detail-label {
+  margin: 0;
+  color: var(--gray-500);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  font-family: system-ui, sans-serif;
+}
+.dashboard-detail-value {
+  margin: 0;
+  color: var(--gray-900);
+  font-size: 1.05rem;
+  font-weight: 700;
+  line-height: 1.3;
+}
+.dashboard-detail-meta {
+  margin: 0;
+  color: var(--gray-500);
+  font-size: 0.92rem;
+  font-family: system-ui, sans-serif;
+}
+.dashboard-detail-multiline {
+  white-space: pre-line;
+}
+.dashboard-link-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.dashboard-note {
+  background: #fefce8;
+  border-left: 4px solid var(--amber);
+  border-radius: 0 8px 8px 0;
+  padding: 0.85rem 1rem;
+}
+.dashboard-action-stack {
+  display: grid;
+  gap: 0.75rem;
+}
+.dashboard-action-button {
+  width: 100%;
+}
+.dashboard-counts {
+  gap: 0.75rem;
+}
+.dashboard-summary-note {
+  margin-top: 0.95rem;
+}
+.dashboard-mini-list,
+.dashboard-schedule-list,
+.dashboard-response-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.dashboard-mini-item,
+.dashboard-schedule-item,
+.dashboard-response-item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.85rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--gray-200);
+  border-radius: 12px;
+  background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
+}
+.dashboard-mini-item {
+  flex-direction: column;
+}
+.dashboard-mini-title {
+  margin: 0;
+  color: var(--gray-900);
+  font-weight: 700;
+  line-height: 1.3;
+}
+.dashboard-mini-meta {
+  margin: 0.2rem 0 0;
+  color: var(--gray-500);
+  font-size: 0.92rem;
+  font-family: system-ui, sans-serif;
+  word-break: break-word;
+}
+.dashboard-schedule-actions,
+.dashboard-response-side {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.dashboard-form-card {
+  scroll-margin-top: 84px;
+}
 .admin-anchor-section {
   scroll-margin-top: 70px;
 }
@@ -1149,6 +1309,15 @@ input[type="file"].form-input { padding: 0.4rem; }
   .rsvp-left {
     position: static;
   }
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+  .dashboard-card-main,
+  .dashboard-card-side,
+  .dashboard-card-third,
+  .dashboard-card-half {
+    grid-column: auto;
+  }
 }
 
 @media (max-width: 640px) {
@@ -1170,6 +1339,20 @@ input[type="file"].form-input { padding: 0.4rem; }
   .admin-history-item { grid-template-columns: 1fr; }
   .count-num { font-size: 1.5rem; }
   .event-page-main { padding: 1rem; }
+  .dashboard-current-title { font-size: 1.35rem; }
+  .dashboard-detail-grid,
+  .dashboard-schedule-item,
+  .dashboard-response-item {
+    grid-template-columns: 1fr;
+  }
+  .dashboard-schedule-item,
+  .dashboard-response-item {
+    flex-direction: column;
+  }
+  .dashboard-schedule-actions,
+  .dashboard-response-side {
+    justify-content: flex-start;
+  }
   .location-preview-card,
   .location-preview-media,
   .location-card-body {

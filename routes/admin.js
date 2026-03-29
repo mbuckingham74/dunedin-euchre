@@ -405,6 +405,21 @@ function listActiveParticipants() {
   `).all();
 }
 
+function listRecentResponses(roster, options = {}) {
+  const limit = Number.isInteger(options.limit) && options.limit > 0
+    ? options.limit
+    : 5;
+
+  return (Array.isArray(roster) ? roster : [])
+    .filter(entry => entry && entry.status)
+    .slice()
+    .sort((left, right) => (
+      String(right.updated_at || '').localeCompare(String(left.updated_at || '')) ||
+      String(left.name || '').localeCompare(String(right.name || ''))
+    ))
+    .slice(0, limit);
+}
+
 function buildDashboardRedirect(eventId) {
   return eventId ? `/admin/dashboard?eventId=${eventId}` : '/admin/dashboard';
 }
@@ -486,7 +501,11 @@ router.get('/auth/:token', (req, res) => {
 // ── GET /admin/dashboard ─────────────────────────────────────
 router.get('/dashboard', requireAdmin, (req, res) => {
   const requestedEventId = parseEventId(req.query.eventId);
-  const event = getDashboardEvent(requestedEventId);
+  const allEvents = listEvents();
+  const locations = listLocationsWithEventCounts();
+  const event = requestedEventId
+    ? getEventById(requestedEventId)
+    : (allEvents[0] || null);
   const inviteParticipants = listActiveParticipants();
 
   if (requestedEventId && !event) {
@@ -497,22 +516,39 @@ router.get('/dashboard', requireAdmin, (req, res) => {
   let counts = { yes: 0, no: 0, maybe: 0, none: 0 };
   let publicSlugHistory = [];
   let previousPublicSlugs = [];
+  let recentResponses = [];
 
   if (event) {
     ({ roster, counts } = getRosterWithCounts(event.id));
     publicSlugHistory = listEventPublicSlugs(event.id);
     previousPublicSlugs = publicSlugHistory.filter(entry => !Number(entry.is_current));
+    recentResponses = listRecentResponses(roster, { limit: 5 });
   }
+
+  const dashboardSchedule = buildMonthlyEventHistory(allEvents, { monthsAhead: 3 });
+  const upcomingDashboardEntries = dashboardSchedule.upcomingEntries.slice(0, 3);
+  const rosterPreview = inviteParticipants.slice(0, 5);
+  const locationHighlights = locations
+    .slice()
+    .sort((left, right) => (
+      Number(right.event_count || 0) - Number(left.event_count || 0) ||
+      left.name.localeCompare(right.name)
+    ))
+    .slice(0, 3);
 
   res.render('admin/dashboard', {
     event,
     roster,
     counts,
-    locations: listLocations(),
+    locations,
     inviteParticipants,
+    rosterPreview,
+    locationHighlights,
+    recentResponses,
+    upcomingDashboardEntries,
     publicSlugHistory,
     previousPublicSlugs,
-    allEvents: listEvents(),
+    allEvents,
     selectedEventId: event ? event.id : null,
     formatEventDate,
     formatTime,
