@@ -27,7 +27,7 @@
     </div>
   <% } %>
 
-  <% if (event.location_image || event.map_image) { %>
+  <% if (event.location_image || event.map_embed_url || event.map_image) { %>
     <div class="event-media-grid">
       <% if (event.location_image) { %>
         <div class="event-media-card">
@@ -39,7 +39,23 @@
           >
         </div>
       <% } %>
-      <% if (event.map_image) { %>
+      <% if (event.map_embed_url) { %>
+        <div class="event-media-card">
+          <div class="event-media-card-header">
+            <p class="location-image-caption">Map</p>
+            <% if (event.map_link_url) { %>
+              <a href="<%= event.map_link_url %>" target="_blank" rel="noreferrer" class="event-map-link">Open map</a>
+            <% } %>
+          </div>
+          <iframe
+            src="<%= event.map_embed_url %>"
+            title="Map for <%= eventTitle %>"
+            class="event-map-embed"
+            loading="lazy"
+            referrerpolicy="no-referrer-when-downgrade"
+          ></iframe>
+        </div>
+      <% } else if (event.map_image) { %>
         <div class="event-media-card">
           <p class="location-image-caption">Map image</p>
           <img

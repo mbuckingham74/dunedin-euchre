@@ -1,3 +1,7 @@
+<% const selectedLocation = event && event.location_id
+  ? locations.find(location => location.id === Number(event.location_id))
+  : null; %>
+
 <div class="form-group">
   <label class="form-label">Event title</label>
   <input
@@ -34,26 +38,88 @@
     >
   </div>
   <div class="form-group">
-    <label class="form-label">Location name</label>
-    <input
-      type="text"
-      name="location_name"
+    <label class="form-label">Saved location</label>
+    <select
+      name="location_id"
       class="form-input"
-      required
-      placeholder="e.g. Dunedin Community Center"
-      value="<%= event ? event.location_name : '' %>"
+      data-location-select
+      <%= locations.length === 0 ? 'disabled' : '' %>
     >
+      <option value="">Select a saved location</option>
+      <% locations.forEach(function(location) { %>
+        <option
+          value="<%= location.id %>"
+          <%= selectedLocation && selectedLocation.id === location.id ? 'selected' : '' %>
+          data-name="<%= location.name %>"
+          data-address="<%= location.address %>"
+          data-photo="<%= location.location_image ? '/uploads/' + location.location_image : '' %>"
+          data-map-embed="<%= location.map_embed_url || '' %>"
+          data-map-link="<%= location.map_link_url || '' %>"
+        >
+          <%= location.name %>
+        </option>
+      <% }); %>
+    </select>
+    <% if (locations.length === 0) { %>
+      <p style="margin:0.45rem 0 0;font-size:0.9rem;color:#64748b;">Add a saved location first on the <a href="/admin/locations">Locations page</a> before creating a new event.</p>
+    <% } else { %>
+      <p style="margin:0.45rem 0 0;font-size:0.9rem;color:#64748b;">Manage venue addresses, photos, and map embeds on the <a href="/admin/locations">Locations page</a>.</p>
+    <% } %>
   </div>
 </div>
 
-<div class="form-group" style="margin-top:0.75rem;">
-  <label class="form-label">Location address <span style="font-weight:400;color:#64748b;">(optional)</span></label>
-  <textarea
-    name="location_address"
-    class="form-input"
-    rows="3"
-    placeholder="e.g. 123 Main St&#10;Dunedin, FL 34698"
-  ><%= event ? (event.location_address || '') : '' %></textarea>
+<% if (event && !event.location_id) { %>
+  <input type="hidden" name="location_name" value="<%= event.location_name || '' %>">
+  <input type="hidden" name="location_address" value="<%= event.location_address || '' %>">
+  <div class="location-legacy-note" style="margin-top:0.75rem;">
+    This event is still using its older one-off location details. You can keep them as-is, or choose a saved location above to standardize it.
+  </div>
+<% } %>
+
+<div
+  class="location-preview-card"
+  data-location-preview
+  <%= selectedLocation ? '' : 'hidden' %>
+>
+  <div class="location-preview-copy">
+    <p class="location-preview-label">Saved location preview</p>
+    <h4 class="location-preview-name" data-location-preview-name><%= selectedLocation ? selectedLocation.name : '' %></h4>
+    <p class="location-preview-address" data-location-preview-address><%= selectedLocation ? selectedLocation.address : '' %></p>
+    <a
+      href="<%= selectedLocation && selectedLocation.map_link_url ? selectedLocation.map_link_url : '#' %>"
+      target="_blank"
+      rel="noreferrer"
+      class="event-map-link"
+      data-location-preview-link
+      <%= selectedLocation && selectedLocation.map_link_url ? '' : 'hidden' %>
+    >
+      Open map
+    </a>
+  </div>
+
+  <div class="location-preview-media">
+    <div
+      class="location-preview-photo-wrap"
+      data-location-preview-photo-wrap
+      <%= selectedLocation && selectedLocation.location_image ? '' : 'hidden' %>
+    >
+      <img
+        src="<%= selectedLocation && selectedLocation.location_image ? '/uploads/' + selectedLocation.location_image : '' %>"
+        alt="Selected venue"
+        class="location-preview-photo"
+        data-location-preview-photo
+      >
+    </div>
+    <iframe
+      src="<%= selectedLocation && selectedLocation.map_embed_url ? selectedLocation.map_embed_url : '' %>"
+      title="Saved location map preview"
+      class="event-map-embed location-preview-map"
+      data-location-preview-map
+      loading="lazy"
+      referrerpolicy="no-referrer-when-downgrade"
+      <%= selectedLocation && selectedLocation.map_embed_url ? '' : 'hidden' %>
+    ></iframe>
+  </div>
 </div>
 
 <div class="form-row" style="margin-top:0.75rem;">
@@ -87,38 +153,6 @@
     rows="3"
     placeholder="e.g. Park in Lot B and use the west entrance."
   ><%= event ? ((event.arrival_notes || event.notes) || '') : '' %></textarea>
-</div>
-
-<div class="form-row" style="margin-top:0.75rem;">
-  <div class="form-group">
-    <label class="form-label">Venue photo <span style="font-weight:400;color:#64748b;">(optional)</span></label>
-    <% if (event && event.location_image) { %>
-      <div class="event-upload-preview">
-        <img src="/uploads/<%= event.location_image %>" alt="Current venue photo" class="event-upload-preview-image">
-        <span class="event-upload-preview-text">Upload a new photo to replace this one, or remove it below.</span>
-      </div>
-      <label class="form-checkbox" style="margin-top:0.5rem;">
-        <input type="checkbox" name="remove_location_image" value="1">
-        <span>Remove current venue photo</span>
-      </label>
-    <% } %>
-    <input type="file" name="location_image" class="form-input" accept="image/*">
-  </div>
-
-  <div class="form-group">
-    <label class="form-label">Map image <span style="font-weight:400;color:#64748b;">(optional)</span></label>
-    <% if (event && event.map_image) { %>
-      <div class="event-upload-preview">
-        <img src="/uploads/<%= event.map_image %>" alt="Current map image" class="event-upload-preview-image">
-        <span class="event-upload-preview-text">Upload a new screenshot to replace this one, or remove it below.</span>
-      </div>
-      <label class="form-checkbox" style="margin-top:0.5rem;">
-        <input type="checkbox" name="remove_map_image" value="1">
-        <span>Remove current map image</span>
-      </label>
-    <% } %>
-    <input type="file" name="map_image" class="form-input" accept="image/*">
-  </div>
 </div>
 
 <label class="form-checkbox" style="margin-top:1rem;">

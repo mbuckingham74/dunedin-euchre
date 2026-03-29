@@ -126,7 +126,7 @@
           <% } %>
         </div>
 
-        <% if (event.location_image || event.map_image) { %>
+        <% if (event.location_image || event.map_embed_url || event.map_image) { %>
           <div class="event-media-grid admin-event-media-grid" style="margin-bottom:1.5rem;">
             <% if (event.location_image) { %>
               <div class="event-media-card">
@@ -134,7 +134,23 @@
                 <img src="/uploads/<%= event.location_image %>" alt="Venue photo" class="location-image">
               </div>
             <% } %>
-            <% if (event.map_image) { %>
+            <% if (event.map_embed_url) { %>
+              <div class="event-media-card">
+                <div class="event-media-card-header">
+                  <p class="location-image-caption">Map</p>
+                  <% if (event.map_link_url) { %>
+                    <a href="<%= event.map_link_url %>" target="_blank" rel="noreferrer" class="event-map-link">Open map</a>
+                  <% } %>
+                </div>
+                <iframe
+                  src="<%= event.map_embed_url %>"
+                  title="Map for <%= getEventTitle(event) %>"
+                  class="event-map-embed"
+                  loading="lazy"
+                  referrerpolicy="no-referrer-when-downgrade"
+                ></iframe>
+              </div>
+            <% } else if (event.map_image) { %>
               <div class="event-media-card">
                 <p class="location-image-caption">Map image</p>
                 <img src="/uploads/<%= event.map_image %>" alt="Map image" class="location-image">
@@ -169,8 +185,8 @@
       <div id="create-form" class="collapsible-form" style="display:none;">
         <hr style="margin:1.5rem 0;border-color:#e2e8f0;">
         <h3 style="margin-bottom:1rem;">Create New Event</h3>
-        <form method="POST" action="/admin/event" enctype="multipart/form-data">
-          <%- include('../partials/event-form', { event: null }) %>
+        <form method="POST" action="/admin/event">
+          <%- include('../partials/event-form', { event: null, locations: locations }) %>
           <button type="submit" class="btn-primary" style="margin-top:1rem;">Create Event</button>
           <button type="button" class="btn-secondary" onclick="toggleForm('create-form')">Cancel</button>
         </form>
@@ -180,8 +196,8 @@
         <div id="edit-form" class="collapsible-form" style="display:none;">
           <hr style="margin:1.5rem 0;border-color:#e2e8f0;">
           <h3 style="margin-bottom:1rem;">Edit Event</h3>
-          <form method="POST" action="/admin/event/<%= event.id %>/update" enctype="multipart/form-data">
-            <%- include('../partials/event-form', { event: event }) %>
+          <form method="POST" action="/admin/event/<%= event.id %>/update">
+            <%- include('../partials/event-form', { event: event, locations: locations }) %>
             <button type="submit" class="btn-primary" style="margin-top:1rem;">Save Changes</button>
             <button type="button" class="btn-secondary" onclick="toggleForm('edit-form')">Cancel</button>
           </form>

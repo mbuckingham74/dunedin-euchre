@@ -24,6 +24,13 @@ const {
   listEventPublicSlugs,
   reserveEventPublicSlug
 } = require('../services/public-slugs');
+const {
+  applyManagedLocation,
+  applyManagedLocations,
+  buildLocationMapEmbedUrl,
+  buildLocationMapLinkUrl,
+  normalizeLocationAddress
+} = require('../services/locations');
 const { getUploadsDir } = require('../services/uploads');
 
 const router = express.Router();
@@ -37,7 +44,7 @@ if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
-// ── File upload (event images) ───────────────────────────────
+// ── File upload (location images) ────────────────────────────
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, uploadsDir),
   filename: (req, file, cb) => {
@@ -55,9 +62,8 @@ const upload = multer({
   }
 });
 
-const eventUpload = upload.fields([
-  { name: 'location_image', maxCount: 1 },
-  { name: 'map_image', maxCount: 1 }
+const locationUpload = upload.fields([
+  { name: 'location_image', maxCount: 1 }
 ]);
 
 // ── Rate limit magic link requests ───────────────────────────
@@ -68,27 +74,53 @@ const magicLinkLimiter = rateLimit({
 });
 
 // ── Helpers ──────────────────────────────────────────────────
+const EVENT_SELECT_FIELDS = `
+  e.*,
+  l.name AS managed_location_name,
+  l.address AS managed_location_address,
+  l.location_image AS managed_location_image,
+  l.map_embed_url AS managed_map_embed_url,
+  l.map_link_url AS managed_map_link_url
+`;
+
 function getMostRecentEvent() {
-  return db.prepare('SELECT * FROM events ORDER BY event_date DESC, id DESC LIMIT 1').get();
+  return applyManagedLocation(db.prepare(`
+    SELECT ${EVENT_SELECT_FIELDS}
+    FROM events e
+    LEFT JOIN locations l ON l.id = e.location_id
+    ORDER BY e.event_date DESC, e.id DESC
+    LIMIT 1
+  `).get());
 }
 
 function getEventById(eventId) {
-  return db.prepare('SELECT * FROM events WHERE id = ?').get(eventId);
+  return applyManagedLocation(db.prepare(`
+    SELECT ${EVENT_SELECT_FIELDS}
+    FROM events e
+    LEFT JOIN locations l ON l.id = e.location_id
+    WHERE e.id = ?
+  `).get(eventId));
 }
 
 function listEvents() {
-  return db.prepare('SELECT * FROM events ORDER BY event_date DESC, id DESC').all();
+  return applyManagedLocations(db.prepare(`
+    SELECT ${EVENT_SELECT_FIELDS}
+    FROM events e
+    LEFT JOIN locations l ON l.id = e.location_id
+    ORDER BY e.event_date DESC, e.id DESC
+  `).all());
 }
 
 function listEventsWithResponseStats() {
-  return db.prepare(`
+  return applyManagedLocations(db.prepare(`
     SELECT
-      e.*,
+      ${EVENT_SELECT_FIELDS},
       COALESCE(SUM(CASE WHEN r.status = 'yes' THEN 1 ELSE 0 END), 0) AS yes_count,
       COALESCE(SUM(CASE WHEN r.status = 'maybe' THEN 1 ELSE 0 END), 0) AS maybe_count,
       COALESCE(SUM(CASE WHEN r.status = 'no' THEN 1 ELSE 0 END), 0) AS no_count,
       COUNT(r.id) AS response_count
     FROM events e
+    LEFT JOIN locations l ON l.id = e.location_id
     LEFT JOIN responses r ON r.event_id = e.id
     GROUP BY e.id
     ORDER BY e.event_date ASC, e.id ASC
@@ -98,7 +130,34 @@ function listEventsWithResponseStats() {
     maybe_count: Number(row.maybe_count || 0),
     no_count: Number(row.no_count || 0),
     response_count: Number(row.response_count || 0)
+  })));
+}
+
+function listLocations() {
+  return db.prepare(`
+    SELECT *
+    FROM locations
+    ORDER BY name ASC, id ASC
+  `).all();
+}
+
+function listLocationsWithEventCounts() {
+  return db.prepare(`
+    SELECT
+      l.*,
+      COUNT(e.id) AS event_count
+    FROM locations l
+    LEFT JOIN events e ON e.location_id = l.id
+    GROUP BY l.id
+    ORDER BY l.name ASC, l.id ASC
+  `).all().map(row => ({
+    ...row,
+    event_count: Number(row.event_count || 0)
   }));
+}
+
+function getLocationById(locationId) {
+  return db.prepare('SELECT * FROM locations WHERE id = ?').get(locationId);
 }
 
 function getDashboardEvent(requestedEventId) {
@@ -107,6 +166,11 @@ function getDashboardEvent(requestedEventId) {
 }
 
 function parseEventId(value) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+function parseLocationId(value) {
   const parsed = Number(value);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 }
@@ -128,8 +192,9 @@ function normalizeEventInput(body) {
     public_slug: publicSlug.value,
     public_slug_error: publicSlug.error,
     event_date: (body.event_date || '').trim(),
+    location_id: parseLocationId(body.location_id),
     location_name: normalizeText(body.location_name),
-    location_address: normalizeText(body.location_address),
+    location_address: normalizeLocationAddress(body.location_address),
     start_time: (body.start_time || '').trim(),
     end_time: (body.end_time || '').trim(),
     arrival_notes: normalizeText(body.arrival_notes),
@@ -142,14 +207,62 @@ function getEventValidationError(eventInput) {
   if (!(
     eventInput.title &&
     eventInput.event_date &&
-    eventInput.location_name &&
+    (eventInput.location_id || eventInput.location_name) &&
     eventInput.start_time &&
     eventInput.end_time
   )) {
-    return 'Title, date, location name, and start/end time are required.';
+    return 'Title, date, location, and start/end time are required.';
   }
 
   return eventInput.public_slug_error || null;
+}
+
+function normalizeLocationInput(body) {
+  const address = normalizeLocationAddress(body.address);
+
+  return {
+    name: normalizeText(body.name),
+    address,
+    map_embed_url: buildLocationMapEmbedUrl(address),
+    map_link_url: buildLocationMapLinkUrl(address)
+  };
+}
+
+function getLocationValidationError(locationInput) {
+  if (!(locationInput.name && locationInput.address)) {
+    return 'Location name and address are required.';
+  }
+
+  return null;
+}
+
+function resolveEventLocationDetails(eventInput, existingEvent = null) {
+  if (eventInput.location_id) {
+    const location = getLocationById(eventInput.location_id);
+    if (!location) {
+      return { error: 'That saved location no longer exists. Choose another one.' };
+    }
+
+    return {
+      location_id: location.id,
+      location_name: location.name,
+      location_address: normalizeLocationAddress(location.address),
+      location_image: location.location_image || null,
+      map_embed_url: location.map_embed_url || null,
+      map_link_url: location.map_link_url || null
+    };
+  }
+
+  const fallbackAddress = eventInput.location_address || (existingEvent ? existingEvent.location_address : null);
+
+  return {
+    location_id: existingEvent ? existingEvent.location_id : null,
+    location_name: eventInput.location_name || (existingEvent ? existingEvent.location_name : null),
+    location_address: fallbackAddress,
+    location_image: existingEvent ? existingEvent.location_image : null,
+    map_embed_url: buildLocationMapEmbedUrl(fallbackAddress) || (existingEvent ? existingEvent.map_embed_url : null),
+    map_link_url: buildLocationMapLinkUrl(fallbackAddress) || (existingEvent ? existingEvent.map_link_url : null)
+  };
 }
 
 function isPublicSlugUniqueConstraint(error) {
@@ -166,10 +279,12 @@ function getUploadedFilename(files, fieldName) {
 }
 
 function getUploadedFilenames(files) {
-  return [
-    getUploadedFilename(files, 'location_image'),
-    getUploadedFilename(files, 'map_image')
-  ].filter(Boolean);
+  if (!files) return [];
+
+  return Object.values(files)
+    .flat()
+    .map(file => file && file.filename)
+    .filter(Boolean);
 }
 
 function removeUploadedFile(filename) {
@@ -317,6 +432,7 @@ router.get('/dashboard', requireAdmin, (req, res) => {
     event,
     roster,
     counts,
+    locations: listLocations(),
     inviteParticipants,
     publicSlugHistory,
     previousPublicSlugs,
@@ -335,6 +451,116 @@ router.get('/dashboard', requireAdmin, (req, res) => {
   delete req.session.flash;
 });
 
+// ── GET /admin/locations ────────────────────────────────────
+router.get('/locations', requireAdmin, (req, res) => {
+  res.render('admin/locations', {
+    locations: listLocationsWithEventCounts(),
+    flash: req.session.flash || null
+  });
+  delete req.session.flash;
+});
+
+// ── POST /admin/locations ───────────────────────────────────
+router.post('/locations', requireAdmin, locationUpload, (req, res) => {
+  const locationInput = normalizeLocationInput(req.body);
+  const uploadedLocationImage = getUploadedFilename(req.files, 'location_image');
+  const validationError = getLocationValidationError(locationInput);
+
+  if (validationError) {
+    cleanupUploadedFiles(req.files);
+    req.session.flash = validationError;
+    return res.redirect('/admin/locations');
+  }
+
+  try {
+    db.prepare(`
+      INSERT INTO locations (
+        name,
+        address,
+        location_image,
+        map_embed_url,
+        map_link_url
+      )
+      VALUES (?, ?, ?, ?, ?)
+    `).run(
+      locationInput.name,
+      locationInput.address,
+      uploadedLocationImage,
+      locationInput.map_embed_url,
+      locationInput.map_link_url
+    );
+  } catch (error) {
+    cleanupUploadedFiles(req.files);
+    if (isPublicSlugUniqueConstraint(error)) {
+      req.session.flash = 'That saved location already exists.';
+      return res.redirect('/admin/locations');
+    }
+    throw error;
+  }
+
+  req.session.flash = 'Location saved.';
+  res.redirect('/admin/locations');
+});
+
+// ── POST /admin/locations/:id/update ────────────────────────
+router.post('/locations/:id/update', requireAdmin, locationUpload, (req, res) => {
+  const existing = getLocationById(req.params.id);
+  if (!existing) {
+    cleanupUploadedFiles(req.files);
+    req.session.flash = 'Location not found.';
+    return res.redirect('/admin/locations');
+  }
+
+  const locationInput = normalizeLocationInput(req.body);
+  const validationError = getLocationValidationError(locationInput);
+  if (validationError) {
+    cleanupUploadedFiles(req.files);
+    req.session.flash = validationError;
+    return res.redirect('/admin/locations');
+  }
+
+  const uploadedLocationImage = getUploadedFilename(req.files, 'location_image');
+  const locationImageUpdate = resolveUpdatedImage(
+    existing.location_image,
+    uploadedLocationImage,
+    Boolean(req.body.remove_location_image)
+  );
+
+  try {
+    db.prepare(`
+      UPDATE locations
+      SET name = ?,
+          address = ?,
+          location_image = ?,
+          map_embed_url = ?,
+          map_link_url = ?,
+          updated_at = datetime('now')
+      WHERE id = ?
+    `).run(
+      locationInput.name,
+      locationInput.address,
+      locationImageUpdate.nextFilename,
+      locationInput.map_embed_url,
+      locationInput.map_link_url,
+      existing.id
+    );
+  } catch (error) {
+    cleanupUploadedFiles(req.files);
+    if (isPublicSlugUniqueConstraint(error)) {
+      req.session.flash = 'That saved location already exists.';
+      return res.redirect('/admin/locations');
+    }
+    throw error;
+  }
+
+  if (locationImageUpdate.replacedFilename) {
+    removeUploadedFile(locationImageUpdate.replacedFilename);
+  }
+
+  req.session.flash = 'Location updated.';
+  res.redirect('/admin/locations');
+});
+
 // ── GET /admin/roster ────────────────────────────────────────
 router.get('/roster', requireAdmin, (req, res) => {
   res.render('admin/roster', {
@@ -343,15 +569,18 @@ router.get('/roster', requireAdmin, (req, res) => {
 });
 
 // ── POST /admin/event ─────────────────────────────────────────
-router.post('/event', requireAdmin, eventUpload, (req, res) => {
+router.post('/event', requireAdmin, (req, res) => {
   const eventInput = normalizeEventInput(req.body);
-  const locationImage = getUploadedFilename(req.files, 'location_image');
-  const mapImage = getUploadedFilename(req.files, 'map_image');
 
   const validationError = getEventValidationError(eventInput);
   if (validationError) {
-    cleanupUploadedFiles(req.files);
     req.session.flash = validationError;
+    return res.redirect('/admin/dashboard');
+  }
+
+  const locationDetails = resolveEventLocationDetails(eventInput);
+  if (locationDetails.error) {
+    req.session.flash = locationDetails.error;
     return res.redirect('/admin/dashboard');
   }
 
@@ -362,10 +591,13 @@ router.post('/event', requireAdmin, eventUpload, (req, res) => {
           title,
           public_slug,
           event_date,
+          location_id,
           location_name,
           location_address,
           location_image,
           map_image,
+          map_embed_url,
+          map_link_url,
           start_time,
           end_time,
           arrival_notes,
@@ -373,15 +605,18 @@ router.post('/event', requireAdmin, eventUpload, (req, res) => {
           is_published,
           show_public_roster
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         eventInput.title,
         eventInput.public_slug,
         eventInput.event_date,
-        eventInput.location_name,
-        eventInput.location_address,
-        locationImage,
-        mapImage,
+        locationDetails.location_id,
+        locationDetails.location_name,
+        locationDetails.location_address,
+        locationDetails.location_image,
+        null,
+        locationDetails.map_embed_url,
+        locationDetails.map_link_url,
         eventInput.start_time,
         eventInput.end_time,
         eventInput.arrival_notes,
@@ -397,7 +632,6 @@ router.post('/event', requireAdmin, eventUpload, (req, res) => {
     req.session.flash = 'Event created successfully.';
     return res.redirect(buildDashboardRedirect(result.lastInsertRowid));
   } catch (error) {
-    cleanupUploadedFiles(req.files);
     if (isPublicSlugConflictError(error) || isPublicSlugUniqueConstraint(error)) {
       req.session.flash = 'That public URL slug is already in use, including any older redirected event links.';
       return res.redirect('/admin/dashboard');
@@ -407,33 +641,24 @@ router.post('/event', requireAdmin, eventUpload, (req, res) => {
 });
 
 // ── POST /admin/event/:id/update ─────────────────────────────
-router.post('/event/:id/update', requireAdmin, eventUpload, (req, res) => {
+router.post('/event/:id/update', requireAdmin, (req, res) => {
   const existing = getEventById(req.params.id);
   if (!existing) {
-    cleanupUploadedFiles(req.files);
     return res.status(404).json({ error: 'Event not found.' });
   }
 
   const eventInput = normalizeEventInput(req.body);
   const validationError = getEventValidationError(eventInput);
   if (validationError) {
-    cleanupUploadedFiles(req.files);
     req.session.flash = validationError;
     return res.redirect(buildDashboardRedirect(existing.id));
   }
 
-  const uploadedLocationImage = getUploadedFilename(req.files, 'location_image');
-  const uploadedMapImage = getUploadedFilename(req.files, 'map_image');
-  const locationImageUpdate = resolveUpdatedImage(
-    existing.location_image,
-    uploadedLocationImage,
-    Boolean(req.body.remove_location_image)
-  );
-  const mapImageUpdate = resolveUpdatedImage(
-    existing.map_image,
-    uploadedMapImage,
-    Boolean(req.body.remove_map_image)
-  );
+  const locationDetails = resolveEventLocationDetails(eventInput, existing);
+  if (locationDetails.error) {
+    req.session.flash = locationDetails.error;
+    return res.redirect(buildDashboardRedirect(existing.id));
+  }
 
   try {
     db.transaction(() => {
@@ -442,10 +667,12 @@ router.post('/event/:id/update', requireAdmin, eventUpload, (req, res) => {
         SET title = ?,
             public_slug = ?,
             event_date = ?,
+            location_id = ?,
             location_name = ?,
             location_address = ?,
             location_image = ?,
-            map_image = ?,
+            map_embed_url = ?,
+            map_link_url = ?,
             start_time = ?,
             end_time = ?,
             arrival_notes = ?,
@@ -457,10 +684,12 @@ router.post('/event/:id/update', requireAdmin, eventUpload, (req, res) => {
         eventInput.title,
         eventInput.public_slug,
         eventInput.event_date,
-        eventInput.location_name,
-        eventInput.location_address,
-        locationImageUpdate.nextFilename,
-        mapImageUpdate.nextFilename,
+        locationDetails.location_id,
+        locationDetails.location_name,
+        locationDetails.location_address,
+        locationDetails.location_image,
+        locationDetails.map_embed_url,
+        locationDetails.map_link_url,
         eventInput.start_time,
         eventInput.end_time,
         eventInput.arrival_notes,
@@ -473,19 +702,11 @@ router.post('/event/:id/update', requireAdmin, eventUpload, (req, res) => {
       reserveEventPublicSlug(existing.id, eventInput.public_slug);
     })();
   } catch (error) {
-    cleanupUploadedFiles(req.files);
     if (isPublicSlugConflictError(error) || isPublicSlugUniqueConstraint(error)) {
       req.session.flash = 'That public URL slug is already in use, including any older redirected event links.';
       return res.redirect(buildDashboardRedirect(existing.id));
     }
     throw error;
-  }
-
-  if (locationImageUpdate.replacedFilename) {
-    removeUploadedFile(locationImageUpdate.replacedFilename);
-  }
-  if (mapImageUpdate.replacedFilename) {
-    removeUploadedFile(mapImageUpdate.replacedFilename);
   }
 
   req.session.flash = 'Event updated.';
@@ -623,7 +844,7 @@ router.post('/event/:id/notify', requireAdmin, async (req, res) => {
 
 // ── GET /admin/stats ──────────────────────────────────────────
 router.get('/stats', requireAdmin, (req, res) => {
-  const events = db.prepare('SELECT * FROM events ORDER BY event_date ASC').all();
+  const events = listEvents();
 
   // Attendance rate per participant (yes responses / total events with a response)
   const attendance = db.prepare(`

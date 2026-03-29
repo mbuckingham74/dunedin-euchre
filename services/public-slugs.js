@@ -1,6 +1,7 @@
 'use strict';
 
 const db = require('../db/database');
+const { applyManagedLocation } = require('./locations');
 
 function createPublicSlugConflictError(publicSlug) {
   const error = new Error(`Public slug conflict: ${publicSlug}`);
@@ -16,15 +17,21 @@ function isSqliteUniqueConstraint(error) {
 }
 
 function getEventByPublicSlug(publicSlug) {
-  return db.prepare(`
+  return applyManagedLocation(db.prepare(`
     SELECT
       e.*,
+      l.name AS managed_location_name,
+      l.address AS managed_location_address,
+      l.location_image AS managed_location_image,
+      l.map_embed_url AS managed_map_embed_url,
+      l.map_link_url AS managed_map_link_url,
       s.slug AS matched_public_slug,
       s.is_current AS matched_public_slug_is_current
     FROM event_public_slugs s
     JOIN events e ON e.id = s.event_id
+    LEFT JOIN locations l ON l.id = e.location_id
     WHERE s.slug = ? COLLATE NOCASE
-  `).get(publicSlug);
+  `).get(publicSlug));
 }
 
 function listEventPublicSlugs(eventId) {

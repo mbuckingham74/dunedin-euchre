@@ -11,6 +11,7 @@ const {
   isPublicRosterVisible
 } = require('../services/events');
 const { buildPublicEventPath, buildRsvpPath } = require('../services/links');
+const { applyManagedLocation } = require('../services/locations');
 const { getEventByPublicSlug } = require('../services/public-slugs');
 
 const MAX_CHANGES = 5;
@@ -27,7 +28,18 @@ function getParticipantByToken(token) {
 }
 
 function getEventById(eventId) {
-  return db.prepare('SELECT * FROM events WHERE id = ?').get(eventId);
+  return applyManagedLocation(db.prepare(`
+    SELECT
+      e.*,
+      l.name AS managed_location_name,
+      l.address AS managed_location_address,
+      l.location_image AS managed_location_image,
+      l.map_embed_url AS managed_map_embed_url,
+      l.map_link_url AS managed_map_link_url
+    FROM events e
+    LEFT JOIN locations l ON l.id = e.location_id
+    WHERE e.id = ?
+  `).get(eventId));
 }
 
 function getLegacyRsvpEventOptions() {

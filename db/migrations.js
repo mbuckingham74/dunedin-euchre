@@ -1,5 +1,12 @@
 'use strict';
 
+const {
+  buildLocationMapEmbedUrl,
+  buildLocationMapLinkUrl,
+  normalizeLocationAddress,
+  normalizeLocationText
+} = require('../services/locations');
+
 function getTableColumns(db, tableName) {
   return new Set(
     db.prepare(`PRAGMA table_info(${tableName})`).all().map(column => column.name)
@@ -33,6 +40,78 @@ function ensureParticipantEmailUniqueIndex(db) {
     'Skipping participants_email_unique index because duplicate participant emails already exist:',
     duplicateParticipantEmails.map(row => row.email_key).join(', ')
   );
+}
+
+function backfillManagedLocations(db) {
+  const events = db.prepare(`
+    SELECT id, location_name, location_address, location_image, map_embed_url, map_link_url
+    FROM events
+    WHERE location_name IS NOT NULL AND TRIM(location_name) != ''
+    ORDER BY id ASC
+  `).all();
+
+  const findLocation = db.prepare(`
+    SELECT id, location_image, map_embed_url, map_link_url
+    FROM locations
+    WHERE name = ? COLLATE NOCASE AND address = ? COLLATE NOCASE
+  `);
+  const insertLocation = db.prepare(`
+    INSERT INTO locations (
+      name,
+      address,
+      location_image,
+      map_embed_url,
+      map_link_url
+    )
+    VALUES (?, ?, ?, ?, ?)
+  `);
+  const updateLocation = db.prepare(`
+    UPDATE locations
+    SET location_image = COALESCE(location_image, ?),
+        map_embed_url = COALESCE(map_embed_url, ?),
+        map_link_url = COALESCE(map_link_url, ?),
+        updated_at = datetime('now')
+    WHERE id = ?
+  `);
+  const updateEvent = db.prepare(`
+    UPDATE events
+    SET location_id = ?,
+        map_embed_url = COALESCE(NULLIF(map_embed_url, ''), ?),
+        map_link_url = COALESCE(NULLIF(map_link_url, ''), ?)
+    WHERE id = ?
+  `);
+
+  for (const event of events) {
+    const name = normalizeLocationText(event.location_name);
+    if (!name) continue;
+
+    const address = normalizeLocationAddress(event.location_address) || '';
+    const mapEmbedUrl = event.map_embed_url || buildLocationMapEmbedUrl(address);
+    const mapLinkUrl = event.map_link_url || buildLocationMapLinkUrl(address);
+    const existing = findLocation.get(name, address);
+
+    let locationId;
+    if (existing) {
+      locationId = existing.id;
+      updateLocation.run(
+        event.location_image || null,
+        mapEmbedUrl || null,
+        mapLinkUrl || null,
+        existing.id
+      );
+    } else {
+      const inserted = insertLocation.run(
+        name,
+        address,
+        event.location_image || null,
+        mapEmbedUrl || null,
+        mapLinkUrl || null
+      );
+      locationId = inserted.lastInsertRowid;
+    }
+
+    updateEvent.run(locationId, mapEmbedUrl || null, mapLinkUrl || null, event.id);
+  }
 }
 
 const migrations = [
@@ -167,6 +246,37 @@ const migrations = [
         FROM events
         WHERE public_slug IS NOT NULL AND TRIM(public_slug) != ''
       `);
+    }
+  },
+  {
+    id: '006_locations_manager',
+    up(db) {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS locations (
+          id             INTEGER PRIMARY KEY AUTOINCREMENT,
+          name           TEXT NOT NULL,
+          address        TEXT NOT NULL DEFAULT '',
+          location_image TEXT,
+          map_embed_url  TEXT,
+          map_link_url   TEXT,
+          created_at     TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at     TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE UNIQUE INDEX IF NOT EXISTS locations_name_address_unique
+        ON locations(name COLLATE NOCASE, address COLLATE NOCASE);
+      `);
+
+      addColumnIfMissing(
+        db,
+        'events',
+        'location_id',
+        'location_id INTEGER REFERENCES locations(id) ON DELETE SET NULL'
+      );
+      addColumnIfMissing(db, 'events', 'map_embed_url', 'map_embed_url TEXT');
+      addColumnIfMissing(db, 'events', 'map_link_url', 'map_link_url TEXT');
+
+      backfillManagedLocations(db);
     }
   }
 ];

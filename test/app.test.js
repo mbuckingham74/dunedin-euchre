@@ -27,6 +27,10 @@ const serverModulePath = require.resolve('../server');
 delete require.cache[serverModulePath];
 const { app } = require('../server');
 const db = require('../db/database');
+const {
+  buildLocationMapEmbedUrl,
+  buildLocationMapLinkUrl
+} = require('../services/locations');
 
 let server;
 let baseUrl;
@@ -42,6 +46,7 @@ function resetDatabase() {
     DELETE FROM participants;
     DELETE FROM event_public_slugs;
     DELETE FROM events;
+    DELETE FROM locations;
     DELETE FROM admin_tokens;
     DELETE FROM sessions;
   `);
@@ -69,10 +74,13 @@ function insertEvent(overrides = {}) {
     title: 'Dunedin Euchre Night',
     public_slug: null,
     event_date: '2026-04-15',
+    location_id: null,
     location_name: 'Dunedin Community Center',
     location_address: null,
     location_image: null,
     map_image: null,
+    map_embed_url: null,
+    map_link_url: null,
     start_time: '18:00',
     end_time: '21:00',
     notes: null,
@@ -87,10 +95,13 @@ function insertEvent(overrides = {}) {
       title,
       public_slug,
       event_date,
+      location_id,
       location_name,
       location_address,
       location_image,
       map_image,
+      map_embed_url,
+      map_link_url,
       start_time,
       end_time,
       notes,
@@ -98,15 +109,18 @@ function insertEvent(overrides = {}) {
       is_published,
       show_public_roster
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     event.title,
     event.public_slug,
     event.event_date,
+    event.location_id,
     event.location_name,
     event.location_address,
     event.location_image,
     event.map_image,
+    event.map_embed_url,
+    event.map_link_url,
     event.start_time,
     event.end_time,
     event.notes,
@@ -123,6 +137,40 @@ function insertEvent(overrides = {}) {
   }
 
   return db.prepare('SELECT * FROM events WHERE id = ?').get(result.lastInsertRowid);
+}
+
+function insertLocation(overrides = {}) {
+  const location = {
+    name: 'Dunedin Community Center',
+    address: '123 Main St\nDunedin, FL 34698',
+    location_image: null,
+    map_embed_url: null,
+    map_link_url: null,
+    ...overrides
+  };
+
+  const address = location.address || '';
+  const mapEmbedUrl = location.map_embed_url || buildLocationMapEmbedUrl(address);
+  const mapLinkUrl = location.map_link_url || buildLocationMapLinkUrl(address);
+
+  const result = db.prepare(`
+    INSERT INTO locations (
+      name,
+      address,
+      location_image,
+      map_embed_url,
+      map_link_url
+    )
+    VALUES (?, ?, ?, ?, ?)
+  `).run(
+    location.name,
+    address,
+    location.location_image,
+    mapEmbedUrl,
+    mapLinkUrl
+  );
+
+  return db.prepare('SELECT * FROM locations WHERE id = ?').get(result.lastInsertRowid);
 }
 
 function insertResponse(participantId, eventId, overrides = {}) {
@@ -693,73 +741,126 @@ test('admin event slug handling transliterates unicode and rejects reserved rout
   assert.equal(rejectedCount, 0);
 });
 
-test('admin event update can remove existing uploaded images and delete the files', async () => {
+test('location manager saves reusable venues and public events render the embedded map', async () => {
   const cookie = await signInAsAdmin();
-  const event = insertEvent({
-    location_image: 'existing-location.png',
-    map_image: 'existing-map.png'
-  });
-  const locationPath = path.join(process.env.UPLOADS_DIR, event.location_image);
-  const mapPath = path.join(process.env.UPLOADS_DIR, event.map_image);
-
-  fs.writeFileSync(locationPath, 'old location image');
-  fs.writeFileSync(mapPath, 'old map image');
-
-  const response = await fetch(`${baseUrl}/admin/event/${event.id}/update`, {
+  const createLocationResponse = await fetch(`${baseUrl}/admin/locations`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
       cookie
     },
     body: new URLSearchParams({
-      title: event.title,
-      event_date: event.event_date,
-      location_name: event.location_name,
-      location_address: event.location_address || '',
-      start_time: event.start_time,
-      end_time: event.end_time,
-      arrival_notes: event.arrival_notes || '',
-      remove_location_image: '1',
-      remove_map_image: '1'
+      name: 'Harbor Hall',
+      address: '123 Main St\nDunedin, FL 34698'
+    }),
+    redirect: 'manual'
+  });
+
+  assert.equal(createLocationResponse.status, 302);
+  const location = db.prepare(`
+    SELECT *
+    FROM locations
+    WHERE name = ?
+  `).get('Harbor Hall');
+
+  assert.equal(location.address, '123 Main St\nDunedin, FL 34698');
+  assert.match(location.map_embed_url, /google\.com\/maps\?output=embed/);
+  assert.match(location.map_link_url, /google\.com\/maps\/search/);
+
+  const createEventResponse = await fetch(`${baseUrl}/admin/event`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      cookie
+    },
+    body: new URLSearchParams({
+      title: 'Harbor Hall Night',
+      event_date: '2026-09-26',
+      location_id: String(location.id),
+      start_time: '18:00',
+      end_time: '21:00',
+      is_published: '1'
+    }),
+    redirect: 'manual'
+  });
+
+  assert.equal(createEventResponse.status, 302);
+  const event = db.prepare(`
+    SELECT id, location_id, location_name, location_address, map_embed_url, map_link_url
+    FROM events
+    WHERE title = ?
+  `).get('Harbor Hall Night');
+
+  assert.deepEqual(event, {
+    id: event.id,
+    location_id: location.id,
+    location_name: 'Harbor Hall',
+    location_address: '123 Main St\nDunedin, FL 34698',
+    map_embed_url: location.map_embed_url,
+    map_link_url: location.map_link_url
+  });
+
+  const publicResponse = await fetch(`${baseUrl}/event/${event.id}`);
+  const body = await publicResponse.text();
+
+  assert.equal(publicResponse.status, 200);
+  assert.match(body, /Harbor Hall/);
+  assert.match(body, /123 Main St/);
+  assert.match(body, /Dunedin, FL 34698/);
+  assert.match(body, /google\.com\/maps\?output=embed/);
+  assert.match(body, /Open map/);
+});
+
+test('location manager update can remove an existing venue photo and delete the file', async () => {
+  const cookie = await signInAsAdmin();
+  const location = insertLocation({
+    location_image: 'existing-location.png'
+  });
+  const locationPath = path.join(process.env.UPLOADS_DIR, location.location_image);
+
+  fs.writeFileSync(locationPath, 'old location image');
+
+  const response = await fetch(`${baseUrl}/admin/locations/${location.id}/update`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      cookie
+    },
+    body: new URLSearchParams({
+      name: location.name,
+      address: location.address,
+      remove_location_image: '1'
     }),
     redirect: 'manual'
   });
 
   assert.equal(response.status, 302);
   const updated = db.prepare(`
-    SELECT location_image, map_image
-    FROM events
+    SELECT location_image
+    FROM locations
     WHERE id = ?
-  `).get(event.id);
+  `).get(location.id);
 
   assert.deepEqual(updated, {
-    location_image: null,
-    map_image: null
+    location_image: null
   });
   assert.equal(fs.existsSync(locationPath), false);
-  assert.equal(fs.existsSync(mapPath), false);
 });
 
-test('admin event update deletes replaced image files after a new upload succeeds', async () => {
+test('location manager update deletes replaced venue photos after a new upload succeeds', async () => {
   const cookie = await signInAsAdmin();
-  const event = insertEvent({
+  const location = insertLocation({
     location_image: 'old-location.png'
   });
-  const oldLocationPath = path.join(process.env.UPLOADS_DIR, event.location_image);
+  const oldLocationPath = path.join(process.env.UPLOADS_DIR, location.location_image);
   fs.writeFileSync(oldLocationPath, 'old location image');
 
   const form = new FormData();
-  form.set('title', event.title);
-  form.set('public_slug', '');
-  form.set('event_date', event.event_date);
-  form.set('location_name', event.location_name);
-  form.set('location_address', event.location_address || '');
-  form.set('start_time', event.start_time);
-  form.set('end_time', event.end_time);
-  form.set('arrival_notes', event.arrival_notes || '');
+  form.set('name', location.name);
+  form.set('address', location.address);
   form.set('location_image', new Blob(['new location image'], { type: 'image/png' }), 'new-location.png');
 
-  const response = await fetch(`${baseUrl}/admin/event/${event.id}/update`, {
+  const response = await fetch(`${baseUrl}/admin/locations/${location.id}/update`, {
     method: 'POST',
     headers: { cookie },
     body: form,
@@ -769,9 +870,9 @@ test('admin event update deletes replaced image files after a new upload succeed
   assert.equal(response.status, 302);
   const updated = db.prepare(`
     SELECT location_image
-    FROM events
+    FROM locations
     WHERE id = ?
-  `).get(event.id);
+  `).get(location.id);
 
   assert.match(updated.location_image, /^location_image-/);
   assert.notEqual(updated.location_image, 'old-location.png');
