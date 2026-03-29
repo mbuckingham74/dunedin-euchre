@@ -909,6 +909,12 @@ input[type="file"].form-input { padding: 0.4rem; }
 .location-card-form {
   min-width: 0;
 }
+.location-delete-note {
+  margin-top: 0.75rem;
+  color: var(--gray-500);
+  font-size: 0.9rem;
+  font-family: system-ui, sans-serif;
+}
 
 /* ── Buttons ─────────────────────────────────────────────── */
 .btn-primary {

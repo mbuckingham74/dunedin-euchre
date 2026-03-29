@@ -880,6 +880,79 @@ test('location manager update deletes replaced venue photos after a new upload s
   assert.equal(fs.existsSync(path.join(process.env.UPLOADS_DIR, updated.location_image)), true);
 });
 
+test('location manager delete removes an unused saved location and its photo file', async () => {
+  const cookie = await signInAsAdmin();
+  const location = insertLocation({
+    name: 'Old Hall',
+    location_image: 'old-hall.png'
+  });
+  const locationPath = path.join(process.env.UPLOADS_DIR, location.location_image);
+  fs.writeFileSync(locationPath, 'old hall image');
+
+  const response = await fetch(`${baseUrl}/admin/locations/${location.id}/delete`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      cookie
+    },
+    body: new URLSearchParams({}),
+    redirect: 'manual'
+  });
+
+  assert.equal(response.status, 302);
+  assert.equal(response.headers.get('location'), '/admin/locations');
+  const deleted = db.prepare('SELECT * FROM locations WHERE id = ?').get(location.id);
+  assert.equal(deleted, undefined);
+  assert.equal(fs.existsSync(locationPath), false);
+});
+
+test('location manager delete preserves event venue snapshots for locations already in use', async () => {
+  const cookie = await signInAsAdmin();
+  const location = insertLocation({
+    name: 'Harbor Hall',
+    location_image: 'harbor-hall.png'
+  });
+  const locationPath = path.join(process.env.UPLOADS_DIR, location.location_image);
+  fs.writeFileSync(locationPath, 'harbor hall image');
+
+  const event = insertEvent({
+    location_id: location.id,
+    location_name: location.name,
+    location_address: location.address,
+    location_image: location.location_image,
+    map_embed_url: location.map_embed_url,
+    map_link_url: location.map_link_url
+  });
+
+  const response = await fetch(`${baseUrl}/admin/locations/${location.id}/delete`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      cookie
+    },
+    body: new URLSearchParams({}),
+    redirect: 'manual'
+  });
+
+  assert.equal(response.status, 302);
+  const deleted = db.prepare('SELECT * FROM locations WHERE id = ?').get(location.id);
+  assert.equal(deleted, undefined);
+
+  const savedEvent = db.prepare(`
+    SELECT location_id, location_name, location_address, location_image
+    FROM events
+    WHERE id = ?
+  `).get(event.id);
+
+  assert.deepEqual(savedEvent, {
+    location_id: null,
+    location_name: location.name,
+    location_address: location.address,
+    location_image: location.location_image
+  });
+  assert.equal(fs.existsSync(locationPath), true);
+});
+
 test('stats page shows a placeholder instead of 1.0 for participants with no responses', async () => {
   insertParticipant();
   insertEvent();

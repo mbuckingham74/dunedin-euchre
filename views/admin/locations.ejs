@@ -169,7 +169,25 @@
                     <input type="file" name="location_image" class="form-input" accept="image/*">
                   </div>
 
-                  <button type="submit" class="btn-primary" style="margin-top:1rem;">Update Location</button>
+                  <div class="admin-actions" style="margin-top:1rem;">
+                    <button type="submit" class="btn-primary">Update Location</button>
+                    <button
+                      type="submit"
+                      class="btn-secondary btn-danger"
+                      formaction="/admin/locations/<%= location.id %>/delete"
+                      formmethod="POST"
+                      formenctype="application/x-www-form-urlencoded"
+                      onclick="return confirm('Delete this saved location? Existing events will keep their current venue details.')"
+                    >
+                      Delete Location
+                    </button>
+                  </div>
+
+                  <% if (location.event_count > 0) { %>
+                    <p class="location-delete-note">
+                      This location is already linked to <%= location.event_count %> event<%= location.event_count === 1 ? '' : 's' %>. Deleting it removes it from the dropdown, but those saved events keep their current venue snapshot.
+                    </p>
+                  <% } %>
                 </form>
               </div>
             </article>

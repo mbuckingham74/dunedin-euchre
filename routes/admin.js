@@ -306,6 +306,38 @@ function cleanupUploadedFiles(files) {
   }
 }
 
+function countUploadedFileReferences(filename, options = {}) {
+  if (!filename) return 0;
+
+  const locationRef = options.excludeLocationId
+    ? db.prepare(`
+      SELECT COUNT(*) AS count
+      FROM locations
+      WHERE location_image = ? AND id != ?
+    `).get(filename, options.excludeLocationId)
+    : db.prepare(`
+      SELECT COUNT(*) AS count
+      FROM locations
+      WHERE location_image = ?
+    `).get(filename);
+
+  const eventRef = db.prepare(`
+    SELECT COUNT(*) AS count
+    FROM events
+    WHERE location_image = ?
+  `).get(filename);
+
+  return Number(locationRef.count || 0) + Number(eventRef.count || 0);
+}
+
+function removeUploadedFileIfUnused(filename, options = {}) {
+  if (!filename) return;
+
+  if (countUploadedFileReferences(filename, options) === 0) {
+    removeUploadedFile(filename);
+  }
+}
+
 function resolveUpdatedImage(existingFilename, uploadedFilename, removeRequested) {
   const nextFilename = uploadedFilename || (removeRequested ? null : existingFilename);
   const replacedFilename = existingFilename && existingFilename !== nextFilename
@@ -572,10 +604,25 @@ router.post('/locations/:id/update', requireAdmin, locationUpload, (req, res) =>
   }
 
   if (locationImageUpdate.replacedFilename) {
-    removeUploadedFile(locationImageUpdate.replacedFilename);
+    removeUploadedFileIfUnused(locationImageUpdate.replacedFilename);
   }
 
   req.session.flash = 'Location updated.';
+  res.redirect('/admin/locations');
+});
+
+// ── POST /admin/locations/:id/delete ────────────────────────
+router.post('/locations/:id/delete', requireAdmin, (req, res) => {
+  const existing = getLocationById(req.params.id);
+  if (!existing) {
+    req.session.flash = 'Location not found.';
+    return res.redirect('/admin/locations');
+  }
+
+  db.prepare('DELETE FROM locations WHERE id = ?').run(existing.id);
+  removeUploadedFileIfUnused(existing.location_image);
+
+  req.session.flash = 'Location deleted.';
   res.redirect('/admin/locations');
 });
 
