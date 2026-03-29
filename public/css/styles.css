@@ -552,6 +552,18 @@ body {
   font-size: 0.95rem;
   font-family: system-ui, sans-serif;
 }
+.dashboard-empty-state {
+  padding: 1rem 1.1rem;
+  border: 1px dashed var(--gray-200);
+  border-radius: 12px;
+  background: linear-gradient(180deg, #fcfdfd 0%, #f8fafc 100%);
+}
+.dashboard-empty-title {
+  margin: 0 0 0.35rem;
+  color: var(--gray-900);
+  font-size: 1.05rem;
+  font-weight: 700;
+}
 .admin-anchor-section {
   scroll-margin-top: 70px;
 }

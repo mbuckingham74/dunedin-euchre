@@ -465,6 +465,58 @@ test('dashboard shows the full roster even when no event is selected', async () 
   assert.doesNotMatch(body, /inactive\.invitee@example\.com/);
 });
 
+test('dashboard can delete an event and return to the empty state', async () => {
+  const participant = insertParticipant();
+  const event = insertEvent({
+    title: 'Temporary Test Event',
+    public_slug: 'temporary-test-event',
+    location_image: 'temporary-venue.png',
+    map_image: 'temporary-map.png'
+  });
+  const venueImagePath = path.join(process.env.UPLOADS_DIR, event.location_image);
+  const mapImagePath = path.join(process.env.UPLOADS_DIR, event.map_image);
+  fs.writeFileSync(venueImagePath, 'temporary venue image');
+  fs.writeFileSync(mapImagePath, 'temporary map image');
+  insertResponse(participant.id, event.id, {
+    status: 'yes',
+    comment: 'I can make it.'
+  });
+  const cookie = await signInAsAdmin();
+
+  const response = await fetch(`${baseUrl}/admin/event/${event.id}/delete`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      cookie
+    },
+    body: new URLSearchParams({}),
+    redirect: 'manual'
+  });
+
+  assert.equal(response.status, 302);
+  assert.equal(response.headers.get('location'), '/admin/dashboard');
+  assert.equal(db.prepare('SELECT * FROM events WHERE id = ?').get(event.id), undefined);
+  assert.equal(
+    db.prepare('SELECT COUNT(*) AS count FROM responses WHERE event_id = ?').get(event.id).count,
+    0
+  );
+  assert.equal(
+    db.prepare('SELECT COUNT(*) AS count FROM event_public_slugs WHERE event_id = ?').get(event.id).count,
+    0
+  );
+  assert.equal(fs.existsSync(venueImagePath), false);
+  assert.equal(fs.existsSync(mapImagePath), false);
+
+  const dashboardResponse = await fetch(`${baseUrl}/admin/dashboard`, {
+    headers: { cookie }
+  });
+  const body = await dashboardResponse.text();
+
+  assert.equal(dashboardResponse.status, 200);
+  assert.match(body, /No events scheduled yet\./);
+  assert.match(body, /Open Schedule/);
+});
+
 test('roster page shows the global invite list from the database', async () => {
   insertParticipant({
     name: 'Alice Invitee',

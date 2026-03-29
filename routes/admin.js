@@ -338,6 +338,32 @@ function removeUploadedFileIfUnused(filename, options = {}) {
   }
 }
 
+function countEventMapImageReferences(filename, options = {}) {
+  if (!filename) return 0;
+
+  const row = options.excludeEventId
+    ? db.prepare(`
+      SELECT COUNT(*) AS count
+      FROM events
+      WHERE map_image = ? AND id != ?
+    `).get(filename, options.excludeEventId)
+    : db.prepare(`
+      SELECT COUNT(*) AS count
+      FROM events
+      WHERE map_image = ?
+    `).get(filename);
+
+  return Number(row.count || 0);
+}
+
+function removeEventMapImageIfUnused(filename, options = {}) {
+  if (!filename) return;
+
+  if (countEventMapImageReferences(filename, options) === 0) {
+    removeUploadedFile(filename);
+  }
+}
+
 function resolveUpdatedImage(existingFilename, uploadedFilename, removeRequested) {
   const nextFilename = uploadedFilename || (removeRequested ? null : existingFilename);
   const replacedFilename = existingFilename && existingFilename !== nextFilename
@@ -790,6 +816,27 @@ router.post('/event/:id/update', requireAdmin, (req, res) => {
 
   req.session.flash = 'Event updated.';
   res.redirect(buildDashboardRedirect(existing.id));
+});
+
+// ── POST /admin/event/:id/delete ─────────────────────────────
+router.post('/event/:id/delete', requireAdmin, (req, res) => {
+  const existing = getEventById(req.params.id);
+  if (!existing) {
+    req.session.flash = 'Event not found.';
+    return res.redirect('/admin/dashboard');
+  }
+
+  db.transaction(() => {
+    db.prepare('DELETE FROM responses WHERE event_id = ?').run(existing.id);
+    db.prepare('DELETE FROM event_public_slugs WHERE event_id = ?').run(existing.id);
+    db.prepare('DELETE FROM events WHERE id = ?').run(existing.id);
+  })();
+
+  removeUploadedFileIfUnused(existing.location_image);
+  removeEventMapImageIfUnused(existing.map_image, { excludeEventId: existing.id });
+
+  req.session.flash = 'Event deleted.';
+  res.redirect('/admin/dashboard');
 });
 
 // ── GET /admin/participants ───────────────────────────────────

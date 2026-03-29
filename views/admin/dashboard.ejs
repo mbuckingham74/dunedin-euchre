@@ -21,8 +21,14 @@
 
     <section class="card admin-card" style="margin-bottom:1.5rem;">
       <div class="card-header">
-        <h2 class="card-title">Event Details</h2>
-        <button class="btn-secondary" onclick="toggleForm('create-form')">+ New Event</button>
+        <div class="admin-card-header-text">
+          <h2 class="card-title">Current Event</h2>
+          <p class="admin-card-copy">Review the selected game, send invites, and make quick changes from one place.</p>
+        </div>
+        <div class="admin-actions">
+          <a href="/admin/events" class="btn-secondary">Open Schedule</a>
+          <button class="btn-primary" onclick="toggleForm('create-form')">+ New Event</button>
+        </div>
       </div>
 
       <% if (allEvents.length > 0) { %>
@@ -177,9 +183,19 @@
             <a href="<%= publicPath %>" target="_blank" class="btn-secondary">View public page</a>
           <% } %>
           <button class="btn-secondary" onclick="toggleForm('edit-form')">Edit event</button>
+          <form
+            method="POST"
+            action="/admin/event/<%= event.id %>/delete"
+            onsubmit="return confirm('Delete this event and all of its RSVP responses? This cannot be undone.')"
+          >
+            <button type="submit" class="btn-secondary btn-danger">Delete event</button>
+          </form>
         </div>
       <% } else { %>
-        <p style="color:#64748b;font-size:1.05rem;">No events yet. Create the first one below.</p>
+        <div class="dashboard-empty-state">
+          <p class="dashboard-empty-title">No events scheduled yet.</p>
+          <p class="admin-card-copy">Create the first event here, or use the schedule page to work from the recurring fourth-Saturday dates.</p>
+        </div>
       <% } %>
 
       <div id="create-form" class="collapsible-form" style="display:none;">
