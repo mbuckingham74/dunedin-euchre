@@ -19,4 +19,7 @@ RUN mkdir -p data uploads logs
 
 EXPOSE 3456
 
+HEALTHCHECK --interval=10s --timeout=3s --start-period=10s --retries=6 \
+  CMD node -e "fetch('http://127.0.0.1:3456/healthz').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"
+
 CMD ["node", "server.js"]

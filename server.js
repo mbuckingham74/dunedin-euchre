@@ -36,6 +36,16 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.use('/uploads', express.static(uploadsDir));
 app.use('/images', express.static(path.join(__dirname, 'images')));
 
+app.get('/healthz', (req, res) => {
+  try {
+    db.prepare('SELECT 1').get();
+    res.status(200).json({ ok: true });
+  } catch (error) {
+    console.error('Health check failed:', error);
+    res.status(503).json({ ok: false });
+  }
+});
+
 // ── Session store (SQLite-backed, survives restarts) ─────────
 class SQLiteStore extends session.Store {
   constructor(database) {

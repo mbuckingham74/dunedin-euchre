@@ -220,6 +220,13 @@ test.after(async () => {
   fs.rmSync(tempDir, { recursive: true, force: true });
 });
 
+test('health endpoint returns ok', async () => {
+  const response = await fetch(`${baseUrl}/healthz`);
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { ok: true });
+});
+
 test('event-scoped RSVP submissions write to the requested event', async () => {
   const participant = insertParticipant();
   const olderEvent = insertEvent({ event_date: '2026-04-15' });
