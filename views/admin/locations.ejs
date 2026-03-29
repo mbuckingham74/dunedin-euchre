@@ -12,6 +12,9 @@
 
 <main class="admin-main">
   <div class="admin-content">
+    <% const hasLocations = locations.length > 0; %>
+    <% const createFormVisible = !hasLocations || showCreateForm; %>
+    <% const addLocationLabel = hasLocations ? 'Add Location' : 'Add First Location'; %>
 
     <% if (flash) { %>
       <div class="flash-msg"><%= flash %></div>
@@ -22,72 +25,24 @@
     <section class="card admin-card" style="margin-bottom:1.5rem;">
       <div class="card-header">
         <div class="admin-card-header-text">
-          <h2 class="card-title">Location Manager</h2>
-          <p class="admin-card-copy">Save a venue once, then pick it from the event form dropdown. The map embed is generated from the address and framed to roughly a one-mile view.</p>
-        </div>
-      </div>
-
-      <form method="POST" action="/admin/locations" enctype="multipart/form-data">
-        <div class="form-row">
-          <div class="form-group">
-            <label class="form-label">Location name</label>
-            <input
-              type="text"
-              name="name"
-              class="form-input"
-              required
-              placeholder="e.g. Dunedin Community Center"
-            >
-          </div>
-          <div class="form-group">
-            <label class="form-label">Venue photo <span style="font-weight:400;color:#64748b;">(optional)</span></label>
-            <input type="file" name="location_image" class="form-input" accept="image/*">
-          </div>
-        </div>
-
-        <div class="form-group" style="margin-top:0.75rem;">
-          <label class="form-label">Address</label>
-          <textarea
-            name="address"
-            class="form-input"
-            rows="3"
-            required
-            placeholder="e.g. 123 Main St&#10;Dunedin, FL 34698"
-            data-location-address-input
-          ></textarea>
-          <p style="margin:0.45rem 0 0;font-size:0.9rem;color:#64748b;">This address drives the embedded map and the “Open map” link used on event pages.</p>
-        </div>
-
-        <div class="location-preview-card" data-address-preview hidden>
-          <div class="location-preview-copy">
-            <p class="location-preview-label">Map preview</p>
-            <p class="location-preview-address" data-address-preview-text></p>
-            <a href="#" target="_blank" rel="noreferrer" class="event-map-link" data-address-preview-link hidden>Open map</a>
-          </div>
-          <iframe
-            src=""
-            title="Location map preview"
-            class="event-map-embed location-preview-map"
-            data-address-preview-map
-            loading="lazy"
-            referrerpolicy="no-referrer-when-downgrade"
-          ></iframe>
-        </div>
-
-        <button type="submit" class="btn-primary" style="margin-top:1rem;">Save Location</button>
-      </form>
-    </section>
-
-    <section class="card admin-card">
-      <div class="card-header">
-        <div class="admin-card-header-text">
           <h2 class="card-title">Saved Locations</h2>
           <p class="admin-card-copy"><%= locations.length %> saved location<%= locations.length === 1 ? '' : 's' %> available to the event form dropdown.</p>
         </div>
+        <button
+          type="button"
+          class="btn-primary"
+          data-location-form-toggle
+          aria-controls="location-create-form-card"
+          aria-expanded="<%= createFormVisible ? 'true' : 'false' %>"
+        >
+          <%= addLocationLabel %>
+        </button>
       </div>
 
-      <% if (locations.length === 0) { %>
-        <p class="admin-card-copy">No locations yet. Add the first venue above.</p>
+      <% if (!hasLocations) { %>
+        <div class="locations-empty-state">
+          <p class="admin-card-copy">No saved locations yet. Add the first venue below so it can be reused from the event form dropdown.</p>
+        </div>
       <% } else { %>
         <div class="locations-list">
           <% locations.forEach(function(location) { %>
@@ -194,6 +149,72 @@
           <% }); %>
         </div>
       <% } %>
+    </section>
+
+    <section
+      id="location-create-form-card"
+      class="card admin-card location-create-card"
+      style="margin-bottom:1.5rem;"
+      data-location-create-card
+      <%= createFormVisible ? '' : 'hidden' %>
+    >
+      <div class="card-header">
+        <div class="admin-card-header-text">
+          <h2 class="card-title">Location Manager</h2>
+          <p class="admin-card-copy">Save a venue once, then pick it from the event form dropdown. The map embed is generated from the address and framed to roughly a one-mile view.</p>
+        </div>
+      </div>
+
+      <form method="POST" action="/admin/locations" enctype="multipart/form-data">
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Location name</label>
+            <input
+              type="text"
+              name="name"
+              class="form-input"
+              required
+              placeholder="e.g. Dunedin Community Center"
+              data-location-create-name
+            >
+          </div>
+          <div class="form-group">
+            <label class="form-label">Venue photo <span style="font-weight:400;color:#64748b;">(optional)</span></label>
+            <input type="file" name="location_image" class="form-input" accept="image/*">
+          </div>
+        </div>
+
+        <div class="form-group" style="margin-top:0.75rem;">
+          <label class="form-label">Address</label>
+          <textarea
+            name="address"
+            class="form-input"
+            rows="3"
+            required
+            placeholder="e.g. 123 Main St&#10;Dunedin, FL 34698"
+            data-location-address-input
+          ></textarea>
+          <p style="margin:0.45rem 0 0;font-size:0.9rem;color:#64748b;">This address drives the embedded map and the “Open map” link used on event pages.</p>
+        </div>
+
+        <div class="location-preview-card" data-address-preview hidden>
+          <div class="location-preview-copy">
+            <p class="location-preview-label">Map preview</p>
+            <p class="location-preview-address" data-address-preview-text></p>
+            <a href="#" target="_blank" rel="noreferrer" class="event-map-link" data-address-preview-link hidden>Open map</a>
+          </div>
+          <iframe
+            src=""
+            title="Location map preview"
+            class="event-map-embed location-preview-map"
+            data-address-preview-map
+            loading="lazy"
+            referrerpolicy="no-referrer-when-downgrade"
+          ></iframe>
+        </div>
+
+        <button type="submit" class="btn-primary" style="margin-top:1rem;">Save Location</button>
+      </form>
     </section>
 
   </div>

@@ -98,6 +98,27 @@ function updateAddressPreview(input) {
   preview.hidden = false;
 }
 
+function revealLocationCreateForm(button) {
+  const formCardId = button.getAttribute('aria-controls');
+  if (!formCardId) return;
+
+  const formCard = document.getElementById(formCardId);
+  if (!formCard) return;
+
+  formCard.hidden = false;
+  button.setAttribute('aria-expanded', 'true');
+
+  formCard.scrollIntoView({
+    behavior: 'smooth',
+    block: 'start'
+  });
+
+  const nameInput = formCard.querySelector('[data-location-create-name]');
+  if (nameInput) {
+    nameInput.focus();
+  }
+}
+
 // Copy-to-clipboard for RSVP links
 document.querySelectorAll('.btn-copy').forEach(btn => {
   btn.addEventListener('click', async () => {
@@ -137,4 +158,14 @@ document.querySelectorAll('[data-location-select]').forEach(select => {
 document.querySelectorAll('[data-location-address-input]').forEach(input => {
   updateAddressPreview(input);
   input.addEventListener('input', () => updateAddressPreview(input));
+});
+
+document.querySelectorAll('[data-location-form-toggle]').forEach(button => {
+  const formCardId = button.getAttribute('aria-controls');
+  const formCard = formCardId ? document.getElementById(formCardId) : null;
+
+  if (!formCard) return;
+
+  button.setAttribute('aria-expanded', String(!formCard.hidden));
+  button.addEventListener('click', () => revealLocationCreateForm(button));
 });

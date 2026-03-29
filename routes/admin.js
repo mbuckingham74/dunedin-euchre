@@ -505,9 +505,11 @@ router.get('/dashboard', requireAdmin, (req, res) => {
 router.get('/locations', requireAdmin, (req, res) => {
   res.render('admin/locations', {
     locations: listLocationsWithEventCounts(),
-    flash: req.session.flash || null
+    flash: req.session.flash || null,
+    showCreateForm: Boolean(req.session.showLocationCreateForm)
   });
   delete req.session.flash;
+  delete req.session.showLocationCreateForm;
 });
 
 // ── POST /admin/locations ───────────────────────────────────
@@ -519,6 +521,7 @@ router.post('/locations', requireAdmin, locationUpload, (req, res) => {
   if (validationError) {
     cleanupUploadedFiles(req.files);
     req.session.flash = validationError;
+    req.session.showLocationCreateForm = true;
     return res.redirect('/admin/locations');
   }
 
@@ -543,12 +546,14 @@ router.post('/locations', requireAdmin, locationUpload, (req, res) => {
     cleanupUploadedFiles(req.files);
     if (isPublicSlugUniqueConstraint(error)) {
       req.session.flash = 'That saved location already exists.';
+      req.session.showLocationCreateForm = true;
       return res.redirect('/admin/locations');
     }
     throw error;
   }
 
   req.session.flash = 'Location saved.';
+  delete req.session.showLocationCreateForm;
   res.redirect('/admin/locations');
 });
 

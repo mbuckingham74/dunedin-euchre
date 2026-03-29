@@ -877,6 +877,15 @@ input[type="file"].form-input { padding: 0.4rem; }
   flex-direction: column;
   gap: 1rem;
 }
+.locations-empty-state {
+  padding: 1rem 1.1rem;
+  border: 1px dashed var(--gray-200);
+  border-radius: 12px;
+  background: linear-gradient(180deg, #fcfdfd 0%, #f8fafc 100%);
+}
+.location-create-card {
+  scroll-margin-top: 84px;
+}
 .location-card {
   border: 1px solid var(--gray-200);
   border-radius: 12px;

@@ -811,6 +811,24 @@ test('location manager saves reusable venues and public events render the embedd
   assert.match(body, /Open map/);
 });
 
+test('location manager page lists saved locations before the create form and keeps the form collapsed when venues exist', async () => {
+  const cookie = await signInAsAdmin();
+  insertLocation({
+    name: 'Harbor Hall'
+  });
+
+  const response = await fetch(`${baseUrl}/admin/locations`, {
+    headers: { cookie }
+  });
+  const body = await response.text();
+
+  assert.equal(response.status, 200);
+  assert.ok(body.indexOf('Saved Locations') < body.indexOf('Location Manager'));
+  assert.match(body, /<button[^>]*data-location-form-toggle[^>]*>[\s]*Add Location[\s]*<\/button>/);
+  assert.match(body, /<section[^>]*id="location-create-form-card"[^>]*hidden[^>]*>/);
+  assert.match(body, /Harbor Hall/);
+});
+
 test('location manager update can remove an existing venue photo and delete the file', async () => {
   const cookie = await signInAsAdmin();
   const location = insertLocation({
