@@ -14,6 +14,10 @@
   <div class="admin-content">
     <% const nextScheduledEntry = upcomingEntries[0] || null; %>
 
+    <% if (flash) { %>
+      <div class="flash-msg"><%= flash %></div>
+    <% } %>
+
     <img src="/images/dunedin-logo-transparent.png" alt="Dunedin Euchre" class="dashboard-logo">
 
     <section class="card admin-card" style="margin-bottom:1.5rem;">
@@ -60,7 +64,7 @@
       <% } else { %>
         <div class="admin-history-list">
           <% upcomingEntries.forEach(function(entry) { %>
-            <article class="admin-history-item">
+            <article class="admin-history-item" id="scheduled-<%= entry.dateKey %>">
               <div class="admin-history-date">
                 <span class="admin-history-date-label">Scheduled date</span>
                 <strong><%= entry.formattedDate %></strong>
@@ -102,8 +106,79 @@
                 <% } else { %>
                   <p class="admin-history-empty">No event record has been created for this scheduled date yet.</p>
                   <div class="admin-actions">
-                    <a href="/admin/dashboard" class="btn-sm btn-secondary">Create from dashboard</a>
+                    <% if (locations.length > 0) { %>
+                      <button
+                        type="button"
+                        class="btn-sm btn-secondary"
+                        onclick="toggleScheduledCreateForm('create-form-<%= entry.dateKey %>')"
+                      >
+                        Create event
+                      </button>
+                    <% } else { %>
+                      <a href="/admin/locations" class="btn-sm btn-secondary">Add a location first</a>
+                    <% } %>
                   </div>
+                  <% if (locations.length > 0) { %>
+                    <div
+                      id="create-form-<%= entry.dateKey %>"
+                      class="scheduled-create-form"
+                      style="display:<%= activeCreateDate === entry.dateKey ? 'block' : 'none' %>;"
+                    >
+                      <form method="POST" action="/admin/event" class="scheduled-create-card">
+                        <input type="hidden" name="return_to" value="events">
+                        <input type="hidden" name="title" value="Dunedin Euchre Night">
+                        <input type="hidden" name="public_slug" value="">
+                        <input type="hidden" name="event_date" value="<%= entry.dateKey %>">
+                        <input type="hidden" name="start_time" value="18:00">
+                        <input type="hidden" name="end_time" value="21:00">
+
+                        <div class="scheduled-create-grid">
+                          <div class="form-group">
+                            <label class="form-label">Scheduled date</label>
+                            <input
+                              type="text"
+                              class="form-input"
+                              value="<%= entry.formattedDate %>"
+                              readonly
+                            >
+                          </div>
+
+                          <div class="form-group">
+                            <label class="form-label">Location</label>
+                            <select name="location_id" class="form-input" required>
+                              <option value="">Select a saved location</option>
+                              <% locations.forEach(function(location) { %>
+                                <option value="<%= location.id %>"><%= location.name %></option>
+                              <% }); %>
+                            </select>
+                          </div>
+                        </div>
+
+                        <div class="form-group" style="margin-top:0.75rem;">
+                          <label class="form-label">Arrival / parking notes <span style="font-weight:400;color:#64748b;">(optional)</span></label>
+                          <textarea
+                            name="arrival_notes"
+                            class="form-input"
+                            rows="3"
+                            placeholder="e.g. Park in Lot B and use the west entrance."
+                          ></textarea>
+                        </div>
+
+                        <p class="scheduled-create-note">This quick-create form uses the standard 6:00 PM to 9:00 PM event window. You can change times, title, and publishing settings later from the dashboard if needed.</p>
+
+                        <div class="admin-actions" style="margin-top:0.85rem;">
+                          <button type="submit" class="btn-sm btn-primary">Create Event</button>
+                          <button
+                            type="button"
+                            class="btn-sm btn-secondary"
+                            onclick="toggleScheduledCreateForm('create-form-<%= entry.dateKey %>')"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </form>
+                    </div>
+                  <% } %>
                 <% } %>
               </div>
             </article>
@@ -173,6 +248,23 @@
   </div>
 </main>
 
+<script>
+function toggleScheduledCreateForm(id) {
+  const forms = document.querySelectorAll('.scheduled-create-form');
+  const target = document.getElementById(id);
+  if (!target) return;
+
+  const shouldOpen = target.style.display === 'none';
+  forms.forEach(form => {
+    form.style.display = 'none';
+  });
+
+  if (shouldOpen) {
+    target.style.display = 'block';
+    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+}
+</script>
 <script src="/js/admin.js"></script>
 </body>
 </html>

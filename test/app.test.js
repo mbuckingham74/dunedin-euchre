@@ -902,6 +902,7 @@ test('events admin page shows the recurring schedule and recorded events', async
     location_name: 'Harbor Hall',
     is_published: 1
   });
+  insertLocation({ name: 'Harbor Hall' });
   const cookie = await signInAsAdmin();
 
   const response = await fetch(`${baseUrl}/admin/events`, {
@@ -916,4 +917,45 @@ test('events admin page shows the recurring schedule and recorded events', async
   assert.match(body, /Past Event History/);
   assert.match(body, /Spring Euchre Social/);
   assert.match(body, new RegExp(`/admin/dashboard\\?eventId=${event.id}`));
+  assert.match(body, /Create event/);
+  assert.doesNotMatch(body, /Create from dashboard/);
+});
+
+test('quick-create from the events schedule returns to the scheduled entry instead of the dashboard default', async () => {
+  const cookie = await signInAsAdmin();
+  const location = insertLocation({ name: 'Harbor Hall' });
+
+  const response = await fetch(`${baseUrl}/admin/event`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      cookie
+    },
+    body: new URLSearchParams({
+      return_to: 'events',
+      title: 'Dunedin Euchre Night',
+      public_slug: '',
+      event_date: '2026-04-25',
+      location_id: String(location.id),
+      start_time: '18:00',
+      end_time: '21:00',
+      arrival_notes: 'Use the side entrance.'
+    }),
+    redirect: 'manual'
+  });
+
+  assert.equal(response.status, 302);
+  assert.equal(response.headers.get('location'), '/admin/events#scheduled-2026-04-25');
+
+  const event = db.prepare(`
+    SELECT event_date, location_id, arrival_notes
+    FROM events
+    WHERE event_date = ?
+  `).get('2026-04-25');
+
+  assert.deepEqual(event, {
+    event_date: '2026-04-25',
+    location_id: location.id,
+    arrival_notes: 'Use the side entrance.'
+  });
 });

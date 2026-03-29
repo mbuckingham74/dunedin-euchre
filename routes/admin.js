@@ -355,6 +355,24 @@ function buildParticipantsRedirect(eventId) {
   return eventId ? `/admin/participants?eventId=${eventId}` : '/admin/participants';
 }
 
+function buildEventsRedirect(options = {}) {
+  const searchParams = new URLSearchParams();
+  if (options.createDate) {
+    searchParams.set('createDate', options.createDate);
+  }
+
+  const query = searchParams.toString();
+  return query ? `/admin/events?${query}` : '/admin/events';
+}
+
+function buildEventsCreateRedirect(dateKey) {
+  return `${buildEventsRedirect({ createDate: dateKey })}#scheduled-${dateKey}`;
+}
+
+function shouldReturnToEvents(body) {
+  return body && body.return_to === 'events';
+}
+
 // ── GET /admin ───────────────────────────────────────────────
 router.get('/', (req, res) => {
   if (req.session && req.session.adminAuthenticated) {
@@ -571,17 +589,22 @@ router.get('/roster', requireAdmin, (req, res) => {
 // ── POST /admin/event ─────────────────────────────────────────
 router.post('/event', requireAdmin, (req, res) => {
   const eventInput = normalizeEventInput(req.body);
+  const returnToEvents = shouldReturnToEvents(req.body);
 
   const validationError = getEventValidationError(eventInput);
   if (validationError) {
     req.session.flash = validationError;
-    return res.redirect('/admin/dashboard');
+    return res.redirect(returnToEvents
+      ? buildEventsCreateRedirect(eventInput.event_date)
+      : '/admin/dashboard');
   }
 
   const locationDetails = resolveEventLocationDetails(eventInput);
   if (locationDetails.error) {
     req.session.flash = locationDetails.error;
-    return res.redirect('/admin/dashboard');
+    return res.redirect(returnToEvents
+      ? buildEventsCreateRedirect(eventInput.event_date)
+      : '/admin/dashboard');
   }
 
   try {
@@ -630,11 +653,15 @@ router.post('/event', requireAdmin, (req, res) => {
     })();
 
     req.session.flash = 'Event created successfully.';
-    return res.redirect(buildDashboardRedirect(result.lastInsertRowid));
+    return res.redirect(returnToEvents
+      ? `${buildEventsRedirect()}#scheduled-${eventInput.event_date}`
+      : buildDashboardRedirect(result.lastInsertRowid));
   } catch (error) {
     if (isPublicSlugConflictError(error) || isPublicSlugUniqueConstraint(error)) {
       req.session.flash = 'That public URL slug is already in use, including any older redirected event links.';
-      return res.redirect('/admin/dashboard');
+      return res.redirect(returnToEvents
+        ? buildEventsCreateRedirect(eventInput.event_date)
+        : '/admin/dashboard');
     }
     throw error;
   }
@@ -881,15 +908,20 @@ router.get('/stats', requireAdmin, (req, res) => {
 router.get('/events', requireAdmin, (req, res) => {
   const events = listEventsWithResponseStats();
   const history = buildMonthlyEventHistory(events, { monthsAhead: 12 });
+  const activeCreateDate = (req.query.createDate || '').trim() || null;
 
   res.render('admin/events', {
     ...history,
+    activeCreateDate,
+    locations: listLocations(),
     formatEventDate,
     formatTime,
     getEventTitle,
     isEventPublished,
-    buildPublicEventPath
+    buildPublicEventPath,
+    flash: req.session.flash || null
   });
+  delete req.session.flash;
 });
 
 // ── GET /admin/logout ─────────────────────────────────────────
