@@ -405,6 +405,9 @@ test('dashboard shows the full roster even when no event is selected', async () 
   assert.match(body, /<section id="roster" class="card admin-card admin-anchor-section"/);
   assert.match(body, /Roster/);
   assert.match(body, /Everyone currently signed up to receive RSVP invitations\./);
+  assert.match(body, /Manage Roster/);
+  assert.match(body, /Add Member To Roster/);
+  assert.match(body, /href="\/admin\/participants#add-member"/);
   assert.match(body, /<strong>2<\/strong>\s*active participants will receive event invites\./);
   assert.match(body, /Alice Invitee/);
   assert.match(body, /alice\.invitee@example\.com/);
@@ -441,6 +444,9 @@ test('roster page shows the global invite list from the database', async () => {
   const body = await response.text();
   assert.match(body, /Global Roster/);
   assert.match(body, /Everyone currently signed up to receive RSVP invitations\./);
+  assert.match(body, /Manage Roster/);
+  assert.match(body, /Add Member To Roster/);
+  assert.match(body, /href="\/admin\/participants#add-member"/);
   assert.match(body, /<strong>2<\/strong>\s*active participants?\./);
   assert.match(body, /Alice Invitee/);
   assert.match(body, /alice\.invitee@example\.com/);
@@ -448,6 +454,19 @@ test('roster page shows the global invite list from the database', async () => {
   assert.match(body, /bob\.invitee@example\.com/);
   assert.doesNotMatch(body, /Inactive Invitee/);
   assert.doesNotMatch(body, /inactive\.invitee@example\.com/);
+});
+
+test('participants page exposes the add-member anchor for roster shortcuts', async () => {
+  const cookie = await signInAsAdmin();
+
+  const response = await fetch(`${baseUrl}/admin/participants`, {
+    headers: { cookie }
+  });
+
+  assert.equal(response.status, 200);
+  const body = await response.text();
+  assert.match(body, /id="add-member"/);
+  assert.match(body, /Add Participant/);
 });
 
 test('admin event create and update routes persist slug settings and keep old slug links working after removal', async () => {

@@ -21,7 +21,10 @@
           <h2 class="card-title">Global Roster</h2>
           <p class="admin-card-copy">Everyone currently signed up to receive RSVP invitations.</p>
         </div>
-        <a href="/admin/participants" class="btn-secondary">Manage participants</a>
+        <div class="admin-cta-stack">
+          <a href="/admin/participants" class="btn-secondary">Manage Roster</a>
+          <a href="/admin/participants#add-member" class="btn-secondary">Add Member To Roster</a>
+        </div>
       </div>
 
       <% if (inviteParticipants.length > 0) { %>

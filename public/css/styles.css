@@ -711,6 +711,13 @@ body {
   color: var(--blue);
   word-break: break-all;
 }
+.admin-cta-stack {
+  display: flex;
+  gap: 0.5rem;
+  flex-direction: column;
+  flex-wrap: wrap;
+  align-items: stretch;
+}
 
 /* ── Forms (admin) ───────────────────────────────────────── */
 .form-group { display: flex; flex-direction: column; }
