@@ -11,6 +11,7 @@ const db = require('../db/database');
 const { requireAdmin } = require('../middleware/auth');
 const { sendMagicLink, sendRsvpInvite, formatEventDate, formatTime } = require('../services/email');
 const {
+  buildMonthlyEventHistory,
   getArrivalNotes,
   getEventTitle,
   isEventPublished,
@@ -77,6 +78,27 @@ function getEventById(eventId) {
 
 function listEvents() {
   return db.prepare('SELECT * FROM events ORDER BY event_date DESC, id DESC').all();
+}
+
+function listEventsWithResponseStats() {
+  return db.prepare(`
+    SELECT
+      e.*,
+      COALESCE(SUM(CASE WHEN r.status = 'yes' THEN 1 ELSE 0 END), 0) AS yes_count,
+      COALESCE(SUM(CASE WHEN r.status = 'maybe' THEN 1 ELSE 0 END), 0) AS maybe_count,
+      COALESCE(SUM(CASE WHEN r.status = 'no' THEN 1 ELSE 0 END), 0) AS no_count,
+      COUNT(r.id) AS response_count
+    FROM events e
+    LEFT JOIN responses r ON r.event_id = e.id
+    GROUP BY e.id
+    ORDER BY e.event_date ASC, e.id ASC
+  `).all().map(row => ({
+    ...row,
+    yes_count: Number(row.yes_count || 0),
+    maybe_count: Number(row.maybe_count || 0),
+    no_count: Number(row.no_count || 0),
+    response_count: Number(row.response_count || 0)
+  }));
 }
 
 function getDashboardEvent(requestedEventId) {
@@ -625,6 +647,21 @@ router.get('/stats', requireAdmin, (req, res) => {
   }));
 
   res.render('admin/stats', { stats, totalEvents, events, formatEventDate });
+});
+
+// ── GET /admin/events ─────────────────────────────────────────
+router.get('/events', requireAdmin, (req, res) => {
+  const events = listEventsWithResponseStats();
+  const history = buildMonthlyEventHistory(events, { monthsAhead: 12 });
+
+  res.render('admin/events', {
+    ...history,
+    formatEventDate,
+    formatTime,
+    getEventTitle,
+    isEventPublished,
+    buildPublicEventPath
+  });
 });
 
 // ── GET /admin/logout ─────────────────────────────────────────

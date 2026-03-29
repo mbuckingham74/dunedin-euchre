@@ -2,6 +2,119 @@
 
 const { formatEventDate } = require('./email');
 
+function parseDateString(dateStr) {
+  const [year, month, day] = (dateStr || '').split('-').map(Number);
+  if (!year || !month || !day) return null;
+  return new Date(year, month - 1, day, 12);
+}
+
+function formatDateKey(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function getMonthStart(date) {
+  return new Date(date.getFullYear(), date.getMonth(), 1, 12);
+}
+
+function addMonths(date, monthCount) {
+  return new Date(date.getFullYear(), date.getMonth() + monthCount, 1, 12);
+}
+
+function getFourthSaturdayDate(year, monthIndex) {
+  const firstOfMonth = new Date(year, monthIndex, 1, 12);
+  const firstSaturdayOffset = (6 - firstOfMonth.getDay() + 7) % 7;
+  return new Date(year, monthIndex, 1 + firstSaturdayOffset + 21, 12);
+}
+
+function getFourthSaturdayDateKey(year, monthIndex) {
+  return formatDateKey(getFourthSaturdayDate(year, monthIndex));
+}
+
+function normalizeReferenceDate(referenceDate) {
+  if (referenceDate instanceof Date && !Number.isNaN(referenceDate.getTime())) {
+    return new Date(referenceDate.getFullYear(), referenceDate.getMonth(), referenceDate.getDate(), 12);
+  }
+
+  const parsed = parseDateString(referenceDate);
+  if (parsed) return parsed;
+
+  const fallback = new Date();
+  return new Date(fallback.getFullYear(), fallback.getMonth(), fallback.getDate(), 12);
+}
+
+function buildMonthlyEventHistory(events, options = {}) {
+  const normalizedEvents = Array.isArray(events)
+    ? events
+      .filter(event => event && event.event_date)
+      .slice()
+      .sort((left, right) => (
+        left.event_date.localeCompare(right.event_date) ||
+        Number(left.id || 0) - Number(right.id || 0)
+      ))
+    : [];
+
+  const monthsAhead = Number.isInteger(options.monthsAhead) && options.monthsAhead > 0
+    ? options.monthsAhead
+    : 12;
+
+  const referenceDate = normalizeReferenceDate(options.referenceDate);
+  const todayKey = formatDateKey(referenceDate);
+  const currentMonth = getMonthStart(referenceDate);
+  const currentScheduledDateKey = getFourthSaturdayDateKey(
+    currentMonth.getFullYear(),
+    currentMonth.getMonth()
+  );
+  const firstUpcomingMonth = currentScheduledDateKey >= todayKey
+    ? currentMonth
+    : addMonths(currentMonth, 1);
+  const firstRecordedMonth = normalizedEvents.length > 0
+    ? getMonthStart(parseDateString(normalizedEvents[0].event_date))
+    : null;
+  const startMonth = firstRecordedMonth && firstRecordedMonth < firstUpcomingMonth
+    ? firstRecordedMonth
+    : firstUpcomingMonth;
+  const endMonth = addMonths(firstUpcomingMonth, monthsAhead - 1);
+  const eventsByDate = new Map();
+
+  for (const event of normalizedEvents) {
+    if (!eventsByDate.has(event.event_date)) {
+      eventsByDate.set(event.event_date, []);
+    }
+    eventsByDate.get(event.event_date).push(event);
+  }
+
+  const entries = [];
+  for (let cursor = startMonth; cursor <= endMonth; cursor = addMonths(cursor, 1)) {
+    const date = getFourthSaturdayDate(cursor.getFullYear(), cursor.getMonth());
+    const dateKey = formatDateKey(date);
+    const scheduledEvents = eventsByDate.get(dateKey) || [];
+
+    entries.push({
+      date,
+      dateKey,
+      formattedDate: formatEventDate(dateKey),
+      hasEvent: scheduledEvents.length > 0,
+      isPast: dateKey < todayKey,
+      isToday: dateKey === todayKey,
+      isUpcoming: dateKey >= todayKey,
+      events: scheduledEvents,
+      primaryEvent: scheduledEvents[0] || null
+    });
+  }
+
+  return {
+    entries,
+    pastEntries: entries.filter(entry => entry.isPast),
+    upcomingEntries: entries.filter(entry => entry.isUpcoming),
+    todayKey,
+    startDateKey: entries.length > 0 ? entries[0].dateKey : null,
+    endDateKey: entries.length > 0 ? entries[entries.length - 1].dateKey : null
+  };
+}
+
 function getEventTitle(event) {
   const title = (event && event.title ? event.title : '').trim();
   if (title) return title;
@@ -100,6 +213,8 @@ function parsePublicSlugInput(value) {
 }
 
 module.exports = {
+  buildMonthlyEventHistory,
+  getFourthSaturdayDateKey,
   getArrivalNotes,
   getEventTitle,
   isEventPublished,

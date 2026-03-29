@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dunedin Euchre – Events</title>
+  <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body class="admin-page">
+
+<%- include('../partials/admin-nav', { active: 'events' }) %>
+
+<main class="admin-main">
+  <div class="admin-content">
+    <% const nextScheduledEntry = upcomingEntries[0] || null; %>
+
+    <img src="/images/dunedin-logo-transparent.png" alt="Dunedin Euchre" class="dashboard-logo">
+
+    <section class="card admin-card" style="margin-bottom:1.5rem;">
+      <div class="card-header">
+        <div class="admin-card-header-text">
+          <h2 class="card-title">Recurring Event Schedule</h2>
+          <p class="admin-card-copy">
+            Every event lands on the fourth Saturday of the month. Showing scheduled dates through
+            <strong><%= endDateKey ? formatEventDate(endDateKey) : 'the next year' %></strong>.
+          </p>
+        </div>
+      </div>
+
+      <div class="admin-history-summary-grid">
+        <div class="admin-history-summary-box">
+          <span class="admin-history-summary-label">Pattern</span>
+          <strong>4th Saturday</strong>
+        </div>
+        <div class="admin-history-summary-box">
+          <span class="admin-history-summary-label">Next scheduled date</span>
+          <strong><%= nextScheduledEntry ? nextScheduledEntry.formattedDate : 'No upcoming date' %></strong>
+        </div>
+        <div class="admin-history-summary-box">
+          <span class="admin-history-summary-label">Coverage</span>
+          <strong>
+            <%= startDateKey ? formatEventDate(startDateKey) : 'Today' %>
+            to
+            <%= endDateKey ? formatEventDate(endDateKey) : 'next year' %>
+          </strong>
+        </div>
+      </div>
+    </section>
+
+    <section class="card admin-card" style="margin-bottom:1.5rem;">
+      <div class="card-header">
+        <div class="admin-card-header-text">
+          <h2 class="card-title">Upcoming Schedule</h2>
+          <p class="admin-card-copy">These are the next 12 scheduled event dates, including today if tonight's game has not happened yet.</p>
+        </div>
+      </div>
+
+      <% if (upcomingEntries.length === 0) { %>
+        <p class="admin-card-copy">No upcoming dates available.</p>
+      <% } else { %>
+        <div class="admin-history-list">
+          <% upcomingEntries.forEach(function(entry) { %>
+            <article class="admin-history-item">
+              <div class="admin-history-date">
+                <span class="admin-history-date-label">Scheduled date</span>
+                <strong><%= entry.formattedDate %></strong>
+                <div class="admin-history-pill-row">
+                  <% if (entry.isToday) { %>
+                    <span class="status-pill pill-maybe">Tonight</span>
+                  <% } else { %>
+                    <span class="status-pill pill-none">Upcoming</span>
+                  <% } %>
+                  <% if (entry.hasEvent) { %>
+                    <span class="status-pill <%= isEventPublished(entry.primaryEvent) ? 'pill-yes' : 'pill-none' %>">
+                      <%= isEventPublished(entry.primaryEvent) ? 'Published' : 'Draft' %>
+                    </span>
+                  <% } else { %>
+                    <span class="status-pill pill-none">Not created</span>
+                  <% } %>
+                </div>
+              </div>
+
+              <div class="admin-history-details">
+                <% if (entry.hasEvent) { %>
+                  <% entry.events.forEach(function(event) { %>
+                    <div class="admin-history-event">
+                      <div class="admin-history-event-header">
+                        <h3 class="admin-history-event-title"><%= getEventTitle(event) %></h3>
+                      </div>
+                      <p class="admin-history-meta"><%= event.location_name %> · <%= formatTime(event.start_time) %> - <%= formatTime(event.end_time) %></p>
+                      <p class="admin-history-meta">
+                        <%= event.yes_count %> yes · <%= event.maybe_count %> maybe · <%= event.no_count %> no
+                      </p>
+                      <div class="admin-actions">
+                        <a href="/admin/dashboard?eventId=<%= event.id %>" class="btn-sm btn-secondary">Open in dashboard</a>
+                        <% if (isEventPublished(event)) { %>
+                          <a href="<%= buildPublicEventPath(event) %>" target="_blank" class="btn-sm btn-secondary">View public page</a>
+                        <% } %>
+                      </div>
+                    </div>
+                  <% }); %>
+                <% } else { %>
+                  <p class="admin-history-empty">No event record has been created for this scheduled date yet.</p>
+                  <div class="admin-actions">
+                    <a href="/admin/dashboard" class="btn-sm btn-secondary">Create from dashboard</a>
+                  </div>
+                <% } %>
+              </div>
+            </article>
+          <% }); %>
+        </div>
+      <% } %>
+    </section>
+
+    <section class="card admin-card">
+      <div class="card-header">
+        <div class="admin-card-header-text">
+          <h2 class="card-title">Past Event History</h2>
+          <p class="admin-card-copy">Every scheduled fourth Saturday back to the first recorded event. Gaps stay visible so missing records are obvious.</p>
+        </div>
+      </div>
+
+      <% if (pastEntries.length === 0) { %>
+        <p class="admin-card-copy">No past event dates to show yet.</p>
+      <% } else { %>
+        <div class="admin-history-list">
+          <% pastEntries.slice().reverse().forEach(function(entry) { %>
+            <article class="admin-history-item admin-history-item-past">
+              <div class="admin-history-date">
+                <span class="admin-history-date-label">Event date</span>
+                <strong><%= entry.formattedDate %></strong>
+                <div class="admin-history-pill-row">
+                  <span class="status-pill pill-none">Past</span>
+                  <% if (entry.hasEvent) { %>
+                    <span class="status-pill <%= isEventPublished(entry.primaryEvent) ? 'pill-yes' : 'pill-none' %>">
+                      <%= isEventPublished(entry.primaryEvent) ? 'Published' : 'Draft' %>
+                    </span>
+                  <% } else { %>
+                    <span class="status-pill pill-no">Missing record</span>
+                  <% } %>
+                </div>
+              </div>
+
+              <div class="admin-history-details">
+                <% if (entry.hasEvent) { %>
+                  <% entry.events.forEach(function(event) { %>
+                    <div class="admin-history-event">
+                      <div class="admin-history-event-header">
+                        <h3 class="admin-history-event-title"><%= getEventTitle(event) %></h3>
+                      </div>
+                      <p class="admin-history-meta"><%= event.location_name %> · <%= formatTime(event.start_time) %> - <%= formatTime(event.end_time) %></p>
+                      <p class="admin-history-meta">
+                        <%= event.yes_count %> yes · <%= event.maybe_count %> maybe · <%= event.no_count %> no
+                      </p>
+                      <div class="admin-actions">
+                        <a href="/admin/dashboard?eventId=<%= event.id %>" class="btn-sm btn-secondary">Open in dashboard</a>
+                        <% if (isEventPublished(event)) { %>
+                          <a href="<%= buildPublicEventPath(event) %>" target="_blank" class="btn-sm btn-secondary">View public page</a>
+                        <% } %>
+                      </div>
+                    </div>
+                  <% }); %>
+                <% } else { %>
+                  <p class="admin-history-empty">No saved event was found for this regularly scheduled date.</p>
+                <% } %>
+              </div>
+            </article>
+          <% }); %>
+        </div>
+      <% } %>
+    </section>
+
+  </div>
+</main>
+
+<script src="/js/admin.js"></script>
+</body>
+</html>

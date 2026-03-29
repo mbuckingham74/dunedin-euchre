@@ -531,6 +531,99 @@ body {
   font-family: system-ui, sans-serif;
 }
 
+.admin-history-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.9rem;
+}
+.admin-history-summary-box {
+  background: linear-gradient(180deg, #f8fafc 0%, #eef6fb 100%);
+  border: 1px solid var(--gray-200);
+  border-radius: 10px;
+  padding: 1rem 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+.admin-history-summary-label {
+  color: var(--gray-500);
+  font-family: system-ui, sans-serif;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.admin-history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+.admin-history-item {
+  display: grid;
+  grid-template-columns: minmax(220px, 280px) 1fr;
+  gap: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--gray-200);
+  border-radius: 12px;
+  background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
+}
+.admin-history-item-past {
+  background: linear-gradient(180deg, #ffffff 0%, #fcfcfb 100%);
+}
+.admin-history-date {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+.admin-history-date strong {
+  font-size: 1.05rem;
+  color: var(--gray-900);
+  line-height: 1.3;
+}
+.admin-history-date-label {
+  color: var(--gray-500);
+  font-family: system-ui, sans-serif;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.admin-history-pill-row {
+  display: flex;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+.admin-history-details {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+.admin-history-event {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.admin-history-event-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+.admin-history-event-title {
+  font-size: 1rem;
+  line-height: 1.35;
+  color: var(--gray-900);
+}
+.admin-history-meta,
+.admin-history-empty {
+  color: var(--gray-500);
+  font-family: system-ui, sans-serif;
+  font-size: 0.95rem;
+  margin: 0;
+}
+
 /* ── RSVP count boxes (admin) ────────────────────────────── */
 .admin-counts {
   display: flex;
@@ -893,6 +986,7 @@ input[type="file"].form-input { padding: 0.4rem; }
   .form-row { flex-direction: column; }
   .admin-counts { gap: 0.5rem; }
   .admin-count-box { min-width: 70px; }
+  .admin-history-item { grid-template-columns: 1fr; }
   .count-num { font-size: 1.5rem; }
   .event-page-main { padding: 1rem; }
 }

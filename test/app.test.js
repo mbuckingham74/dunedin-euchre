@@ -738,3 +738,26 @@ test('stats page shows a placeholder instead of 1.0 for participants with no res
   assert.doesNotMatch(body, />1\.0<\/td>/);
   assert.match(body, /<td style="color:#64748b;text-align:center;">\s*—\s*<\/td>/);
 });
+
+test('events admin page shows the recurring schedule and recorded events', async () => {
+  const event = insertEvent({
+    title: 'Spring Euchre Social',
+    event_date: '2026-02-28',
+    location_name: 'Harbor Hall',
+    is_published: 1
+  });
+  const cookie = await signInAsAdmin();
+
+  const response = await fetch(`${baseUrl}/admin/events`, {
+    headers: { cookie }
+  });
+
+  assert.equal(response.status, 200);
+  const body = await response.text();
+  assert.match(body, /Recurring Event Schedule/);
+  assert.match(body, /4th Saturday/);
+  assert.match(body, /Upcoming Schedule/);
+  assert.match(body, /Past Event History/);
+  assert.match(body, /Spring Euchre Social/);
+  assert.match(body, new RegExp(`/admin/dashboard\\?eventId=${event.id}`));
+});
