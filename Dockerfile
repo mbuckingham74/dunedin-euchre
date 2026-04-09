@@ -1,20 +1,24 @@
-FROM node:22-bookworm-slim
+FROM node:22.22-bookworm-slim AS deps
 
-# Build deps for better-sqlite3 (native module)
+# better-sqlite3 compiles a native addon during install.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 make g++ \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Install deps first (layer cache)
 COPY package*.json ./
-RUN npm install --production --no-audit --no-fund
+RUN npm ci --omit=dev --no-audit --no-fund
 
-# Copy source
+FROM node:22.22-bookworm-slim AS runner
+
+WORKDIR /app
+ENV NODE_ENV=production
+
+COPY package*.json ./
+COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# Runtime directories (data + uploads live in named volumes)
 RUN mkdir -p data uploads logs
 
 EXPOSE 3456
