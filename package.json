@@ -8,7 +8,10 @@
     "dev": "node --watch server.js",
     "seed": "node db/seed.js",
     "import:participants": "node scripts/import-participants-csv.js",
-    "test": "node --test"
+    "test": "node --test",
+    "security:scan": "bash scripts/trivy-scan.sh",
+    "security:scan:fs": "bash scripts/trivy-scan.sh fs",
+    "security:scan:image": "bash scripts/trivy-scan.sh image"
   },
   "dependencies": {
     "better-sqlite3": "^12.8.0",
