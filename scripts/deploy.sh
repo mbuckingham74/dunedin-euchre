@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # deploy.sh — Deploy dunedin-euchre to forkstech.com VPS
-# Usage: ./deploy.sh
+# Usage: ./deploy.sh (from scripts/) or bash scripts/deploy.sh (from repo root)
 # Requires: SSH key access to michael@100.120.233.4 via Tailscale
 
 set -euo pipefail
