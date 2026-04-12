@@ -789,6 +789,8 @@ test('dashboard shows the full roster even when no event is selected', async () 
   assert.match(body, /Roster/);
   assert.match(body, /Locations/);
   assert.match(body, /Upcoming Schedule/);
+  assert.match(body, /href="\/admin\/testing"/);
+  assert.match(body, /Open Testing/);
   assert.match(body, /Everyone currently signed up to receive RSVP invitations\./);
   assert.match(body, /Manage Roster/);
   assert.match(body, /Add Member To Roster/);
@@ -904,6 +906,142 @@ test('participants page exposes the add-member anchor for roster shortcuts', asy
   const body = await response.text();
   assert.match(body, /id="add-member"/);
   assert.match(body, /Add Participant/);
+});
+
+test('testing workspace is available from admin and shows the end-to-end tools', async () => {
+  const participant = insertParticipant({
+    name: 'Testing Person',
+    email: 'testing.person@example.com',
+    rsvp_token: 'testing-person-token'
+  });
+  const event = insertEvent({
+    title: 'Testing Workspace Event',
+    event_date: '2999-04-15',
+    is_published: 1
+  });
+  const cookie = await signInAsAdmin();
+
+  const response = await fetch(`${baseUrl}/admin/testing?eventId=${event.id}&participantId=${participant.id}`, {
+    headers: { cookie }
+  });
+
+  assert.equal(response.status, 200);
+  const body = await response.text();
+  assert.match(body, /class="nav-link nav-active">Testing</);
+  assert.match(body, /Testing Workspace/);
+  assert.match(body, /Open Invitee Preview/);
+  assert.match(body, /Send One Test Invite/);
+  assert.match(body, /Create Fresh \[TEST\] Copy/);
+});
+
+test('testing workspace can clone an event into a fresh test copy', async () => {
+  const participant = insertParticipant({
+    name: 'Clone Target',
+    email: 'clone.target@example.com',
+    rsvp_token: 'clone-target-token'
+  });
+  const sourceEvent = insertEvent({
+    title: 'Spring Social',
+    event_date: '2999-04-15',
+    location_name: 'Harbor Hall',
+    location_address: '123 Main St\nDunedin, FL 34698',
+    start_time: '18:30',
+    end_time: '21:30',
+    arrival_notes: 'Use the side door.',
+    notes: 'Use the side door.',
+    is_published: 0,
+    show_public_roster: 1
+  });
+  const cookie = await signInAsAdmin();
+
+  const response = await fetch(`${baseUrl}/admin/testing/create-event`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      cookie
+    },
+    body: new URLSearchParams({
+      source_event_id: String(sourceEvent.id),
+      participant_id: String(participant.id)
+    }),
+    redirect: 'manual'
+  });
+
+  assert.equal(response.status, 302);
+  const created = db.prepare(`
+    SELECT title, public_slug, event_date, location_name, start_time, end_time, arrival_notes, is_published, show_public_roster
+    FROM events
+    WHERE id != ?
+    ORDER BY id DESC
+    LIMIT 1
+  `).get(sourceEvent.id);
+
+  assert.deepEqual(created, {
+    title: '[TEST] Spring Social',
+    public_slug: null,
+    event_date: '2999-04-15',
+    location_name: 'Harbor Hall',
+    start_time: '18:30',
+    end_time: '21:30',
+    arrival_notes: 'Use the side door.',
+    is_published: 1,
+    show_public_roster: 1
+  });
+
+  const createdId = db.prepare(`
+    SELECT id
+    FROM events
+    WHERE title = ?
+    ORDER BY id DESC
+    LIMIT 1
+  `).get('[TEST] Spring Social').id;
+
+  assert.equal(
+    response.headers.get('location'),
+    `/admin/testing?eventId=${createdId}&participantId=${participant.id}`
+  );
+  assert.equal(
+    db.prepare('SELECT COUNT(*) AS count FROM responses WHERE event_id = ?').get(createdId).count,
+    0
+  );
+});
+
+test('testing workspace can reset responses for a test event only', async () => {
+  const participant = insertParticipant({
+    name: 'Reset Person',
+    email: 'reset.person@example.com',
+    rsvp_token: 'reset-person-token'
+  });
+  const event = insertEvent({
+    title: '[TEST] Resettable Event',
+    event_date: '2999-04-15',
+    is_published: 1
+  });
+  insertResponse(participant.id, event.id, {
+    status: 'yes',
+    attendee_names: '["Reset Person"]'
+  });
+  const cookie = await signInAsAdmin();
+
+  const response = await fetch(`${baseUrl}/admin/testing/reset-event`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      cookie
+    },
+    body: new URLSearchParams({
+      event_id: String(event.id),
+      participant_id: String(participant.id)
+    }),
+    redirect: 'manual'
+  });
+
+  assert.equal(response.status, 302);
+  assert.equal(response.headers.get('location'), `/admin/testing?eventId=${event.id}&participantId=${participant.id}`);
+  assert.equal(
+    db.prepare('SELECT COUNT(*) AS count FROM responses WHERE event_id = ?').get(event.id).count,
+    0
+  );
 });
 
 test('admin event create and update routes persist slug settings and keep old slug links working after removal', async () => {

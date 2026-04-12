@@ -46,6 +46,7 @@ const router = express.Router();
 const BASE_URL = process.env.BASE_URL || 'https://dunedin-euchre.com';
 const ADMIN_EMAILS = (process.env.ADMIN_EMAIL || '')
   .split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
+const TEST_EVENT_PREFIX = '[TEST]';
 const uploadsDir = getUploadsDir();
 
 if (!fs.existsSync(uploadsDir)) {
@@ -176,6 +177,11 @@ function parseEventId(value) {
 }
 
 function parseLocationId(value) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+function parseParticipantId(value) {
   const parsed = Number(value);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 }
@@ -482,6 +488,76 @@ function shouldReturnToEvents(body) {
   return body && body.return_to === 'events';
 }
 
+function shouldReturnToTesting(body) {
+  return body && body.return_to === 'testing';
+}
+
+function buildTestingRedirect(eventId, participantId) {
+  const searchParams = new URLSearchParams();
+  const normalizedEventId = parseEventId(eventId);
+  const normalizedParticipantId = parseParticipantId(participantId);
+
+  if (normalizedEventId) {
+    searchParams.set('eventId', String(normalizedEventId));
+  }
+  if (normalizedParticipantId) {
+    searchParams.set('participantId', String(normalizedParticipantId));
+  }
+
+  const query = searchParams.toString();
+  return query ? `/admin/testing?${query}` : '/admin/testing';
+}
+
+function getDateKeyInTimeZone(referenceDate = new Date(), timeZone = process.env.EVENT_TIMEZONE || 'America/New_York') {
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  });
+  const parts = formatter.formatToParts(referenceDate).reduce((accumulator, part) => {
+    if (part.type !== 'literal') {
+      accumulator[part.type] = part.value;
+    }
+    return accumulator;
+  }, {});
+
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}
+
+function getSafeTestEventDate(sourceEventDate) {
+  const todayKey = getDateKeyInTimeZone();
+  if (sourceEventDate && sourceEventDate > todayKey) {
+    return sourceEventDate;
+  }
+
+  return getDateKeyInTimeZone(new Date(Date.now() + 14 * 24 * 60 * 60 * 1000));
+}
+
+function isTestEvent(event) {
+  return Boolean(event && String(event.title || '').trim().startsWith(TEST_EVENT_PREFIX));
+}
+
+function buildTestEventTitle(event) {
+  const sourceTitle = getEventTitle(event).replace(/^\[TEST\]\s*/i, '').trim();
+  return `${TEST_EVENT_PREFIX} ${sourceTitle}`;
+}
+
+function getTestingEvent(allEvents, requestedEventId) {
+  if (requestedEventId) return getEventById(requestedEventId);
+
+  const testEvent = allEvents.find(isTestEvent);
+  return testEvent || allEvents[0] || null;
+}
+
+function getTestingParticipant(requestedParticipantId) {
+  const participantId = parseParticipantId(requestedParticipantId);
+  if (participantId) return getParticipantById(participantId);
+
+  const participants = listActiveParticipants();
+  return participants.length > 0 ? getParticipantById(participants[0].id) : null;
+}
+
 // ── GET /admin ───────────────────────────────────────────────
 router.get('/', (req, res) => {
   if (req.session && req.session.adminAuthenticated) {
@@ -593,6 +669,46 @@ router.get('/dashboard', requireAdmin, (req, res) => {
     isEventPublished,
     isPublicRosterVisible,
     buildPublicEventPath,
+    baseUrl: BASE_URL,
+    defaultTestEmail: ADMIN_EMAILS[0] || '',
+    flash: req.session.flash || null
+  });
+  delete req.session.flash;
+});
+
+// ── GET /admin/testing ───────────────────────────────────────
+router.get('/testing', requireAdmin, (req, res) => {
+  const requestedEventId = parseEventId(req.query.eventId);
+  const requestedParticipantId = parseParticipantId(req.query.participantId);
+  const allEvents = listEvents();
+  const inviteParticipants = listActiveParticipants();
+  const event = getTestingEvent(allEvents, requestedEventId);
+  const participant = getTestingParticipant(requestedParticipantId);
+  const testEvents = allEvents.filter(isTestEvent);
+
+  if (requestedEventId && !event) {
+    return res.status(404).send('<h1 style="font-family:sans-serif;padding:2rem">Event not found.</h1>');
+  }
+
+  if (requestedParticipantId && !participant) {
+    return res.status(404).send('<h1 style="font-family:sans-serif;padding:2rem">Participant not found.</h1>');
+  }
+
+  res.render('admin/testing', {
+    event,
+    participant,
+    allEvents,
+    testEvents,
+    inviteParticipants,
+    buildPublicEventPath,
+    buildRsvpPath,
+    formatEventDate,
+    formatTime,
+    getArrivalNotes,
+    getEventTitle,
+    getParticipantPartyMembers,
+    isEventPublished,
+    isTestEvent,
     baseUrl: BASE_URL,
     defaultTestEmail: ADMIN_EMAILS[0] || '',
     flash: req.session.flash || null
@@ -1038,6 +1154,79 @@ router.post('/participants/:id/delete', requireAdmin, (req, res) => {
   res.redirect(buildParticipantsRedirect(selectedEventId));
 });
 
+// ── POST /admin/testing/create-event ────────────────────────
+router.post('/testing/create-event', requireAdmin, (req, res) => {
+  const sourceEvent = getEventById(parseEventId(req.body.source_event_id));
+  const participantId = parseParticipantId(req.body.participant_id);
+
+  if (!sourceEvent) {
+    req.session.flash = 'Choose an event to clone into a test event.';
+    return res.redirect(buildTestingRedirect(null, participantId));
+  }
+
+  const result = db.prepare(`
+    INSERT INTO events (
+      title,
+      public_slug,
+      event_date,
+      location_id,
+      location_name,
+      location_address,
+      location_image,
+      map_image,
+      map_embed_url,
+      map_link_url,
+      start_time,
+      end_time,
+      arrival_notes,
+      notes,
+      is_published,
+      show_public_roster
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    buildTestEventTitle(sourceEvent),
+    null,
+    getSafeTestEventDate(sourceEvent.event_date),
+    sourceEvent.location_id,
+    sourceEvent.location_name,
+    sourceEvent.location_address,
+    sourceEvent.location_image,
+    sourceEvent.map_image,
+    sourceEvent.map_embed_url,
+    sourceEvent.map_link_url,
+    sourceEvent.start_time,
+    sourceEvent.end_time,
+    sourceEvent.arrival_notes,
+    sourceEvent.notes,
+    1,
+    sourceEvent.show_public_roster
+  );
+
+  req.session.flash = 'Test event created. Preview and one-off invites stay isolated from the full roster.';
+  res.redirect(buildTestingRedirect(result.lastInsertRowid, participantId));
+});
+
+// ── POST /admin/testing/reset-event ─────────────────────────
+router.post('/testing/reset-event', requireAdmin, (req, res) => {
+  const event = getEventById(parseEventId(req.body.event_id));
+  const participantId = parseParticipantId(req.body.participant_id);
+
+  if (!event) {
+    req.session.flash = 'Choose a test event to reset.';
+    return res.redirect(buildTestingRedirect(null, participantId));
+  }
+
+  if (!isTestEvent(event)) {
+    req.session.flash = 'Only events labeled [TEST] can be reset from the testing workspace.';
+    return res.redirect(buildTestingRedirect(event.id, participantId));
+  }
+
+  db.prepare('DELETE FROM responses WHERE event_id = ?').run(event.id);
+  req.session.flash = 'Responses cleared for the selected test event.';
+  res.redirect(buildTestingRedirect(event.id, participantId));
+});
+
 // ── GET /admin/event/:id/preview ────────────────────────────
 router.get('/event/:id/preview', requireAdmin, (req, res) => {
   const event = getEventById(req.params.id);
@@ -1081,20 +1270,24 @@ router.post('/event/:id/notify', requireAdmin, async (req, res) => {
 // ── POST /admin/event/:id/test-invite ───────────────────────
 router.post('/event/:id/test-invite', requireAdmin, async (req, res) => {
   const event = getEventById(req.params.id);
+  const participantId = parseParticipantId(req.body.participant_id);
+  const redirectPath = shouldReturnToTesting(req.body)
+    ? buildTestingRedirect(event ? event.id : null, participantId)
+    : buildDashboardRedirect(event ? event.id : null);
   if (!event) {
     return res.status(404).send('<h1 style="font-family:sans-serif;padding:2rem">Event not found.</h1>');
   }
 
-  const participant = getParticipantById(parseEventId(req.body.participant_id));
+  const participant = getParticipantById(participantId);
   if (!participant) {
     req.session.flash = 'Choose an active participant to preview.';
-    return res.redirect(buildDashboardRedirect(event.id));
+    return res.redirect(redirectPath);
   }
 
   const testEmail = normalizeEmail(req.body.test_email);
   if (!testEmail || !testEmail.includes('@')) {
     req.session.flash = 'Enter a valid test email address.';
-    return res.redirect(buildDashboardRedirect(event.id));
+    return res.redirect(redirectPath);
   }
 
   try {
@@ -1108,7 +1301,7 @@ router.post('/event/:id/test-invite', requireAdmin, async (req, res) => {
     req.session.flash = `Unable to send test invite to ${testEmail}.`;
   }
 
-  res.redirect(buildDashboardRedirect(event.id));
+  res.redirect(redirectPath);
 });
 
 // ── GET /admin/stats ──────────────────────────────────────────

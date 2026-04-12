@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dunedin Euchre – Testing</title>
+  <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body class="admin-page">
+
+<%- include('../partials/admin-nav', { active: 'testing' }) %>
+
+<main class="admin-main">
+  <div class="admin-content">
+
+    <% if (flash) { %>
+      <div class="flash-msg"><%= flash %></div>
+    <% } %>
+
+    <img src="/images/dunedin-logo-transparent.png" alt="Dunedin Euchre" class="dashboard-logo">
+
+    <section class="card admin-card" style="margin-bottom:1.5rem;">
+      <div class="card-header">
+        <div class="admin-card-header-text">
+          <h2 class="card-title">Testing Workspace</h2>
+          <p class="admin-card-copy">Preview the invitee flow, send a single test email, and keep repeat testing isolated from real event responses.</p>
+        </div>
+      </div>
+
+      <% if (allEvents.length === 0) { %>
+        <p class="admin-card-note">Create an event first, then come back here to clone a safe test copy or preview the workflow.</p>
+        <div class="admin-actions" style="margin-top:1rem;">
+          <a href="/admin/events" class="btn-secondary">Open Events</a>
+          <a href="/admin/dashboard" class="btn-secondary">Open Dashboard</a>
+        </div>
+      <% } else if (inviteParticipants.length === 0) { %>
+        <p class="admin-card-note">Add at least one active participant to the roster before using the testing workspace.</p>
+        <div class="admin-actions" style="margin-top:1rem;">
+          <a href="/admin/participants#add-member" class="btn-secondary">Add Participant</a>
+          <a href="/admin/roster" class="btn-secondary">Open Roster</a>
+        </div>
+      <% } else { %>
+        <form method="GET" action="/admin/testing" class="inline-form testing-selection-form">
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Event to test</label>
+              <select name="eventId" class="form-input">
+                <% allEvents.forEach(function(item) { %>
+                  <option value="<%= item.id %>" <%= event && event.id === item.id ? 'selected' : '' %>>
+                    <%= item.event_date %> · <%= getEventTitle(item) %>
+                  </option>
+                <% }); %>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Preview as participant</label>
+              <select name="participantId" class="form-input">
+                <% inviteParticipants.forEach(function(entry) { %>
+                  <option value="<%= entry.id %>" <%= participant && participant.id === entry.id ? 'selected' : '' %>>
+                    <%= entry.name %> · <%= entry.email %>
+                  </option>
+                <% }); %>
+              </select>
+            </div>
+            <button type="submit" class="btn-secondary" style="align-self:flex-end;">Load Workspace</button>
+          </div>
+        </form>
+
+        <% if (event && participant) { %>
+          <% const arrivalNotes = getArrivalNotes(event); %>
+          <% const previewPath = buildRsvpPath(participant, event); %>
+          <div class="testing-summary-grid">
+            <article class="dashboard-detail-card">
+              <p class="dashboard-detail-label">Selected event</p>
+              <p class="dashboard-detail-value"><%= getEventTitle(event) %></p>
+              <p class="dashboard-detail-meta"><%= formatEventDate(event.event_date) %> · <%= formatTime(event.start_time) %> – <%= formatTime(event.end_time) %></p>
+              <p class="dashboard-detail-meta"><%= event.location_name %></p>
+              <div class="dashboard-status-row" style="margin-top:0.35rem;">
+                <span class="status-pill <%= isTestEvent(event) ? 'pill-maybe' : 'pill-none' %>">
+                  <%= isTestEvent(event) ? 'Test event' : 'Live event' %>
+                </span>
+                <span class="status-pill <%= isEventPublished(event) ? 'pill-yes' : 'pill-none' %>">
+                  <%= isEventPublished(event) ? 'Published' : 'Draft' %>
+                </span>
+              </div>
+            </article>
+
+            <article class="dashboard-detail-card">
+              <p class="dashboard-detail-label">Selected participant</p>
+              <p class="dashboard-detail-value"><%= participant.name %></p>
+              <p class="dashboard-detail-meta"><%= participant.email %></p>
+              <p class="dashboard-detail-meta"><%= getParticipantPartyMembers(participant).join(', ') %></p>
+            </article>
+
+            <article class="dashboard-detail-card">
+              <p class="dashboard-detail-label">Workflow notes</p>
+              <% if (isTestEvent(event)) { %>
+                <p class="dashboard-detail-meta">This event is marked <strong>[TEST]</strong>, so clearing its responses from this page is allowed.</p>
+              <% } else { %>
+                <p class="dashboard-detail-meta">One-off previews and single test emails are safe here, but repeated workflow testing is better on a cloned <strong>[TEST]</strong> event.</p>
+              <% } %>
+              <% if (arrivalNotes) { %>
+                <p class="dashboard-detail-meta dashboard-detail-multiline"><%= arrivalNotes %></p>
+              <% } %>
+            </article>
+          </div>
+
+          <div class="testing-alert <%= isTestEvent(event) ? 'testing-alert-safe' : '' %>">
+            <% if (isTestEvent(event)) { %>
+              <strong>Safe reset enabled.</strong> Responses for this selected test event can be cleared and rerun without touching the live event.
+            <% } else { %>
+              <strong>Live event selected.</strong> Bulk invite actions still live elsewhere in admin, so use the single-recipient tools below or clone a fresh <strong>[TEST]</strong> copy first.
+            <% } %>
+          </div>
+
+          <div class="testing-grid">
+            <section class="card admin-card testing-card">
+              <div class="card-header">
+                <div class="admin-card-header-text">
+                  <h3 class="card-title">Invitee Preview</h3>
+                  <p class="admin-card-copy">Open the exact RSVP page that this participant would receive for the selected event.</p>
+                </div>
+              </div>
+              <div class="testing-link-row">
+                <a href="/admin/event/<%= event.id %>/preview?participantId=<%= participant.id %>" target="_blank" class="btn-secondary">Open Invitee Preview</a>
+                <button class="btn-copy btn-sm" data-copy="<%= baseUrl + previewPath %>" title="Copy RSVP link">Copy RSVP Link</button>
+              </div>
+              <p class="dashboard-detail-meta"><%= baseUrl + previewPath %></p>
+              <div class="admin-actions" style="margin-top:0.4rem;">
+                <a href="/admin/dashboard?eventId=<%= event.id %>" class="btn-sm btn-secondary">Open Event in Dashboard</a>
+                <% if (isEventPublished(event)) { %>
+                  <a href="<%= buildPublicEventPath(event) %>" target="_blank" class="btn-sm btn-secondary">Open Event Page</a>
+                <% } %>
+              </div>
+            </section>
+
+            <section class="card admin-card testing-card">
+              <div class="card-header">
+                <div class="admin-card-header-text">
+                  <h3 class="card-title">Single Test Email</h3>
+                  <p class="admin-card-copy">Send one invite email to yourself without notifying the full roster.</p>
+                </div>
+              </div>
+              <form method="POST" action="/admin/event/<%= event.id %>/test-invite" class="testing-form-stack">
+                <input type="hidden" name="participant_id" value="<%= participant.id %>">
+                <input type="hidden" name="return_to" value="testing">
+                <div class="form-group">
+                  <label class="form-label">Send test email to</label>
+                  <input
+                    type="email"
+                    name="test_email"
+                    class="form-input"
+                    value="<%= defaultTestEmail %>"
+                    placeholder="you@example.com"
+                    required
+                  >
+                </div>
+                <button type="submit" class="btn-secondary">Send One Test Invite</button>
+              </form>
+            </section>
+
+            <section class="card admin-card testing-card">
+              <div class="card-header">
+                <div class="admin-card-header-text">
+                  <h3 class="card-title">Test Event Tools</h3>
+                  <p class="admin-card-copy">Clone the selected event into a fresh <strong>[TEST]</strong> copy or reset a test run and start over.</p>
+                </div>
+              </div>
+
+              <form method="POST" action="/admin/testing/create-event" class="testing-form-stack">
+                <input type="hidden" name="source_event_id" value="<%= event.id %>">
+                <input type="hidden" name="participant_id" value="<%= participant.id %>">
+                <button type="submit" class="btn-secondary">Create Fresh [TEST] Copy</button>
+                <p class="dashboard-detail-meta">The clone keeps the selected event’s venue, time, notes, and roster visibility, clears responses, removes the public slug, and opens the new test event here.</p>
+              </form>
+
+              <% if (isTestEvent(event)) { %>
+                <form
+                  method="POST"
+                  action="/admin/testing/reset-event"
+                  class="testing-form-stack"
+                  onsubmit="return confirm('Clear all responses for this [TEST] event?')"
+                >
+                  <input type="hidden" name="event_id" value="<%= event.id %>">
+                  <input type="hidden" name="participant_id" value="<%= participant.id %>">
+                  <button type="submit" class="btn-secondary btn-danger">Reset Responses For This [TEST] Event</button>
+                </form>
+              <% } %>
+            </section>
+          </div>
+
+          <section class="card admin-card" style="margin-top:1.5rem;">
+            <div class="card-header">
+              <div class="admin-card-header-text">
+                <h3 class="card-title">Current Test Events</h3>
+                <p class="admin-card-copy">Quick access to the isolated test copies already in the system.</p>
+              </div>
+            </div>
+
+            <% if (testEvents.length > 0) { %>
+              <div class="dashboard-mini-list">
+                <% testEvents.forEach(function(testEvent) { %>
+                  <article class="dashboard-mini-item">
+                    <span class="dashboard-mini-title"><%= getEventTitle(testEvent) %></span>
+                    <span class="dashboard-mini-meta"><%= formatEventDate(testEvent.event_date) %> · <%= formatTime(testEvent.start_time) %> – <%= formatTime(testEvent.end_time) %></span>
+                    <div class="admin-actions" style="margin-top:0.25rem;">
+                      <a href="/admin/testing?eventId=<%= testEvent.id %>&participantId=<%= participant.id %>" class="btn-sm btn-secondary">Use In Testing</a>
+                      <a href="/admin/dashboard?eventId=<%= testEvent.id %>" class="btn-sm btn-secondary">Open In Dashboard</a>
+                    </div>
+                  </article>
+                <% }); %>
+              </div>
+            <% } else { %>
+              <p class="admin-card-note">No test events yet. Use <strong>Create Fresh [TEST] Copy</strong> above to make one from the currently selected event.</p>
+            <% } %>
+          </section>
+        <% } %>
+      <% } %>
+    </section>
+  </div>
+</main>
+
+<script src="/js/admin.js"></script>
+</body>
+</html>
