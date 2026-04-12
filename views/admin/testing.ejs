@@ -27,10 +27,10 @@
         </div>
       </div>
 
-      <% if (sourceEvents.length === 0) { %>
-        <p class="admin-card-note">Create a regular event first, then come back here to clone a safe test copy and run the workflow in isolation.</p>
+      <% if (locations.length === 0) { %>
+        <p class="admin-card-note">Add at least one saved location before using the testing workspace. Standalone [TEST] events are created from saved venues here.</p>
         <div class="admin-actions" style="margin-top:1rem;">
-          <a href="/admin/events" class="btn-secondary">Open Events</a>
+          <a href="/admin/locations" class="btn-secondary">Add Location</a>
           <a href="/admin/dashboard" class="btn-secondary">Open Dashboard</a>
         </div>
       <% } else if (inviteParticipants.length === 0) { %>
@@ -48,16 +48,16 @@
           <section class="card admin-card testing-card">
             <div class="card-header">
               <div class="admin-card-header-text">
-                <h3 class="card-title">Create Isolated Test Copy</h3>
-                <p class="admin-card-copy">Start from a real event, but generate a separate <strong>[TEST]</strong> event that won’t appear in the normal dashboard or schedule.</p>
+                <h3 class="card-title">Create Standalone [TEST] Event</h3>
+                <p class="admin-card-copy">This does <strong>not</strong> create a live event. It makes a separate testing-only event from a saved location with the standard event window.</p>
               </div>
             </div>
             <form method="POST" action="/admin/testing/create-event" class="testing-form-stack">
               <div class="form-group">
-                <label class="form-label">Clone from real event</label>
-                <select name="source_event_id" class="form-input">
-                  <% sourceEvents.forEach(function(sourceEvent) { %>
-                    <option value="<%= sourceEvent.id %>"><%= sourceEvent.event_date %> · <%= getEventTitle(sourceEvent) %></option>
+                <label class="form-label">Use saved location</label>
+                <select name="location_id" class="form-input">
+                  <% locations.forEach(function(location) { %>
+                    <option value="<%= location.id %>"><%= location.name %></option>
                   <% }); %>
                 </select>
               </div>
@@ -69,17 +69,52 @@
                       <%= entry.name %> · <%= entry.email %>
                     </option>
                   <% }); %>
-                </select>
-              </div>
-              <button type="submit" class="btn-secondary">Create Fresh [TEST] Copy</button>
-              <p class="dashboard-detail-meta">The copy keeps venue, time, notes, and roster visibility, removes the slug, clears responses, and opens in this testing workspace.</p>
+                  </select>
+                </div>
+              <button type="submit" class="btn-secondary">Create Standalone [TEST] Event</button>
+              <p class="dashboard-detail-meta">The test event is published, uses the standard 6:00 PM to 9:00 PM window, starts with no responses, and stays hidden from the normal dashboard and schedule.</p>
             </form>
           </section>
 
           <section class="card admin-card testing-card">
             <div class="card-header">
               <div class="admin-card-header-text">
-                <h3 class="card-title">Choose Existing Test Event</h3>
+                <h3 class="card-title">Clone From Real Event</h3>
+                <p class="admin-card-copy">Optional: if you want to copy venue, notes, or timing from an existing live event, clone it into a separate <strong>[TEST]</strong> event here.</p>
+              </div>
+            </div>
+            <% if (sourceEvents.length > 0) { %>
+              <form method="POST" action="/admin/testing/create-event" class="testing-form-stack">
+                <div class="form-group">
+                  <label class="form-label">Clone from real event</label>
+                  <select name="source_event_id" class="form-input">
+                    <% sourceEvents.forEach(function(sourceEvent) { %>
+                      <option value="<%= sourceEvent.id %>"><%= sourceEvent.event_date %> · <%= getEventTitle(sourceEvent) %></option>
+                    <% }); %>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Default participant</label>
+                  <select name="participant_id" class="form-input">
+                    <% inviteParticipants.forEach(function(entry) { %>
+                      <option value="<%= entry.id %>" <%= participant && participant.id === entry.id ? 'selected' : '' %>>
+                        <%= entry.name %> · <%= entry.email %>
+                      </option>
+                    <% }); %>
+                  </select>
+                </div>
+                <button type="submit" class="btn-secondary">Create [TEST] Copy From Real Event</button>
+                <p class="dashboard-detail-meta">This copies the selected event’s venue, notes, timing, and roster visibility into a separate testing-only event.</p>
+              </form>
+            <% } else { %>
+              <p class="admin-card-note">No real event records exist yet, but you can still use the standalone [TEST] event creator on the left.</p>
+            <% } %>
+          </section>
+
+          <section class="card admin-card testing-card">
+            <div class="card-header">
+              <div class="admin-card-header-text">
+                <h3 class="card-title">Choose Existing [TEST] Event</h3>
                 <p class="admin-card-copy">If you already created a <strong>[TEST]</strong> event, load it here and keep testing without touching the real schedule.</p>
               </div>
             </div>
@@ -108,7 +143,7 @@
                 <button type="submit" class="btn-secondary">Load Test Workspace</button>
               </form>
             <% } else { %>
-              <p class="admin-card-note">No test events yet. Create one from a real event using the card on the left.</p>
+              <p class="admin-card-note">No test events yet. Create one with either of the setup cards on the left.</p>
             <% } %>
           </section>
         </div>
@@ -243,7 +278,7 @@
             <% } %>
           </section>
         <% } else if (testEvents.length === 0) { %>
-          <p class="admin-card-note">Create a fresh <strong>[TEST]</strong> copy above to unlock the preview, single-email, and reset tools.</p>
+          <p class="admin-card-note">Create a standalone or cloned <strong>[TEST]</strong> event above to unlock the preview, single-email, and reset tools.</p>
         <% } %>
       <% } %>
     </section>

@@ -544,7 +544,9 @@ function isTestEvent(event) {
 }
 
 function buildTestEventTitle(event) {
-  const sourceTitle = getEventTitle(event).replace(/^\[TEST\]\s*/i, '').trim();
+  const sourceTitle = event
+    ? getEventTitle(event).replace(/^\[TEST\]\s*/i, '').trim()
+    : 'Dunedin Euchre Night';
   return `${TEST_EVENT_PREFIX} ${sourceTitle}`;
 }
 
@@ -694,6 +696,7 @@ router.get('/testing', requireAdmin, (req, res) => {
   const requestedParticipantId = parseParticipantId(req.query.participantId);
   const allEvents = listTestingEvents();
   const sourceEvents = listProductionEvents();
+  const locations = listLocations();
   const inviteParticipants = listActiveParticipants();
   const event = getTestingEvent(allEvents, requestedEventId);
   const participant = getTestingParticipant(requestedParticipantId);
@@ -717,6 +720,7 @@ router.get('/testing', requireAdmin, (req, res) => {
     participant,
     allEvents: testEvents,
     sourceEvents,
+    locations,
     testEvents,
     inviteParticipants,
     buildPublicEventPath,
@@ -1179,12 +1183,54 @@ router.post('/participants/:id/delete', requireAdmin, (req, res) => {
 
 // ── POST /admin/testing/create-event ────────────────────────
 router.post('/testing/create-event', requireAdmin, (req, res) => {
-  const sourceEvent = getEventById(parseEventId(req.body.source_event_id));
   const participantId = parseParticipantId(req.body.participant_id);
+  const sourceEventId = parseEventId(req.body.source_event_id);
+  const locationId = parseLocationId(req.body.location_id);
+  const sourceEvent = sourceEventId ? getEventById(sourceEventId) : null;
+  const location = locationId ? getLocationById(locationId) : null;
 
-  if (!sourceEvent) {
-    req.session.flash = 'Choose an event to clone into a test event.';
+  if (!sourceEvent && !location) {
+    req.session.flash = 'Choose either a real event to clone or a saved location for a standalone [TEST] event.';
     return res.redirect(buildTestingRedirect(null, participantId));
+  }
+
+  let eventInput;
+  if (sourceEvent) {
+    eventInput = {
+      title: buildTestEventTitle(sourceEvent),
+      event_date: getSafeTestEventDate(sourceEvent.event_date),
+      location_id: sourceEvent.location_id,
+      location_name: sourceEvent.location_name,
+      location_address: sourceEvent.location_address,
+      location_image: sourceEvent.location_image,
+      map_image: sourceEvent.map_image,
+      map_embed_url: sourceEvent.map_embed_url,
+      map_link_url: sourceEvent.map_link_url,
+      start_time: sourceEvent.start_time,
+      end_time: sourceEvent.end_time,
+      arrival_notes: sourceEvent.arrival_notes,
+      notes: sourceEvent.notes,
+      is_published: 1,
+      show_public_roster: sourceEvent.show_public_roster
+    };
+  } else {
+    eventInput = {
+      title: buildTestEventTitle(null),
+      event_date: getSafeTestEventDate(null),
+      location_id: location.id,
+      location_name: location.name,
+      location_address: normalizeLocationAddress(location.address),
+      location_image: location.location_image || null,
+      map_image: null,
+      map_embed_url: location.map_embed_url || null,
+      map_link_url: location.map_link_url || null,
+      start_time: '18:00',
+      end_time: '21:00',
+      arrival_notes: 'Standalone test event created from the testing workspace.',
+      notes: 'Standalone test event created from the testing workspace.',
+      is_published: 1,
+      show_public_roster: 1
+    };
   }
 
   const result = db.prepare(`
@@ -1208,25 +1254,27 @@ router.post('/testing/create-event', requireAdmin, (req, res) => {
     )
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
-    buildTestEventTitle(sourceEvent),
+    eventInput.title,
     null,
-    getSafeTestEventDate(sourceEvent.event_date),
-    sourceEvent.location_id,
-    sourceEvent.location_name,
-    sourceEvent.location_address,
-    sourceEvent.location_image,
-    sourceEvent.map_image,
-    sourceEvent.map_embed_url,
-    sourceEvent.map_link_url,
-    sourceEvent.start_time,
-    sourceEvent.end_time,
-    sourceEvent.arrival_notes,
-    sourceEvent.notes,
-    1,
-    sourceEvent.show_public_roster
+    eventInput.event_date,
+    eventInput.location_id,
+    eventInput.location_name,
+    eventInput.location_address,
+    eventInput.location_image,
+    eventInput.map_image,
+    eventInput.map_embed_url,
+    eventInput.map_link_url,
+    eventInput.start_time,
+    eventInput.end_time,
+    eventInput.arrival_notes,
+    eventInput.notes,
+    eventInput.is_published,
+    eventInput.show_public_roster
   );
 
-  req.session.flash = 'Test event created. Preview and one-off invites stay isolated from the full roster.';
+  req.session.flash = sourceEvent
+    ? 'Test copy created from the selected real event.'
+    : 'Standalone [TEST] event created from the testing workspace.';
   res.redirect(buildTestingRedirect(result.lastInsertRowid, participantId));
 });
 

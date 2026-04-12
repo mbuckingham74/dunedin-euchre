@@ -914,6 +914,10 @@ test('testing workspace is available from admin and shows the end-to-end tools',
     email: 'testing.person@example.com',
     rsvp_token: 'testing-person-token'
   });
+  insertLocation({
+    name: 'Testing Hall',
+    address: '123 Main St\nDunedin, FL 34698'
+  });
   insertEvent({
     title: 'Real Event Source',
     event_date: '2999-04-01',
@@ -934,10 +938,66 @@ test('testing workspace is available from admin and shows the end-to-end tools',
   const body = await response.text();
   assert.match(body, /class="nav-link nav-active">Testing</);
   assert.match(body, /Testing Workspace/);
-  assert.match(body, /Create Isolated Test Copy/);
+  assert.match(body, /Create Standalone \[TEST\] Event/);
+  assert.match(body, /Clone From Real Event/);
   assert.match(body, /Open Invitee Preview/);
   assert.match(body, /Send One Test Invite/);
   assert.match(body, /Reset Responses For This \[TEST\] Event/);
+});
+
+test('testing workspace can create a standalone test event without any real event records', async () => {
+  const participant = insertParticipant({
+    name: 'Standalone Creator',
+    email: 'standalone.creator@example.com',
+    rsvp_token: 'standalone-creator-token'
+  });
+  const location = insertLocation({
+    name: 'Standalone Hall',
+    address: '456 Sunset Ave\nDunedin, FL 34698'
+  });
+  const cookie = await signInAsAdmin();
+
+  const pageResponse = await fetch(`${baseUrl}/admin/testing`, {
+    headers: { cookie }
+  });
+  const pageBody = await pageResponse.text();
+
+  assert.equal(pageResponse.status, 200);
+  assert.match(pageBody, /Create Standalone \[TEST\] Event/);
+  assert.match(pageBody, /This does <strong>not<\/strong> create a live event\./);
+  assert.doesNotMatch(pageBody, /Create a regular event first/);
+
+  const response = await fetch(`${baseUrl}/admin/testing/create-event`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      cookie
+    },
+    body: new URLSearchParams({
+      location_id: String(location.id),
+      participant_id: String(participant.id)
+    }),
+    redirect: 'manual'
+  });
+
+  assert.equal(response.status, 302);
+  const created = db.prepare(`
+    SELECT title, public_slug, location_id, location_name, start_time, end_time, is_published, show_public_roster
+    FROM events
+    ORDER BY id DESC
+    LIMIT 1
+  `).get();
+
+  assert.deepEqual(created, {
+    title: '[TEST] Dunedin Euchre Night',
+    public_slug: null,
+    location_id: location.id,
+    location_name: 'Standalone Hall',
+    start_time: '18:00',
+    end_time: '21:00',
+    is_published: 1,
+    show_public_roster: 1
+  });
 });
 
 test('testing workspace can clone an event into a fresh test copy', async () => {
