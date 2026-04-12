@@ -42,35 +42,85 @@
       <p class="greeting">Hi, <strong><%= participant.name %></strong></p>
 
       <%
-        const changesLeft = myResponse
-          ? maxChanges - myResponse.change_count
-          : maxChanges;
-        const atLimit = changesLeft <= 0;
+        const selectedAttendeeNames = myResponse ? myResponse.attendeeNames : [];
+        function joinNames(names) {
+          if (!names || names.length === 0) return '';
+          if (names.length === 1) return names[0];
+          if (names.length === 2) return names[0] + ' and ' + names[1];
+          return names.slice(0, -1).join(', ') + ', and ' + names[names.length - 1];
+        }
+
+        let currentStatusText = 'No response yet';
+        let currentStatusClass = 'status-none';
+        let currentDetailText = 'You have not replied for this event yet.';
+
+        if (myResponse && myResponse.status === 'yes') {
+          currentStatusText = '✓ Yes';
+          currentStatusClass = 'status-yes';
+          currentDetailText = myResponse.declinedNames.length > 0
+            ? 'Coming: ' + joinNames(myResponse.attendeeNames) + '. Not attending: ' + joinNames(myResponse.declinedNames) + '.'
+            : 'Coming: ' + joinNames(myResponse.attendeeNames) + '.';
+        } else if (myResponse && myResponse.status === 'maybe') {
+          currentStatusText = '? Maybe';
+          currentStatusClass = 'status-maybe';
+          currentDetailText = 'Still deciding for ' + joinNames(myResponse.partyMembers) + '.';
+        } else if (myResponse && myResponse.status === 'no') {
+          currentStatusText = '✕ No';
+          currentStatusClass = 'status-no';
+          currentDetailText = 'Not attending: ' + joinNames(myResponse.partyMembers) + '.';
+        }
       %>
 
       <div class="status-buttons" id="status-buttons">
         <button
+          type="button"
           class="btn-status btn-yes <%= (myResponse && myResponse.status === 'yes') ? 'active' : '' %>"
           data-status="yes"
-          <%= atLimit ? 'disabled' : '' %>
+          <%= !canEdit ? 'disabled' : '' %>
         >
           ✓ Yes, I'll be there
         </button>
         <button
+          type="button"
           class="btn-status btn-no <%= (myResponse && myResponse.status === 'no') ? 'active' : '' %>"
           data-status="no"
-          <%= atLimit ? 'disabled' : '' %>
+          <%= !canEdit ? 'disabled' : '' %>
         >
           ✕ Can't make it
         </button>
         <button
+          type="button"
           class="btn-status btn-maybe <%= (myResponse && myResponse.status === 'maybe') ? 'active' : '' %>"
           data-status="maybe"
-          <%= atLimit ? 'disabled' : '' %>
+          <%= !canEdit ? 'disabled' : '' %>
         >
           ? Not sure yet
         </button>
       </div>
+
+      <% if (participantPartyMembers.length > 1) { %>
+        <div
+          class="party-selector <%= (myResponse && myResponse.status === 'yes') ? '' : 'party-selector-hidden' %>"
+          id="attendee-selector"
+        >
+          <label class="comment-label">Who is coming?</label>
+          <p class="party-selector-copy">Choose one or both names for this event.</p>
+          <div class="party-selector-grid">
+            <% participantPartyMembers.forEach(function(name) { %>
+              <label class="party-checkbox">
+                <input
+                  type="checkbox"
+                  class="attendee-checkbox"
+                  value="<%= name %>"
+                  <%= selectedAttendeeNames.includes(name) ? 'checked' : '' %>
+                  <%= !canEdit ? 'disabled' : '' %>
+                >
+                <span><%= name %></span>
+              </label>
+            <% }); %>
+          </div>
+        </div>
+      <% } %>
 
       <div class="comment-wrap" id="comment-wrap">
         <label for="comment-input" class="comment-label">Add a note (optional)</label>
@@ -79,40 +129,36 @@
           class="comment-input"
           maxlength="400"
           placeholder="e.g. Running 10 minutes late..."
-          <%= atLimit ? 'disabled' : '' %>
+          <%= !canEdit ? 'disabled' : '' %>
         ><%= (myResponse && myResponse.comment) ? myResponse.comment : '' %></textarea>
         <div class="char-counter"><span id="char-count"><%= (myResponse && myResponse.comment) ? myResponse.comment.length : 0 %></span> / 400</div>
       </div>
 
       <button
+        type="button"
         class="btn-submit"
         id="submit-btn"
-        disabled
+        <%= canEdit ? 'disabled' : 'disabled' %>
         aria-label="Submit your RSVP"
       >
-        Submit RSVP
+        Save RSVP
       </button>
 
       <div class="rsvp-feedback" id="rsvp-feedback" aria-live="polite"></div>
 
-      <% if (myResponse) { %>
-        <div class="current-rsvp" id="current-rsvp">
-          <span class="current-label">Current response:</span>
-          <span class="current-status status-<%= myResponse.status %>">
-            <%= myResponse.status === 'yes' ? '✓ Yes' : myResponse.status === 'no' ? '✕ No' : '? Maybe' %>
-          </span>
-        </div>
-      <% } %>
+      <div class="current-rsvp" id="current-rsvp">
+        <span class="current-label">Current response:</span>
+        <span class="current-status <%= currentStatusClass %>" id="current-rsvp-status"><%= currentStatusText %></span>
+        <span class="current-detail" id="current-rsvp-detail"><%= currentDetailText %></span>
+      </div>
 
-      <% if (!atLimit) { %>
-        <p class="changes-note" id="changes-note">
-          You can change your answer up to <strong><%= changesLeft %></strong> more time<%= changesLeft === 1 ? '' : 's' %>.
-        </p>
-      <% } else { %>
-        <p class="changes-note limit-reached">
-          You've reached the maximum number of changes for this event.
-        </p>
-      <% } %>
+      <p class="changes-note <%= canEdit ? '' : 'limit-reached' %>" id="changes-note">
+        <% if (canEdit) { %>
+          You can update this RSVP until the event starts on <strong><%= eventStartLabel %></strong>.
+        <% } else { %>
+          RSVP changes closed when the event started on <strong><%= eventStartLabel %></strong>.
+        <% } %>
+      </p>
     </section>
 
   </div><!-- /.rsvp-left -->
@@ -125,7 +171,12 @@
       <div class="roster-counts" id="roster-counts">
         <%
           const counts = { yes: 0, no: 0, maybe: 0, none: 0 };
-          roster.forEach(r => { if (r.status) counts[r.status]++; else counts.none++; });
+          roster.forEach(r => {
+            counts.yes += r.attendeeNames.length;
+            counts.no += r.declinedNames.length;
+            counts.maybe += r.maybeNames.length;
+            counts.none += r.pendingNames.length;
+          });
         %>
         <span class="count-badge count-yes" title="Yes"><%= counts.yes %> Yes</span>
         <span class="count-badge count-maybe" title="Maybe"><%= counts.maybe %> Maybe</span>
@@ -152,6 +203,17 @@
                 <span class="status-pill pill-none">—</span>
               <% } %>
             </span>
+            <% if (p.status === 'yes') { %>
+              <span class="roster-detail">
+                Coming: <%= joinNames(p.attendeeNames) %><% if (p.declinedNames.length > 0) { %>. Not attending: <%= joinNames(p.declinedNames) %><% } %>.
+              </span>
+            <% } else if (p.status === 'maybe') { %>
+              <span class="roster-detail">Still deciding for <%= joinNames(p.partyMembers) %>.</span>
+            <% } else if (p.status === 'no') { %>
+              <span class="roster-detail">Not attending: <%= joinNames(p.partyMembers) %>.</span>
+            <% } else if (p.partySize > 1) { %>
+              <span class="roster-detail">Waiting on <%= joinNames(p.partyMembers) %>.</span>
+            <% } %>
             <% if (p.comment) { %>
               <span class="roster-comment">"<%= p.comment %>"</span>
             <% } %>
@@ -172,8 +234,9 @@
 <script>
   const MY_PID    = <%= participant.id %>;
   const RSVP_POST_PATH = <%- JSON.stringify(rsvpPath) %>;
-  const MAX_CHANGES = <%= maxChanges %>;
-  let changesLeft = <%= changesLeft %>;
+  const CAN_EDIT = <%= canEdit ? 'true' : 'false' %>;
+  const PARTY_MEMBERS = <%- JSON.stringify(participantPartyMembers) %>;
+  const INITIAL_ATTENDEE_NAMES = <%- JSON.stringify(selectedAttendeeNames) %>;
   let selectedStatus = '<%= (myResponse && myResponse.status) ? myResponse.status : '' %>';
 </script>
 <script src="/js/rsvp.js"></script>

@@ -54,12 +54,12 @@ const participants = [
 ];
 
 const insert = db.prepare(
-  'INSERT OR IGNORE INTO participants (name, email, rsvp_token) VALUES (?, ?, ?)'
+  'INSERT OR IGNORE INTO participants (name, email, rsvp_token, party_members) VALUES (?, ?, ?, ?)'
 );
 
 const insertMany = db.transaction((rows) => {
   for (const p of rows) {
-    insert.run(p.name, p.email, uuidv4());
+    insert.run(p.name, p.email, uuidv4(), JSON.stringify([p.name]));
   }
 });
 

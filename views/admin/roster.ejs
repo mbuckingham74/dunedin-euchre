@@ -37,6 +37,7 @@
               <tr>
                 <th>Name</th>
                 <th>Email</th>
+                <th>Party Members</th>
               </tr>
             </thead>
             <tbody>
@@ -45,6 +46,12 @@
                   <td><%= participant.name %></td>
                   <td>
                     <a href="mailto:<%= participant.email %>" class="admin-email-link"><%= participant.email %></a>
+                  </td>
+                  <td>
+                    <%= participant.partyMembers.join(', ') %>
+                    <span style="color:var(--gray-500);font-size:0.85rem;">
+                      (<%= participant.partyMembers.length %>)
+                    </span>
                   </td>
                 </tr>
               <% }); %>

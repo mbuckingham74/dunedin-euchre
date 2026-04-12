@@ -70,6 +70,15 @@
             <label class="form-label">Email</label>
             <input type="email" name="email" class="form-input" required placeholder="email@example.com">
           </div>
+          <div class="form-group">
+            <label class="form-label">Party Members</label>
+            <textarea
+              name="party_members"
+              class="form-input"
+              rows="3"
+              placeholder="One per line or comma-separated, e.g. Pam&#10;Charlie"
+            ></textarea>
+          </div>
           <button type="submit" class="btn-primary" style="align-self:flex-end;">Add</button>
         </div>
       </form>
@@ -88,6 +97,7 @@
             <tr>
               <th>Name</th>
               <th>Email</th>
+              <th>Party Members</th>
               <th>RSVP Link</th>
               <th>Status</th>
               <th>Actions</th>
@@ -98,6 +108,12 @@
               <tr class="<%= !p.active ? 'row-inactive' : '' %>">
                 <td id="name-cell-<%= p.id %>"><%= p.name %></td>
                 <td id="email-cell-<%= p.id %>"><%= p.email %></td>
+                <td>
+                  <div><%= p.partyMembers.join(', ') %></div>
+                  <div style="font-size:0.8rem;color:var(--gray-500);margin-top:0.2rem;">
+                    <%= p.partyMembers.length %> person<%= p.partyMembers.length === 1 ? '' : 's' %>
+                  </div>
+                </td>
                 <td>
                   <% const link = selectedEvent ? baseUrl + buildRsvpPath(p, selectedEvent) : null; %>
                   <% if (p.active && link) { %>
@@ -118,7 +134,15 @@
                 </td>
                 <td class="actions-cell">
                   <% if (p.active) { %>
-                    <button class="btn-sm btn-secondary" onclick="openEditModal(<%= p.id %>, '<%= p.name.replace(/'/g, "\\'") %>', '<%= p.email %>', '<%= selectedEvent ? selectedEvent.id : '' %>')">Edit</button>
+                    <button
+                      type="button"
+                      class="btn-sm btn-secondary edit-participant-btn"
+                      data-id="<%= p.id %>"
+                      data-name="<%= p.name %>"
+                      data-email="<%= p.email %>"
+                      data-party-members="<%= encodeURIComponent(p.partyMembersInput) %>"
+                      data-selected-event-id="<%= selectedEvent ? selectedEvent.id : '' %>"
+                    >Edit</button>
                     <form method="POST" action="/admin/participants/<%= p.id %>/delete" style="display:inline;"
                           onsubmit="return confirm('Remove <%= p.name %>?')">
                       <input type="hidden" name="selected_event_id" value="<%= selectedEvent ? selectedEvent.id : '' %>">
@@ -149,6 +173,16 @@
         <label class="form-label">Email</label>
         <input type="email" id="edit-email" name="email" class="form-input" required>
       </div>
+      <div class="form-group" style="margin-top:0.75rem;">
+        <label class="form-label">Party Members</label>
+        <textarea
+          id="edit-party-members"
+          name="party_members"
+          class="form-input"
+          rows="4"
+          placeholder="One per line or comma-separated"
+        ></textarea>
+      </div>
       <div style="margin-top:1.25rem;display:flex;gap:0.75rem;">
         <button type="submit" class="btn-primary">Save</button>
         <button type="button" class="btn-secondary" onclick="closeEditModal()">Cancel</button>
@@ -158,18 +192,22 @@
 </div>
 
 <script>
-function openEditModal(id, name, email, selectedEventId) {
-  document.getElementById('edit-form').action = '/admin/participants/' + id + '/update';
-  document.getElementById('edit-name').value = name;
-  document.getElementById('edit-email').value = email;
-  document.getElementById('edit-selected-event-id').value = selectedEventId;
-  document.getElementById('edit-modal').style.display = 'flex';
-}
 function closeEditModal(e) {
   if (!e || e.target === document.getElementById('edit-modal')) {
     document.getElementById('edit-modal').style.display = 'none';
   }
 }
+
+document.querySelectorAll('.edit-participant-btn').forEach(function(button) {
+  button.addEventListener('click', function() {
+    document.getElementById('edit-form').action = '/admin/participants/' + button.dataset.id + '/update';
+    document.getElementById('edit-name').value = button.dataset.name || '';
+    document.getElementById('edit-email').value = button.dataset.email || '';
+    document.getElementById('edit-party-members').value = decodeURIComponent(button.dataset.partyMembers || '');
+    document.getElementById('edit-selected-event-id').value = button.dataset.selectedEventId || '';
+    document.getElementById('edit-modal').style.display = 'flex';
+  });
+});
 </script>
 <script src="/js/admin.js"></script>
 </body>

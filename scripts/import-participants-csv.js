@@ -141,11 +141,11 @@ function importParticipants(db, rows) {
     'SELECT id, name, email, active FROM participants WHERE email = ? COLLATE NOCASE'
   );
   const insertParticipant = db.prepare(
-    'INSERT INTO participants (name, email, rsvp_token) VALUES (?, ?, ?)'
+    'INSERT INTO participants (name, email, rsvp_token, party_members) VALUES (?, ?, ?, ?)'
   );
   const reactivateParticipant = db.prepare(`
     UPDATE participants
-    SET name = ?, active = 1
+    SET name = ?, party_members = ?, active = 1
     WHERE id = ?
   `);
 
@@ -161,7 +161,7 @@ function importParticipants(db, rows) {
       const existing = findByEmail.get(row.email);
 
       if (!existing) {
-        insertParticipant.run(row.name, row.email, uuidv4());
+        insertParticipant.run(row.name, row.email, uuidv4(), JSON.stringify([row.name]));
         summary.inserted++;
         continue;
       }
@@ -171,7 +171,7 @@ function importParticipants(db, rows) {
         continue;
       }
 
-      reactivateParticipant.run(row.name, existing.id);
+      reactivateParticipant.run(row.name, JSON.stringify([row.name]), existing.id);
       summary.reactivated++;
     }
 

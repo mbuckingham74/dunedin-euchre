@@ -278,6 +278,57 @@ const migrations = [
 
       backfillManagedLocations(db);
     }
+  },
+  {
+    id: '007_party_member_rsvps',
+    up(db) {
+      addColumnIfMissing(db, 'participants', 'party_members', 'party_members TEXT');
+      addColumnIfMissing(db, 'responses', 'attendee_names', 'attendee_names TEXT');
+
+      const participants = db.prepare(`
+        SELECT id, name
+        FROM participants
+        WHERE party_members IS NULL OR TRIM(party_members) = ''
+      `).all();
+      const updateParticipant = db.prepare(`
+        UPDATE participants
+        SET party_members = ?
+        WHERE id = ?
+      `);
+
+      for (const participant of participants) {
+        const fallbackName = (participant.name || '').trim();
+        const partyMembers = fallbackName ? JSON.stringify([fallbackName]) : '[]';
+        updateParticipant.run(partyMembers, participant.id);
+      }
+
+      const yesResponses = db.prepare(`
+        SELECT r.id, p.party_members, p.name
+        FROM responses r
+        JOIN participants p ON p.id = r.participant_id
+        WHERE r.status = 'yes' AND (r.attendee_names IS NULL OR TRIM(r.attendee_names) = '')
+      `).all();
+      const updateResponse = db.prepare(`
+        UPDATE responses
+        SET attendee_names = ?
+        WHERE id = ?
+      `);
+
+      for (const response of yesResponses) {
+        let attendeeNames = '[]';
+
+        try {
+          const parsed = JSON.parse(response.party_members);
+          attendeeNames = Array.isArray(parsed) && parsed.length > 0
+            ? JSON.stringify(parsed)
+            : JSON.stringify([(response.name || '').trim()].filter(Boolean));
+        } catch (error) {
+          attendeeNames = JSON.stringify([(response.name || '').trim()].filter(Boolean));
+        }
+
+        updateResponse.run(attendeeNames, response.id);
+      }
+    }
   }
 ];
 

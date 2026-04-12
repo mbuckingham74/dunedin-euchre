@@ -1,6 +1,6 @@
 'use strict';
 
-const { formatEventDate } = require('./email');
+const { formatEventDate, formatTime } = require('./email');
 
 function parseDateString(dateStr) {
   const [year, month, day] = (dateStr || '').split('-').map(Number);
@@ -130,6 +130,45 @@ function getArrivalNotes(event) {
   return (event && (event.arrival_notes || event.notes) ? (event.arrival_notes || event.notes) : '').trim();
 }
 
+function getEventClockParts(referenceDate = new Date(), timeZone = process.env.EVENT_TIMEZONE || 'America/New_York') {
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23'
+  });
+
+  const parts = formatter.formatToParts(referenceDate).reduce((accumulator, part) => {
+    if (part.type !== 'literal') {
+      accumulator[part.type] = part.value;
+    }
+    return accumulator;
+  }, {});
+
+  return {
+    dateKey: `${parts.year}-${parts.month}-${parts.day}`,
+    timeKey: `${parts.hour}:${parts.minute}`
+  };
+}
+
+function hasEventStarted(event, options = {}) {
+  if (!event || !event.event_date || !event.start_time) return false;
+
+  const { dateKey, timeKey } = getEventClockParts(options.referenceDate, options.timeZone);
+  if (event.event_date < dateKey) return true;
+  if (event.event_date > dateKey) return false;
+
+  return event.start_time <= timeKey;
+}
+
+function getEventStartLabel(event) {
+  if (!event || !event.event_date || !event.start_time) return '';
+  return `${formatEventDate(event.event_date)} at ${formatTime(event.start_time)}`;
+}
+
 function isEventPublished(event) {
   return Boolean(event && Number(event.is_published));
 }
@@ -216,7 +255,9 @@ module.exports = {
   buildMonthlyEventHistory,
   getFourthSaturdayDateKey,
   getArrivalNotes,
+  getEventStartLabel,
   getEventTitle,
+  hasEventStarted,
   isEventPublished,
   isPublicRosterVisible,
   normalizePublicSlug,

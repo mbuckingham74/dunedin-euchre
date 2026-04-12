@@ -5,7 +5,11 @@ const test = require('node:test');
 
 process.env.RESEND_API_KEY = process.env.RESEND_API_KEY || 're_test_key';
 
-const { buildMonthlyEventHistory, getFourthSaturdayDateKey } = require('../services/events');
+const {
+  buildMonthlyEventHistory,
+  getFourthSaturdayDateKey,
+  hasEventStarted
+} = require('../services/events');
 
 test('getFourthSaturdayDateKey returns the fourth Saturday for a month', () => {
   assert.equal(getFourthSaturdayDateKey(2026, 2), '2026-03-28');
@@ -52,5 +56,27 @@ test('buildMonthlyEventHistory shows missing scheduled months and moves past-tod
   assert.deepEqual(
     history.upcomingEntries.map(entry => entry.dateKey),
     ['2026-04-25', '2026-05-23']
+  );
+});
+
+test('hasEventStarted compares event start times in the configured timezone', () => {
+  const event = {
+    event_date: '2026-04-25',
+    start_time: '18:00'
+  };
+
+  assert.equal(
+    hasEventStarted(event, {
+      referenceDate: new Date('2026-04-25T21:59:00Z'),
+      timeZone: 'America/New_York'
+    }),
+    false
+  );
+  assert.equal(
+    hasEventStarted(event, {
+      referenceDate: new Date('2026-04-25T22:00:00Z'),
+      timeZone: 'America/New_York'
+    }),
+    true
   );
 });

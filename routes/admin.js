@@ -20,6 +20,14 @@ const {
 } = require('../services/events');
 const { buildPublicEventPath, buildRsvpPath } = require('../services/links');
 const {
+  buildPartyResponseView,
+  getIndividualCounts,
+  getParticipantPartyMembers,
+  getPartyMembersValidationError,
+  parsePartyMembersInput,
+  serializeNames
+} = require('../services/party');
+const {
   isPublicSlugConflictError,
   listEventPublicSlugs,
   reserveEventPublicSlug
@@ -112,25 +120,22 @@ function listEvents() {
 }
 
 function listEventsWithResponseStats() {
-  return applyManagedLocations(db.prepare(`
-    SELECT
-      ${EVENT_SELECT_FIELDS},
-      COALESCE(SUM(CASE WHEN r.status = 'yes' THEN 1 ELSE 0 END), 0) AS yes_count,
-      COALESCE(SUM(CASE WHEN r.status = 'maybe' THEN 1 ELSE 0 END), 0) AS maybe_count,
-      COALESCE(SUM(CASE WHEN r.status = 'no' THEN 1 ELSE 0 END), 0) AS no_count,
-      COUNT(r.id) AS response_count
-    FROM events e
-    LEFT JOIN locations l ON l.id = e.location_id
-    LEFT JOIN responses r ON r.event_id = e.id
-    GROUP BY e.id
-    ORDER BY e.event_date ASC, e.id ASC
-  `).all().map(row => ({
-    ...row,
-    yes_count: Number(row.yes_count || 0),
-    maybe_count: Number(row.maybe_count || 0),
-    no_count: Number(row.no_count || 0),
-    response_count: Number(row.response_count || 0)
-  })));
+  return listEvents()
+    .slice()
+    .sort((left, right) => (
+      left.event_date.localeCompare(right.event_date) ||
+      Number(left.id) - Number(right.id)
+    ))
+    .map(event => {
+      const { counts } = getRosterWithCounts(event.id);
+      return {
+        ...event,
+        yes_count: counts.yes,
+        maybe_count: counts.maybe,
+        no_count: counts.no,
+        response_count: counts.yes + counts.maybe + counts.no
+      };
+    });
 }
 
 function listLocations() {
@@ -184,6 +189,19 @@ function normalizeText(value) {
   return trimmed ? trimmed : null;
 }
 
+function normalizeParticipantInput(body) {
+  const name = (body.name || '').trim();
+  const email = normalizeEmail(body.email);
+  const partyMembers = parsePartyMembersInput(body.party_members, name);
+
+  return {
+    name,
+    email,
+    partyMembers,
+    partyMembersJson: serializeNames(partyMembers)
+  };
+}
+
 function normalizeEventInput(body) {
   const publicSlug = parsePublicSlugInput(body.public_slug);
 
@@ -215,6 +233,14 @@ function getEventValidationError(eventInput) {
   }
 
   return eventInput.public_slug_error || null;
+}
+
+function getParticipantValidationError(participantInput) {
+  if (!participantInput.name || !participantInput.email) {
+    return 'Name and email are required.';
+  }
+
+  return getPartyMembersValidationError(participantInput.partyMembers);
 }
 
 function normalizeLocationInput(body) {
@@ -379,26 +405,28 @@ function getParticipantByEmail(email) {
 
 function getRosterWithCounts(eventId) {
   const roster = db.prepare(`
-    SELECT p.id, p.name, p.email, p.rsvp_token,
-           r.status, r.comment, r.change_count, r.responded_at, r.updated_at
+    SELECT p.id, p.name, p.email, p.rsvp_token, p.party_members,
+           r.status, r.comment, r.change_count, r.responded_at, r.updated_at, r.attendee_names
     FROM participants p
     LEFT JOIN responses r ON r.participant_id = p.id AND r.event_id = ?
     WHERE p.active = 1
     ORDER BY p.name ASC
-  `).all(eventId);
+  `).all(eventId).map(buildPartyResponseView);
 
-  const counts = { yes: 0, no: 0, maybe: 0, none: 0 };
-  for (const row of roster) {
-    if (row.status) counts[row.status]++;
-    else counts.none++;
-  }
+  const individualCounts = getIndividualCounts(roster);
+  const counts = {
+    yes: individualCounts.yes,
+    no: individualCounts.no,
+    maybe: individualCounts.maybe,
+    none: individualCounts.pending
+  };
 
   return { roster, counts };
 }
 
 function listActiveParticipants() {
   return db.prepare(`
-    SELECT id, name, email, created_at
+    SELECT id, name, email, created_at, party_members
     FROM participants
     WHERE active = 1
     ORDER BY name ASC
@@ -696,7 +724,10 @@ router.post('/locations/:id/delete', requireAdmin, (req, res) => {
 // ── GET /admin/roster ────────────────────────────────────────
 router.get('/roster', requireAdmin, (req, res) => {
   res.render('admin/roster', {
-    inviteParticipants: listActiveParticipants()
+    inviteParticipants: listActiveParticipants().map(participant => ({
+      ...participant,
+      partyMembers: getParticipantPartyMembers(participant)
+    }))
   });
 });
 
@@ -879,7 +910,11 @@ router.post('/event/:id/delete', requireAdmin, (req, res) => {
 router.get('/participants', requireAdmin, (req, res) => {
   const participants = db.prepare(
     'SELECT * FROM participants ORDER BY active DESC, name ASC'
-  ).all();
+  ).all().map(participant => ({
+    ...participant,
+    partyMembers: getParticipantPartyMembers(participant),
+    partyMembersInput: getParticipantPartyMembers(participant).join('\n')
+  }));
 
   const requestedEventId = parseEventId(req.query.eventId);
   const selectedEvent = getDashboardEvent(requestedEventId);
@@ -904,16 +939,16 @@ router.get('/participants', requireAdmin, (req, res) => {
 
 // ── POST /admin/participants ──────────────────────────────────
 router.post('/participants', requireAdmin, (req, res) => {
-  const name = (req.body.name || '').trim();
-  const email = normalizeEmail(req.body.email);
+  const participantInput = normalizeParticipantInput(req.body);
   const selectedEventId = parseEventId(req.body.selected_event_id);
 
-  if (!name || !email) {
-    req.session.flash = 'Name and email are required.';
+  const validationError = getParticipantValidationError(participantInput);
+  if (validationError) {
+    req.session.flash = validationError;
     return res.redirect(buildParticipantsRedirect(selectedEventId));
   }
 
-  const existing = getParticipantByEmail(email);
+  const existing = getParticipantByEmail(participantInput.email);
   if (existing) {
     if (existing.active) {
       req.session.flash = `${existing.name} already exists with that email.`;
@@ -922,30 +957,37 @@ router.post('/participants', requireAdmin, (req, res) => {
 
     db.prepare(`
       UPDATE participants
-      SET name = ?, active = 1
+      SET name = ?, party_members = ?, active = 1
       WHERE id = ?
-    `).run(name, existing.id);
+    `).run(participantInput.name, participantInput.partyMembersJson, existing.id);
 
-    req.session.flash = `${name} reactivated.`;
+    req.session.flash = `${participantInput.name} reactivated.`;
     return res.redirect(buildParticipantsRedirect(selectedEventId));
   }
 
   const token = uuidv4();
-  db.prepare('INSERT INTO participants (name, email, rsvp_token) VALUES (?, ?, ?)')
-    .run(name, email, token);
+  db.prepare(`
+    INSERT INTO participants (name, email, rsvp_token, party_members)
+    VALUES (?, ?, ?, ?)
+  `).run(
+    participantInput.name,
+    participantInput.email,
+    token,
+    participantInput.partyMembersJson
+  );
 
-  req.session.flash = `${name} added.`;
+  req.session.flash = `${participantInput.name} added.`;
   res.redirect(buildParticipantsRedirect(selectedEventId));
 });
 
 // ── POST /admin/participants/:id/update ───────────────────────
 router.post('/participants/:id/update', requireAdmin, (req, res) => {
-  const name = (req.body.name || '').trim();
-  const email = normalizeEmail(req.body.email);
+  const participantInput = normalizeParticipantInput(req.body);
   const selectedEventId = parseEventId(req.body.selected_event_id);
 
-  if (!name || !email) {
-    req.session.flash = 'Name and email are required.';
+  const validationError = getParticipantValidationError(participantInput);
+  if (validationError) {
+    req.session.flash = validationError;
     return res.redirect(buildParticipantsRedirect(selectedEventId));
   }
 
@@ -958,14 +1000,22 @@ router.post('/participants/:id/update', requireAdmin, (req, res) => {
   const conflict = db.prepare(`
     SELECT * FROM participants
     WHERE email = ? COLLATE NOCASE AND id != ?
-  `).get(email, req.params.id);
+  `).get(participantInput.email, req.params.id);
   if (conflict) {
     req.session.flash = `${conflict.name} already uses that email.`;
     return res.redirect(buildParticipantsRedirect(selectedEventId));
   }
 
-  db.prepare('UPDATE participants SET name = ?, email = ? WHERE id = ?')
-    .run(name, email, req.params.id);
+  db.prepare(`
+    UPDATE participants
+    SET name = ?, email = ?, party_members = ?
+    WHERE id = ?
+  `).run(
+    participantInput.name,
+    participantInput.email,
+    participantInput.partyMembersJson,
+    req.params.id
+  );
 
   req.session.flash = 'Participant updated.';
   res.redirect(buildParticipantsRedirect(selectedEventId));

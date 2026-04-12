@@ -6,19 +6,28 @@ const db = require('../db/database');
 const { formatEventDate, formatTime } = require('../services/email');
 const {
   getArrivalNotes,
+  getEventStartLabel,
   getEventTitle,
+  hasEventStarted,
   isEventPublished,
   isPublicRosterVisible
 } = require('../services/events');
 const { buildPublicEventPath, buildRsvpPath, verifyRsvpToken } = require('../services/links');
 const { applyManagedLocation } = require('../services/locations');
+const {
+  buildPartyResponseView,
+  expandRosterIndividuals,
+  getIndividualCounts,
+  getParticipantPartyMembers,
+  getSelectedAttendeeNames,
+  sanitizeSelectedAttendees,
+  serializeNames
+} = require('../services/party');
 const { getEventByPublicSlug } = require('../services/public-slugs');
 const {
   grantEventPageAccess,
   hasEventPageAccess
 } = require('../middleware/auth');
-
-const MAX_CHANGES = 5;
 
 // ── Root landing page ─────────────────────────────────────────
 router.get('/', (req, res) => {
@@ -67,53 +76,35 @@ function getInviteByToken(token) {
 
 function getRoster(eventId) {
   return db.prepare(`
-    SELECT p.id, p.name, r.status, r.comment, r.change_count
+    SELECT p.id, p.name, p.party_members, r.status, r.comment, r.change_count, r.attendee_names
     FROM participants p
     LEFT JOIN responses r ON r.participant_id = p.id AND r.event_id = ?
     WHERE p.active = 1
     ORDER BY p.name ASC
-  `).all(eventId);
+  `).all(eventId).map(buildPartyResponseView);
 }
 
 function getPublicRoster(eventId) {
-  return db.prepare(`
-    SELECT p.id, p.name, r.status, r.updated_at
-    FROM responses r
-    JOIN participants p ON p.id = r.participant_id
-    WHERE r.event_id = ? AND p.active = 1
-    ORDER BY
-      CASE r.status
-        WHEN 'yes' THEN 1
-        WHEN 'maybe' THEN 2
-        WHEN 'no' THEN 3
-        ELSE 4
-      END,
-      p.name ASC
-  `).all(eventId);
+  return expandRosterIndividuals(getRoster(eventId))
+    .sort((left, right) => {
+      const statusOrder = { yes: 1, maybe: 2, no: 3 };
+      return (
+        statusOrder[left.status] - statusOrder[right.status] ||
+        left.name.localeCompare(right.name)
+      );
+    });
 }
 
 function getRsvpSummary(eventId) {
-  const row = db.prepare(`
-    SELECT
-      COUNT(p.id) AS invited_count,
-      SUM(CASE WHEN r.status = 'yes' THEN 1 ELSE 0 END) AS yes_count,
-      SUM(CASE WHEN r.status = 'maybe' THEN 1 ELSE 0 END) AS maybe_count,
-      SUM(CASE WHEN r.status = 'no' THEN 1 ELSE 0 END) AS no_count
-    FROM participants p
-    LEFT JOIN responses r ON r.participant_id = p.id AND r.event_id = ?
-    WHERE p.active = 1
-  `).get(eventId);
-
-  const summary = {
-    invited: row && row.invited_count ? row.invited_count : 0,
-    yes: row && row.yes_count ? row.yes_count : 0,
-    maybe: row && row.maybe_count ? row.maybe_count : 0,
-    no: row && row.no_count ? row.no_count : 0
+  const counts = getIndividualCounts(getRoster(eventId));
+  return {
+    invited: counts.invited,
+    yes: counts.yes,
+    maybe: counts.maybe,
+    no: counts.no,
+    responded: counts.responded,
+    pending: counts.pending
   };
-
-  summary.responded = summary.yes + summary.maybe + summary.no;
-  summary.pending = Math.max(summary.invited - summary.responded, 0);
-  return summary;
 }
 
 function groupPublicRoster(roster) {
@@ -151,13 +142,16 @@ function renderRsvpPage(res, participant, event) {
   setSensitiveResponseHeaders(res);
   const roster = getRoster(event.id);
   const myResponse = roster.find(r => r.id === participant.id);
+  const canEdit = !hasEventStarted(event);
 
   res.render('rsvp', {
     participant,
     event,
     roster,
     myResponse: myResponse || null,
-    maxChanges: MAX_CHANGES,
+    canEdit,
+    eventStartLabel: getEventStartLabel(event),
+    participantPartyMembers: getParticipantPartyMembers(participant),
     formatEventDate,
     formatTime,
     baseUrl: process.env.BASE_URL || '',
@@ -175,28 +169,51 @@ function saveRsvpResponse(res, participant, event, body) {
     return res.status(400).json({ error: 'Invalid status.' });
   }
 
+  if (hasEventStarted(event)) {
+    return res.status(409).json({
+      error: `RSVP changes closed when the event started on ${getEventStartLabel(event)}.`
+    });
+  }
+
   const trimmedComment = (comment || '').trim().slice(0, 400);
+  const partyMembers = getParticipantPartyMembers(participant);
+  const selectedAttendeeNames = sanitizeSelectedAttendees(participant, body.attendeeNames);
+  const normalizedAttendeeNames = status === 'yes' && selectedAttendeeNames.length === 0 && partyMembers.length === 1
+    ? partyMembers
+    : selectedAttendeeNames;
+  if (status === 'yes' && normalizedAttendeeNames.length === 0) {
+    return res.status(400).json({
+      error: 'Choose who is coming before saving this RSVP.'
+    });
+  }
 
   const existing = db.prepare(
     'SELECT * FROM responses WHERE participant_id = ? AND event_id = ?'
   ).get(participant.id, event.id);
 
   if (existing) {
-    if (existing.change_count >= MAX_CHANGES) {
-      return res.status(429).json({
-        error: `You've reached the maximum of ${MAX_CHANGES} responses for this event.`
-      });
-    }
     db.prepare(`
       UPDATE responses
-      SET status = ?, comment = ?, change_count = change_count + 1, updated_at = datetime('now')
+      SET status = ?, comment = ?, attendee_names = ?, change_count = change_count + 1, updated_at = datetime('now')
       WHERE participant_id = ? AND event_id = ?
-    `).run(status, trimmedComment, participant.id, event.id);
+    `).run(
+      status,
+      trimmedComment,
+      serializeNames(status === 'yes' ? normalizedAttendeeNames : []),
+      participant.id,
+      event.id
+    );
   } else {
     db.prepare(`
-      INSERT INTO responses (participant_id, event_id, status, comment, change_count)
-      VALUES (?, ?, ?, ?, 1)
-    `).run(participant.id, event.id, status, trimmedComment);
+      INSERT INTO responses (participant_id, event_id, status, comment, attendee_names, change_count)
+      VALUES (?, ?, ?, ?, ?, 1)
+    `).run(
+      participant.id,
+      event.id,
+      status,
+      trimmedComment,
+      serializeNames(status === 'yes' ? normalizedAttendeeNames : [])
+    );
   }
 
   const roster = getRoster(event.id);
@@ -204,7 +221,12 @@ function saveRsvpResponse(res, participant, event, body) {
     'SELECT * FROM responses WHERE participant_id = ? AND event_id = ?'
   ).get(participant.id, event.id);
 
-  return res.json({ ok: true, roster, changesUsed: updated.change_count, maxChanges: MAX_CHANGES });
+  return res.json({
+    ok: true,
+    roster,
+    canEdit: true,
+    attendeeNames: getSelectedAttendeeNames(updated, participant)
+  });
 }
 
 function renderPublicEventPage(res, event) {

@@ -387,6 +387,41 @@ body.modal-open {
 .btn-no:not(.active):hover:not(:disabled)    { border-color: var(--red);    color: var(--red); }
 .btn-maybe:not(.active):hover:not(:disabled) { border-color: var(--amber);  color: var(--amber); }
 
+.party-selector {
+  margin-bottom: 1rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--gray-200);
+  border-radius: 10px;
+  background: var(--gray-50);
+}
+.party-selector-hidden {
+  display: none;
+}
+.party-selector-copy {
+  margin: 0 0 0.8rem;
+  color: var(--gray-500);
+  font-size: 0.9rem;
+}
+.party-selector-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.65rem;
+}
+.party-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--gray-200);
+  border-radius: 8px;
+  background: var(--surface);
+  font-weight: 600;
+}
+.party-checkbox input {
+  width: 1rem;
+  height: 1rem;
+}
+
 .comment-wrap { margin-bottom: 1rem; }
 .comment-label {
   display: block;
@@ -451,14 +486,21 @@ body.modal-open {
   font-size: 0.95rem;
   color: var(--gray-500);
   display: flex;
-  align-items: center;
-  gap: 0.5rem;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem 0.55rem;
 }
 .current-label { }
 .current-status { font-weight: 700; }
+.current-detail {
+  display: block;
+  width: 100%;
+  color: var(--gray-500);
+}
 .status-yes   { color: var(--green); }
 .status-no    { color: var(--red); }
 .status-maybe { color: var(--amber); }
+.status-none  { color: var(--gray-500); }
 
 .changes-note {
   margin-top: 0.6rem;
@@ -543,11 +585,17 @@ body.modal-open {
 }
 .roster-comment {
   grid-column: 1 / -1;
-  grid-row: 2;
+  grid-row: 3;
   font-size: 0.875rem;
   color: var(--gray-500);
   font-style: italic;
   padding-top: 0.1rem;
+}
+.roster-detail {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  font-size: 0.875rem;
+  color: var(--gray-500);
 }
 
 /* Status pills */

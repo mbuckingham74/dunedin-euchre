@@ -61,11 +61,20 @@ function insertParticipant(overrides = {}) {
     active: 1,
     ...overrides
   };
+  if (!Object.prototype.hasOwnProperty.call(participant, 'party_members')) {
+    participant.party_members = JSON.stringify([participant.name]);
+  }
 
   db.prepare(`
-    INSERT INTO participants (name, email, rsvp_token, active)
-    VALUES (?, ?, ?, ?)
-  `).run(participant.name, participant.email, participant.rsvp_token, participant.active);
+    INSERT INTO participants (name, email, rsvp_token, active, party_members)
+    VALUES (?, ?, ?, ?, ?)
+  `).run(
+    participant.name,
+    participant.email,
+    participant.rsvp_token,
+    participant.active,
+    participant.party_members
+  );
 
   return db.prepare('SELECT * FROM participants WHERE email = ?').get(participant.email);
 }
@@ -183,9 +192,16 @@ function insertResponse(participantId, eventId, overrides = {}) {
   };
 
   db.prepare(`
-    INSERT INTO responses (participant_id, event_id, status, comment, change_count)
-    VALUES (?, ?, ?, ?, ?)
-  `).run(participantId, eventId, response.status, response.comment, response.change_count);
+    INSERT INTO responses (participant_id, event_id, status, comment, attendee_names, change_count)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(
+    participantId,
+    eventId,
+    response.status,
+    response.comment,
+    Object.prototype.hasOwnProperty.call(response, 'attendee_names') ? response.attendee_names : null,
+    response.change_count
+  );
 }
 
 async function signInAsAdmin() {
@@ -269,6 +285,123 @@ test('event-scoped RSVP submissions write to the invited event', async () => {
     status: 'yes',
     comment: 'See you there'
   });
+});
+
+test('party invite responses can confirm one attendee or both attendees for the same event', async () => {
+  const participant = insertParticipant({
+    name: 'Pam & Charlie',
+    email: 'pam.charlie@example.com',
+    rsvp_token: 'pam-charlie-token',
+    party_members: JSON.stringify(['Pam', 'Charlie'])
+  });
+  const event = insertEvent({
+    title: 'Shared Invite Night',
+    public_slug: 'shared-invite-night',
+    event_date: '2999-04-15',
+    is_published: 1,
+    show_public_roster: 1
+  });
+
+  const firstResponse = await fetch(`${baseUrl}${buildRsvpPath(participant, event)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      status: 'yes',
+      comment: 'Pam can make it.',
+      attendeeNames: ['Pam']
+    })
+  });
+
+  assert.equal(firstResponse.status, 200);
+  assert.deepEqual(
+    db.prepare(`
+      SELECT status, comment, attendee_names
+      FROM responses
+      WHERE participant_id = ? AND event_id = ?
+    `).get(participant.id, event.id),
+    {
+      status: 'yes',
+      comment: 'Pam can make it.',
+      attendee_names: '["Pam"]'
+    }
+  );
+
+  const firstInviteResponse = await fetch(`${baseUrl}${buildRsvpPath(participant, event)}`);
+  const inviteCookie = getSessionCookie(firstInviteResponse);
+  const firstEventResponse = await fetch(`${baseUrl}/e/${event.public_slug}`, {
+    headers: { cookie: inviteCookie }
+  });
+  const firstBody = await firstEventResponse.text();
+
+  assert.equal(firstEventResponse.status, 200);
+  assert.match(firstBody, />1 Yes</);
+  assert.match(firstBody, />0 Maybe</);
+  assert.match(firstBody, />1 No</);
+  assert.match(firstBody, />0 Pending</);
+  assert.match(firstBody, /Pam/);
+  assert.match(firstBody, /Charlie/);
+
+  const secondResponse = await fetch(`${baseUrl}${buildRsvpPath(participant, event)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      status: 'yes',
+      comment: 'Both are in.',
+      attendeeNames: ['Pam', 'Charlie']
+    })
+  });
+
+  assert.equal(secondResponse.status, 200);
+  assert.deepEqual(
+    db.prepare(`
+      SELECT status, comment, attendee_names
+      FROM responses
+      WHERE participant_id = ? AND event_id = ?
+    `).get(participant.id, event.id),
+    {
+      status: 'yes',
+      comment: 'Both are in.',
+      attendee_names: '["Pam","Charlie"]'
+    }
+  );
+
+  const eventResponse = await fetch(`${baseUrl}/e/${event.public_slug}`, {
+    headers: { cookie: inviteCookie }
+  });
+  const body = await eventResponse.text();
+
+  assert.equal(eventResponse.status, 200);
+  assert.match(body, />2 Yes</);
+  assert.match(body, />0 Maybe</);
+  assert.match(body, />0 No</);
+  assert.match(body, />0 Pending</);
+  assert.match(body, /Pam/);
+  assert.match(body, /Charlie/);
+});
+
+test('RSVP updates are blocked after the event start time', async () => {
+  const participant = insertParticipant();
+  const event = insertEvent({
+    title: 'Past Event',
+    event_date: '2000-01-01',
+    start_time: '18:00',
+    end_time: '21:00'
+  });
+
+  const response = await fetch(`${baseUrl}${buildRsvpPath(participant, event)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status: 'yes', attendeeNames: ['Alice Example'] })
+  });
+  const payload = await response.json();
+
+  assert.equal(response.status, 409);
+  assert.match(payload.error, /RSVP changes closed/i);
+  assert.equal(
+    db.prepare('SELECT COUNT(*) AS count FROM responses WHERE participant_id = ? AND event_id = ?')
+      .get(participant.id, event.id).count,
+    0
+  );
 });
 
 test('each participant and event gets a distinct RSVP URL', () => {
@@ -522,6 +655,35 @@ test('participant create route reactivates instead of duplicating an existing em
     email: 'alice@example.com',
     active: 1
   }]);
+});
+
+test('participant create route stores party member names for shared invites', async () => {
+  const cookie = await signInAsAdmin();
+
+  const response = await fetch(`${baseUrl}/admin/participants`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      cookie
+    },
+    body: new URLSearchParams({
+      name: 'Pam & Charlie',
+      email: 'pam.charlie@example.com',
+      party_members: 'Pam\nCharlie'
+    }),
+    redirect: 'manual'
+  });
+
+  assert.equal(response.status, 302);
+  assert.deepEqual(
+    db.prepare('SELECT name, email, party_members FROM participants WHERE email = ?')
+      .get('pam.charlie@example.com'),
+    {
+      name: 'Pam & Charlie',
+      email: 'pam.charlie@example.com',
+      party_members: '["Pam","Charlie"]'
+    }
+  );
 });
 
 test('dashboard shows the full roster even when no event is selected', async () => {

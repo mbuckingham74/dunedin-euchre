@@ -186,8 +186,8 @@
           </div>
           <p class="admin-card-note dashboard-summary-note">
             <strong><%= counts.yes + counts.maybe + counts.no %></strong> of
-            <strong><%= roster.length %></strong>
-            active participant<%= roster.length === 1 ? '' : 's' %> have responded.
+            <strong><%= counts.yes + counts.maybe + counts.no + counts.none %></strong>
+            invited player<%= (counts.yes + counts.maybe + counts.no + counts.none) === 1 ? '' : 's' %> have responded.
           </p>
         <% } else { %>
           <p class="admin-card-note">Once an event is created, response totals will show here.</p>
