@@ -945,6 +945,41 @@ test('testing workspace is available from admin and shows the end-to-end tools',
   assert.match(body, /Reset Responses For This \[TEST\] Event/);
 });
 
+test('testing workspace defaults to Mike Buckingham when he is on the active roster', async () => {
+  insertParticipant({
+    name: 'Alice Example',
+    email: 'alice@example.com',
+    rsvp_token: 'alice-example-token'
+  });
+  const mike = insertParticipant({
+    name: 'Mike Buckingham',
+    email: 'mikebuckingham@gmail.com',
+    rsvp_token: 'mike-buckingham-token'
+  });
+  insertLocation({
+    name: 'Testing Hall',
+    address: '123 Main St\nDunedin, FL 34698'
+  });
+  const event = insertEvent({
+    title: '[TEST] Testing Workspace Event',
+    event_date: '2999-04-15',
+    is_published: 1
+  });
+  const cookie = await signInAsAdmin();
+
+  const response = await fetch(`${baseUrl}/admin/testing?eventId=${event.id}`, {
+    headers: { cookie }
+  });
+
+  assert.equal(response.status, 200);
+  const body = await response.text();
+  assert.match(body, /Selected participant[\s\S]*Mike Buckingham/);
+  assert.match(
+    body,
+    new RegExp(`<option value="${mike.id}" selected>\\s*Mike Buckingham · mikebuckingham@gmail\\.com`)
+  );
+});
+
 test('testing workspace can create a standalone test event without any real event records', async () => {
   const participant = insertParticipant({
     name: 'Standalone Creator',

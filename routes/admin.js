@@ -47,6 +47,7 @@ const BASE_URL = process.env.BASE_URL || 'https://dunedin-euchre.com';
 const ADMIN_EMAILS = (process.env.ADMIN_EMAIL || '')
   .split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
 const TEST_EVENT_PREFIX = '[TEST]';
+const DEFAULT_TESTING_PARTICIPANT_EMAIL = 'mikebuckingham@gmail.com';
 const uploadsDir = getUploadsDir();
 
 if (!fs.existsSync(uploadsDir)) {
@@ -565,7 +566,15 @@ function getTestingParticipant(requestedParticipantId) {
   if (participantId) return getParticipantById(participantId);
 
   const participants = listActiveParticipants();
-  return participants.length > 0 ? getParticipantById(participants[0].id) : null;
+  if (participants.length === 0) {
+    return null;
+  }
+
+  const preferredParticipant = participants.find(participant => (
+    normalizeEmail(participant.email) === DEFAULT_TESTING_PARTICIPANT_EMAIL
+  ));
+  const selectedParticipant = preferredParticipant || participants[0];
+  return getParticipantById(selectedParticipant.id);
 }
 
 // ── GET /admin ───────────────────────────────────────────────
