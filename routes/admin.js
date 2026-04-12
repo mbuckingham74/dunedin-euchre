@@ -403,6 +403,14 @@ function getParticipantByEmail(email) {
   return db.prepare('SELECT * FROM participants WHERE email = ? COLLATE NOCASE').get(email);
 }
 
+function getParticipantById(participantId) {
+  return db.prepare(`
+    SELECT *
+    FROM participants
+    WHERE id = ? AND active = 1
+  `).get(participantId);
+}
+
 function getRosterWithCounts(eventId) {
   const roster = db.prepare(`
     SELECT p.id, p.name, p.email, p.rsvp_token, p.party_members,
@@ -586,6 +594,7 @@ router.get('/dashboard', requireAdmin, (req, res) => {
     isPublicRosterVisible,
     buildPublicEventPath,
     baseUrl: BASE_URL,
+    defaultTestEmail: ADMIN_EMAILS[0] || '',
     flash: req.session.flash || null
   });
   delete req.session.flash;
@@ -1029,6 +1038,21 @@ router.post('/participants/:id/delete', requireAdmin, (req, res) => {
   res.redirect(buildParticipantsRedirect(selectedEventId));
 });
 
+// ── GET /admin/event/:id/preview ────────────────────────────
+router.get('/event/:id/preview', requireAdmin, (req, res) => {
+  const event = getEventById(req.params.id);
+  if (!event) {
+    return res.status(404).send('<h1 style="font-family:sans-serif;padding:2rem">Event not found.</h1>');
+  }
+
+  const participant = getParticipantById(parseEventId(req.query.participantId));
+  if (!participant) {
+    return res.status(404).send('<h1 style="font-family:sans-serif;padding:2rem">Participant not found.</h1>');
+  }
+
+  return res.redirect(buildRsvpPath(participant, event));
+});
+
 // ── POST /admin/event/:id/notify ─────────────────────────────
 router.post('/event/:id/notify', requireAdmin, async (req, res) => {
   const event = getEventById(req.params.id);
@@ -1051,6 +1075,39 @@ router.post('/event/:id/notify', requireAdmin, async (req, res) => {
   }
 
   req.session.flash = `Invites sent: ${sent} delivered${failed ? `, ${failed} failed` : ''}.`;
+  res.redirect(buildDashboardRedirect(event.id));
+});
+
+// ── POST /admin/event/:id/test-invite ───────────────────────
+router.post('/event/:id/test-invite', requireAdmin, async (req, res) => {
+  const event = getEventById(req.params.id);
+  if (!event) {
+    return res.status(404).send('<h1 style="font-family:sans-serif;padding:2rem">Event not found.</h1>');
+  }
+
+  const participant = getParticipantById(parseEventId(req.body.participant_id));
+  if (!participant) {
+    req.session.flash = 'Choose an active participant to preview.';
+    return res.redirect(buildDashboardRedirect(event.id));
+  }
+
+  const testEmail = normalizeEmail(req.body.test_email);
+  if (!testEmail || !testEmail.includes('@')) {
+    req.session.flash = 'Enter a valid test email address.';
+    return res.redirect(buildDashboardRedirect(event.id));
+  }
+
+  try {
+    await sendRsvpInvite({
+      ...participant,
+      email: testEmail
+    }, event);
+    req.session.flash = `Test invite sent to ${testEmail} for ${participant.name}.`;
+  } catch (error) {
+    console.error(`Failed to send test invite to ${testEmail}:`, error.message);
+    req.session.flash = `Unable to send test invite to ${testEmail}.`;
+  }
+
   res.redirect(buildDashboardRedirect(event.id));
 });
 

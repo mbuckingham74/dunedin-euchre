@@ -20,7 +20,13 @@ const emailServicePath = require.resolve('../services/email');
 delete require.cache[emailServicePath];
 const emailService = require(emailServicePath);
 emailService.sendMagicLink = async () => {};
-emailService.sendRsvpInvite = async () => {};
+const sentRsvpInvites = [];
+emailService.sendRsvpInvite = async (participant, event) => {
+  sentRsvpInvites.push({
+    participant: { ...participant },
+    event: { ...event }
+  });
+};
 require.cache[emailServicePath].exports = emailService;
 
 const serverModulePath = require.resolve('../server');
@@ -235,6 +241,7 @@ test.before(async () => {
 test.beforeEach(() => {
   resetDatabase();
   resetUploadsDirectory();
+  sentRsvpInvites.length = 0;
 });
 
 test('root shows the landing page instead of redirecting to admin', async () => {
@@ -682,6 +689,71 @@ test('participant create route stores party member names for shared invites', as
       name: 'Pam & Charlie',
       email: 'pam.charlie@example.com',
       party_members: '["Pam","Charlie"]'
+    }
+  );
+});
+
+test('admin preview route opens the selected participant RSVP page for an event', async () => {
+  const participant = insertParticipant({
+    name: 'Preview Person',
+    email: 'preview@example.com',
+    rsvp_token: 'preview-token'
+  });
+  const event = insertEvent({
+    title: 'Preview Event',
+    event_date: '2999-04-15'
+  });
+  const cookie = await signInAsAdmin();
+
+  const response = await fetch(`${baseUrl}/admin/event/${event.id}/preview?participantId=${participant.id}`, {
+    headers: { cookie },
+    redirect: 'manual'
+  });
+
+  assert.equal(response.status, 302);
+  assert.equal(response.headers.get('location'), buildRsvpPath(participant, event));
+});
+
+test('admin can send a single test invite without notifying the full roster', async () => {
+  const participant = insertParticipant({
+    name: 'Test Invite Person',
+    email: 'real-roster@example.com',
+    rsvp_token: 'test-invite-token'
+  });
+  const event = insertEvent({
+    title: 'Test Invite Event',
+    event_date: '2999-04-15'
+  });
+  const cookie = await signInAsAdmin();
+
+  const response = await fetch(`${baseUrl}/admin/event/${event.id}/test-invite`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      cookie
+    },
+    body: new URLSearchParams({
+      participant_id: String(participant.id),
+      test_email: 'me@example.com'
+    }),
+    redirect: 'manual'
+  });
+
+  assert.equal(response.status, 302);
+  assert.equal(response.headers.get('location'), `/admin/dashboard?eventId=${event.id}`);
+  assert.equal(sentRsvpInvites.length, 1);
+  assert.deepEqual(
+    {
+      id: sentRsvpInvites[0].participant.id,
+      name: sentRsvpInvites[0].participant.name,
+      email: sentRsvpInvites[0].participant.email,
+      eventId: sentRsvpInvites[0].event.id
+    },
+    {
+      id: participant.id,
+      name: participant.name,
+      email: 'me@example.com',
+      eventId: event.id
     }
   );
 });

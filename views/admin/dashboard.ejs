@@ -141,6 +141,66 @@
                 <button type="submit" class="btn-secondary btn-danger">Delete event</button>
               </form>
             </div>
+
+            <% if (inviteParticipants.length > 0) { %>
+              <div class="dashboard-test-panel">
+                <div class="dashboard-test-header">
+                  <div>
+                    <p class="dashboard-kicker" style="margin-bottom:0.3rem;">Testing</p>
+                    <h4 class="dashboard-test-title">Preview what invitees see</h4>
+                  </div>
+                  <p class="dashboard-detail-meta" style="max-width:32rem;">
+                    Open the exact RSVP page for one participant or send a single test invite to your own inbox.
+                  </p>
+                </div>
+
+                <div class="dashboard-test-grid">
+                  <form
+                    method="GET"
+                    action="/admin/event/<%= event.id %>/preview"
+                    target="_blank"
+                    class="dashboard-test-card"
+                  >
+                    <div class="form-group">
+                      <label class="form-label">Preview as participant</label>
+                      <select name="participantId" class="form-input">
+                        <% inviteParticipants.forEach(function(participant) { %>
+                          <option value="<%= participant.id %>"><%= participant.name %> · <%= participant.email %></option>
+                        <% }); %>
+                      </select>
+                    </div>
+                    <button type="submit" class="btn-secondary">Open Invitee Preview</button>
+                  </form>
+
+                  <form
+                    method="POST"
+                    action="/admin/event/<%= event.id %>/test-invite"
+                    class="dashboard-test-card"
+                  >
+                    <div class="form-group">
+                      <label class="form-label">Use participant</label>
+                      <select name="participant_id" class="form-input">
+                        <% inviteParticipants.forEach(function(participant) { %>
+                          <option value="<%= participant.id %>"><%= participant.name %> · <%= participant.email %></option>
+                        <% }); %>
+                      </select>
+                    </div>
+                    <div class="form-group">
+                      <label class="form-label">Send test email to</label>
+                      <input
+                        type="email"
+                        name="test_email"
+                        class="form-input"
+                        value="<%= defaultTestEmail %>"
+                        placeholder="you@example.com"
+                        required
+                      >
+                    </div>
+                    <button type="submit" class="btn-secondary">Send One Test Invite</button>
+                  </form>
+                </div>
+              </div>
+            <% } %>
           </div>
         <% } else { %>
           <div class="dashboard-empty-state">
