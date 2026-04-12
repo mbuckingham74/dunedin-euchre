@@ -93,13 +93,7 @@ const EVENT_SELECT_FIELDS = `
 `;
 
 function getMostRecentEvent() {
-  return applyManagedLocation(db.prepare(`
-    SELECT ${EVENT_SELECT_FIELDS}
-    FROM events e
-    LEFT JOIN locations l ON l.id = e.location_id
-    ORDER BY e.event_date DESC, e.id DESC
-    LIMIT 1
-  `).get());
+  return listProductionEvents()[0] || null;
 }
 
 function getEventById(eventId) {
@@ -118,6 +112,14 @@ function listEvents() {
     LEFT JOIN locations l ON l.id = e.location_id
     ORDER BY e.event_date DESC, e.id DESC
   `).all());
+}
+
+function listProductionEvents() {
+  return listEvents().filter(event => !isTestEvent(event));
+}
+
+function listTestingEvents() {
+  return listEvents().filter(isTestEvent);
 }
 
 function listEventsWithResponseStats() {
@@ -167,7 +169,10 @@ function getLocationById(locationId) {
 }
 
 function getDashboardEvent(requestedEventId) {
-  if (requestedEventId) return getEventById(requestedEventId);
+  if (requestedEventId) {
+    const event = getEventById(requestedEventId);
+    return event && !isTestEvent(event) ? event : null;
+  }
   return getMostRecentEvent();
 }
 
@@ -544,7 +549,10 @@ function buildTestEventTitle(event) {
 }
 
 function getTestingEvent(allEvents, requestedEventId) {
-  if (requestedEventId) return getEventById(requestedEventId);
+  if (requestedEventId) {
+    const event = getEventById(requestedEventId);
+    return event && isTestEvent(event) ? event : null;
+  }
 
   const testEvent = allEvents.find(isTestEvent);
   return testEvent || allEvents[0] || null;
@@ -613,10 +621,14 @@ router.get('/auth/:token', (req, res) => {
 // ── GET /admin/dashboard ─────────────────────────────────────
 router.get('/dashboard', requireAdmin, (req, res) => {
   const requestedEventId = parseEventId(req.query.eventId);
-  const allEvents = listEvents();
+  const allEvents = listProductionEvents();
   const locations = listLocationsWithEventCounts();
+  const requestedRawEvent = requestedEventId ? getEventById(requestedEventId) : null;
+  if (requestedRawEvent && isTestEvent(requestedRawEvent)) {
+    return res.redirect(buildTestingRedirect(requestedRawEvent.id));
+  }
   const event = requestedEventId
-    ? getEventById(requestedEventId)
+    ? requestedRawEvent
     : (allEvents[0] || null);
   const inviteParticipants = listActiveParticipants();
 
@@ -680,13 +692,19 @@ router.get('/dashboard', requireAdmin, (req, res) => {
 router.get('/testing', requireAdmin, (req, res) => {
   const requestedEventId = parseEventId(req.query.eventId);
   const requestedParticipantId = parseParticipantId(req.query.participantId);
-  const allEvents = listEvents();
+  const allEvents = listTestingEvents();
+  const sourceEvents = listProductionEvents();
   const inviteParticipants = listActiveParticipants();
   const event = getTestingEvent(allEvents, requestedEventId);
   const participant = getTestingParticipant(requestedParticipantId);
-  const testEvents = allEvents.filter(isTestEvent);
+  const testEvents = allEvents;
 
   if (requestedEventId && !event) {
+    const rawEvent = getEventById(requestedEventId);
+    if (rawEvent && !isTestEvent(rawEvent)) {
+      req.session.flash = 'Start by creating or selecting a [TEST] event in the testing workspace.';
+      return res.redirect(buildTestingRedirect(null, requestedParticipantId));
+    }
     return res.status(404).send('<h1 style="font-family:sans-serif;padding:2rem">Event not found.</h1>');
   }
 
@@ -697,7 +715,8 @@ router.get('/testing', requireAdmin, (req, res) => {
   res.render('admin/testing', {
     event,
     participant,
-    allEvents,
+    allEvents: testEvents,
+    sourceEvents,
     testEvents,
     inviteParticipants,
     buildPublicEventPath,
@@ -1042,6 +1061,10 @@ router.get('/participants', requireAdmin, (req, res) => {
   }));
 
   const requestedEventId = parseEventId(req.query.eventId);
+  const requestedRawEvent = requestedEventId ? getEventById(requestedEventId) : null;
+  if (requestedRawEvent && isTestEvent(requestedRawEvent)) {
+    return res.redirect(buildTestingRedirect(requestedRawEvent.id));
+  }
   const selectedEvent = getDashboardEvent(requestedEventId);
 
   if (requestedEventId && !selectedEvent) {
@@ -1051,7 +1074,7 @@ router.get('/participants', requireAdmin, (req, res) => {
   res.render('admin/participants', {
     participants,
     selectedEvent,
-    allEvents: listEvents(),
+    allEvents: listProductionEvents(),
     buildRsvpPath,
     buildPublicEventPath,
     getEventTitle,
@@ -1341,7 +1364,7 @@ router.get('/stats', requireAdmin, (req, res) => {
 
 // ── GET /admin/events ─────────────────────────────────────────
 router.get('/events', requireAdmin, (req, res) => {
-  const events = listEventsWithResponseStats();
+  const events = listEventsWithResponseStats().filter(event => !isTestEvent(event));
   const history = buildMonthlyEventHistory(events, { monthsAhead: 12 });
   const activeCreateDate = (req.query.createDate || '').trim() || null;
 

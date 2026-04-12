@@ -27,8 +27,8 @@
         </div>
       </div>
 
-      <% if (allEvents.length === 0) { %>
-        <p class="admin-card-note">Create an event first, then come back here to clone a safe test copy or preview the workflow.</p>
+      <% if (sourceEvents.length === 0) { %>
+        <p class="admin-card-note">Create a regular event first, then come back here to clone a safe test copy and run the workflow in isolation.</p>
         <div class="admin-actions" style="margin-top:1rem;">
           <a href="/admin/events" class="btn-secondary">Open Events</a>
           <a href="/admin/dashboard" class="btn-secondary">Open Dashboard</a>
@@ -40,31 +40,78 @@
           <a href="/admin/roster" class="btn-secondary">Open Roster</a>
         </div>
       <% } else { %>
-        <form method="GET" action="/admin/testing" class="inline-form testing-selection-form">
-          <div class="form-row">
-            <div class="form-group">
-              <label class="form-label">Event to test</label>
-              <select name="eventId" class="form-input">
-                <% allEvents.forEach(function(item) { %>
-                  <option value="<%= item.id %>" <%= event && event.id === item.id ? 'selected' : '' %>>
-                    <%= item.event_date %> · <%= getEventTitle(item) %>
-                  </option>
-                <% }); %>
-              </select>
+        <div class="testing-alert">
+          <strong>Testing stays separate here.</strong> Normal dashboard and schedule pages only show real events. This workspace only operates on events labeled <strong>[TEST]</strong>.
+        </div>
+
+        <div class="testing-grid" style="margin-bottom:1.25rem;">
+          <section class="card admin-card testing-card">
+            <div class="card-header">
+              <div class="admin-card-header-text">
+                <h3 class="card-title">Create Isolated Test Copy</h3>
+                <p class="admin-card-copy">Start from a real event, but generate a separate <strong>[TEST]</strong> event that won’t appear in the normal dashboard or schedule.</p>
+              </div>
             </div>
-            <div class="form-group">
-              <label class="form-label">Preview as participant</label>
-              <select name="participantId" class="form-input">
-                <% inviteParticipants.forEach(function(entry) { %>
-                  <option value="<%= entry.id %>" <%= participant && participant.id === entry.id ? 'selected' : '' %>>
-                    <%= entry.name %> · <%= entry.email %>
-                  </option>
-                <% }); %>
-              </select>
+            <form method="POST" action="/admin/testing/create-event" class="testing-form-stack">
+              <div class="form-group">
+                <label class="form-label">Clone from real event</label>
+                <select name="source_event_id" class="form-input">
+                  <% sourceEvents.forEach(function(sourceEvent) { %>
+                    <option value="<%= sourceEvent.id %>"><%= sourceEvent.event_date %> · <%= getEventTitle(sourceEvent) %></option>
+                  <% }); %>
+                </select>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Default participant</label>
+                <select name="participant_id" class="form-input">
+                  <% inviteParticipants.forEach(function(entry) { %>
+                    <option value="<%= entry.id %>" <%= participant && participant.id === entry.id ? 'selected' : '' %>>
+                      <%= entry.name %> · <%= entry.email %>
+                    </option>
+                  <% }); %>
+                </select>
+              </div>
+              <button type="submit" class="btn-secondary">Create Fresh [TEST] Copy</button>
+              <p class="dashboard-detail-meta">The copy keeps venue, time, notes, and roster visibility, removes the slug, clears responses, and opens in this testing workspace.</p>
+            </form>
+          </section>
+
+          <section class="card admin-card testing-card">
+            <div class="card-header">
+              <div class="admin-card-header-text">
+                <h3 class="card-title">Choose Existing Test Event</h3>
+                <p class="admin-card-copy">If you already created a <strong>[TEST]</strong> event, load it here and keep testing without touching the real schedule.</p>
+              </div>
             </div>
-            <button type="submit" class="btn-secondary" style="align-self:flex-end;">Load Workspace</button>
-          </div>
-        </form>
+            <% if (testEvents.length > 0) { %>
+              <form method="GET" action="/admin/testing" class="testing-form-stack">
+                <div class="form-group">
+                  <label class="form-label">Test event</label>
+                  <select name="eventId" class="form-input">
+                    <% testEvents.forEach(function(item) { %>
+                      <option value="<%= item.id %>" <%= event && event.id === item.id ? 'selected' : '' %>>
+                        <%= item.event_date %> · <%= getEventTitle(item) %>
+                      </option>
+                    <% }); %>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Preview as participant</label>
+                  <select name="participantId" class="form-input">
+                    <% inviteParticipants.forEach(function(entry) { %>
+                      <option value="<%= entry.id %>" <%= participant && participant.id === entry.id ? 'selected' : '' %>>
+                        <%= entry.name %> · <%= entry.email %>
+                      </option>
+                    <% }); %>
+                  </select>
+                </div>
+                <button type="submit" class="btn-secondary">Load Test Workspace</button>
+              </form>
+            <% } else { %>
+              <p class="admin-card-note">No test events yet. Create one from a real event using the card on the left.</p>
+            <% } %>
+          </section>
+        </div>
 
         <% if (event && participant) { %>
           <% const arrivalNotes = getArrivalNotes(event); %>
@@ -94,23 +141,15 @@
 
             <article class="dashboard-detail-card">
               <p class="dashboard-detail-label">Workflow notes</p>
-              <% if (isTestEvent(event)) { %>
-                <p class="dashboard-detail-meta">This event is marked <strong>[TEST]</strong>, so clearing its responses from this page is allowed.</p>
-              <% } else { %>
-                <p class="dashboard-detail-meta">One-off previews and single test emails are safe here, but repeated workflow testing is better on a cloned <strong>[TEST]</strong> event.</p>
-              <% } %>
+              <p class="dashboard-detail-meta">This event is marked <strong>[TEST]</strong>, so clearing its responses from this page is allowed.</p>
               <% if (arrivalNotes) { %>
                 <p class="dashboard-detail-meta dashboard-detail-multiline"><%= arrivalNotes %></p>
               <% } %>
             </article>
           </div>
 
-          <div class="testing-alert <%= isTestEvent(event) ? 'testing-alert-safe' : '' %>">
-            <% if (isTestEvent(event)) { %>
-              <strong>Safe reset enabled.</strong> Responses for this selected test event can be cleared and rerun without touching the live event.
-            <% } else { %>
-              <strong>Live event selected.</strong> Bulk invite actions still live elsewhere in admin, so use the single-recipient tools below or clone a fresh <strong>[TEST]</strong> copy first.
-            <% } %>
+          <div class="testing-alert testing-alert-safe">
+            <strong>Safe reset enabled.</strong> Responses for this selected test event can be cleared and rerun without touching the live event.
           </div>
 
           <div class="testing-grid">
@@ -127,7 +166,6 @@
               </div>
               <p class="dashboard-detail-meta"><%= baseUrl + previewPath %></p>
               <div class="admin-actions" style="margin-top:0.4rem;">
-                <a href="/admin/dashboard?eventId=<%= event.id %>" class="btn-sm btn-secondary">Open Event in Dashboard</a>
                 <% if (isEventPublished(event)) { %>
                   <a href="<%= buildPublicEventPath(event) %>" target="_blank" class="btn-sm btn-secondary">Open Event Page</a>
                 <% } %>
@@ -162,30 +200,21 @@
             <section class="card admin-card testing-card">
               <div class="card-header">
                 <div class="admin-card-header-text">
-                  <h3 class="card-title">Test Event Tools</h3>
-                  <p class="admin-card-copy">Clone the selected event into a fresh <strong>[TEST]</strong> copy or reset a test run and start over.</p>
+                  <h3 class="card-title">Reset Test Run</h3>
+                  <p class="admin-card-copy">Clear responses on this <strong>[TEST]</strong> event and repeat the workflow from a clean slate.</p>
                 </div>
               </div>
 
-              <form method="POST" action="/admin/testing/create-event" class="testing-form-stack">
-                <input type="hidden" name="source_event_id" value="<%= event.id %>">
+              <form
+                method="POST"
+                action="/admin/testing/reset-event"
+                class="testing-form-stack"
+                onsubmit="return confirm('Clear all responses for this [TEST] event?')"
+              >
+                <input type="hidden" name="event_id" value="<%= event.id %>">
                 <input type="hidden" name="participant_id" value="<%= participant.id %>">
-                <button type="submit" class="btn-secondary">Create Fresh [TEST] Copy</button>
-                <p class="dashboard-detail-meta">The clone keeps the selected event’s venue, time, notes, and roster visibility, clears responses, removes the public slug, and opens the new test event here.</p>
+                <button type="submit" class="btn-secondary btn-danger">Reset Responses For This [TEST] Event</button>
               </form>
-
-              <% if (isTestEvent(event)) { %>
-                <form
-                  method="POST"
-                  action="/admin/testing/reset-event"
-                  class="testing-form-stack"
-                  onsubmit="return confirm('Clear all responses for this [TEST] event?')"
-                >
-                  <input type="hidden" name="event_id" value="<%= event.id %>">
-                  <input type="hidden" name="participant_id" value="<%= participant.id %>">
-                  <button type="submit" class="btn-secondary btn-danger">Reset Responses For This [TEST] Event</button>
-                </form>
-              <% } %>
             </section>
           </div>
 
@@ -205,7 +234,6 @@
                     <span class="dashboard-mini-meta"><%= formatEventDate(testEvent.event_date) %> · <%= formatTime(testEvent.start_time) %> – <%= formatTime(testEvent.end_time) %></span>
                     <div class="admin-actions" style="margin-top:0.25rem;">
                       <a href="/admin/testing?eventId=<%= testEvent.id %>&participantId=<%= participant.id %>" class="btn-sm btn-secondary">Use In Testing</a>
-                      <a href="/admin/dashboard?eventId=<%= testEvent.id %>" class="btn-sm btn-secondary">Open In Dashboard</a>
                     </div>
                   </article>
                 <% }); %>
@@ -214,6 +242,8 @@
               <p class="admin-card-note">No test events yet. Use <strong>Create Fresh [TEST] Copy</strong> above to make one from the currently selected event.</p>
             <% } %>
           </section>
+        <% } else if (testEvents.length === 0) { %>
+          <p class="admin-card-note">Create a fresh <strong>[TEST]</strong> copy above to unlock the preview, single-email, and reset tools.</p>
         <% } %>
       <% } %>
     </section>

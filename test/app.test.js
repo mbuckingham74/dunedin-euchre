@@ -914,8 +914,13 @@ test('testing workspace is available from admin and shows the end-to-end tools',
     email: 'testing.person@example.com',
     rsvp_token: 'testing-person-token'
   });
+  insertEvent({
+    title: 'Real Event Source',
+    event_date: '2999-04-01',
+    is_published: 1
+  });
   const event = insertEvent({
-    title: 'Testing Workspace Event',
+    title: '[TEST] Testing Workspace Event',
     event_date: '2999-04-15',
     is_published: 1
   });
@@ -929,9 +934,10 @@ test('testing workspace is available from admin and shows the end-to-end tools',
   const body = await response.text();
   assert.match(body, /class="nav-link nav-active">Testing</);
   assert.match(body, /Testing Workspace/);
+  assert.match(body, /Create Isolated Test Copy/);
   assert.match(body, /Open Invitee Preview/);
   assert.match(body, /Send One Test Invite/);
-  assert.match(body, /Create Fresh \[TEST\] Copy/);
+  assert.match(body, /Reset Responses For This \[TEST\] Event/);
 });
 
 test('testing workspace can clone an event into a fresh test copy', async () => {
@@ -1042,6 +1048,43 @@ test('testing workspace can reset responses for a test event only', async () => 
     db.prepare('SELECT COUNT(*) AS count FROM responses WHERE event_id = ?').get(event.id).count,
     0
   );
+});
+
+test('dashboard redirects test events back to the testing workspace', async () => {
+  const event = insertEvent({
+    title: '[TEST] Dashboard Redirect Event',
+    event_date: '2999-04-15'
+  });
+  const cookie = await signInAsAdmin();
+
+  const response = await fetch(`${baseUrl}/admin/dashboard?eventId=${event.id}`, {
+    headers: { cookie },
+    redirect: 'manual'
+  });
+
+  assert.equal(response.status, 302);
+  assert.equal(response.headers.get('location'), `/admin/testing?eventId=${event.id}`);
+});
+
+test('events schedule hides test events from the normal admin workflow', async () => {
+  insertEvent({
+    title: 'Real Schedule Event',
+    event_date: '2026-04-25'
+  });
+  insertEvent({
+    title: '[TEST] Hidden Test Event',
+    event_date: '2026-04-25'
+  });
+  const cookie = await signInAsAdmin();
+
+  const response = await fetch(`${baseUrl}/admin/events`, {
+    headers: { cookie }
+  });
+  const body = await response.text();
+
+  assert.equal(response.status, 200);
+  assert.match(body, /Real Schedule Event/);
+  assert.doesNotMatch(body, /\[TEST\] Hidden Test Event/);
 });
 
 test('admin event create and update routes persist slug settings and keep old slug links working after removal', async () => {
