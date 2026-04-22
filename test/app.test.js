@@ -640,6 +640,7 @@ test('RSVP and event pages send no-referrer headers and RSVP pages use no-referr
   assert.equal(rsvpResponse.headers.get('referrer-policy'), 'no-referrer');
   assert.equal(rsvpResponse.headers.get('cache-control'), 'private, no-store, max-age=0');
   assert.match(rsvpBody, /referrerpolicy="no-referrer"/);
+  assert.match(rsvpBody, /src="\/js\/rsvp\.js\?v=20260422b"/);
   assert.equal(eventResponse.status, 200);
   assert.equal(eventResponse.headers.get('referrer-policy'), 'no-referrer');
 });

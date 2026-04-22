@@ -318,7 +318,7 @@
   const INITIAL_ATTENDEE_NAMES = <%- JSON.stringify(selectedAttendeeNames) %>;
   let selectedStatus = '<%= (myResponse && myResponse.status) ? myResponse.status : '' %>';
 </script>
-<script src="/js/rsvp.js"></script>
+<script src="/js/rsvp.js?v=20260422b"></script>
 <script>
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/sw.js').catch(() => {});

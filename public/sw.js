@@ -1,11 +1,10 @@
 'use strict';
 
-const CACHE_NAME = 'dunedin-euchre-v1';
+const CACHE_NAME = 'dunedin-euchre-v2';
 
 // App shell — static assets that can be served offline
 const APP_SHELL = [
   '/css/styles.css',
-  '/js/rsvp.js',
   '/js/admin.js',
   '/manifest.json'
 ];
