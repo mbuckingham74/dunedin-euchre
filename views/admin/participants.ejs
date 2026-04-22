@@ -63,22 +63,16 @@
         <input type="hidden" name="selected_event_id" value="<%= selectedEvent ? selectedEvent.id : '' %>">
         <div class="form-row">
           <div class="form-group">
-            <label class="form-label">Name</label>
-            <input type="text" name="name" class="form-input" required placeholder="Full name">
-          </div>
-          <div class="form-group">
             <label class="form-label">Email</label>
             <input type="email" name="email" class="form-input" required placeholder="email@example.com">
           </div>
-          <div class="form-group">
-            <label class="form-label">Invitee names <span style="font-weight:400;color:var(--gray-500);">(optional)</span></label>
-            <input
-              type="text"
-              name="party_members"
-              class="form-input"
-              placeholder="For shared emails, enter names separated by commas, e.g. Pam, Charlie"
-            >
-            <p style="margin:0.45rem 0 0;font-size:0.9rem;color:var(--gray-500);">Leave this blank for a single-person invite.</p>
+          <div class="form-group party-member-group">
+            <label class="form-label">Who is on this invite?</label>
+            <div id="add-party-member-list" class="party-member-list" data-party-member-list></div>
+            <div class="party-member-actions">
+              <button type="button" class="btn-secondary btn-sm" data-party-add="add-party-member-list">Add another person</button>
+            </div>
+            <p class="form-help">Use one box per person sharing this email address.</p>
           </div>
           <button type="submit" class="btn-primary" style="align-self:flex-end;">Add</button>
         </div>
@@ -112,7 +106,7 @@
                 <td>
                   <div><%= p.partyMembers.join(', ') %></div>
                   <div style="font-size:0.8rem;color:var(--gray-500);margin-top:0.2rem;">
-                    <%= p.partyMembers.length %> person<%= p.partyMembers.length === 1 ? '' : 's' %>
+                    <%= p.partyMembers.length %> invitee<%= p.partyMembers.length === 1 ? '' : 's' %>
                   </div>
                 </td>
                 <td>
@@ -145,9 +139,8 @@
                       type="button"
                       class="btn-sm btn-secondary edit-participant-btn"
                       data-id="<%= p.id %>"
-                      data-name="<%= p.name %>"
                       data-email="<%= p.email %>"
-                      data-party-members="<%= encodeURIComponent(p.partyMembersInput) %>"
+                      data-party-members="<%= encodeURIComponent(JSON.stringify(p.partyMembers)) %>"
                       data-selected-event-id="<%= selectedEvent ? selectedEvent.id : '' %>"
                     >Edit</button>
                     <form method="POST" action="/admin/participants/<%= p.id %>/delete" style="display:inline;"
@@ -173,23 +166,16 @@
     <form id="edit-form" method="POST" action="">
       <input type="hidden" id="edit-selected-event-id" name="selected_event_id" value="">
       <div class="form-group">
-        <label class="form-label">Name</label>
-        <input type="text" id="edit-name" name="name" class="form-input" required>
-      </div>
-      <div class="form-group" style="margin-top:0.75rem;">
         <label class="form-label">Email</label>
         <input type="email" id="edit-email" name="email" class="form-input" required>
       </div>
-      <div class="form-group" style="margin-top:0.75rem;">
-        <label class="form-label">Invitee names <span style="font-weight:400;color:var(--gray-500);">(optional)</span></label>
-        <input
-          type="text"
-          id="edit-party-members"
-          name="party_members"
-          class="form-input"
-          placeholder="For shared emails, enter names separated by commas"
-        >
-        <p style="margin:0.45rem 0 0;font-size:0.9rem;color:var(--gray-500);">Leave this blank for a single-person invite.</p>
+      <div class="form-group party-member-group" style="margin-top:0.75rem;">
+        <label class="form-label">Who is on this invite?</label>
+        <div id="edit-party-member-list" class="party-member-list" data-party-member-list></div>
+        <div class="party-member-actions">
+          <button type="button" class="btn-secondary btn-sm" data-party-add="edit-party-member-list">Add another person</button>
+        </div>
+        <p class="form-help">Use one box per person sharing this email address.</p>
       </div>
       <div style="margin-top:1.25rem;display:flex;gap:0.75rem;">
         <button type="submit" class="btn-primary">Save</button>
@@ -206,12 +192,85 @@ function closeEditModal(e) {
   }
 }
 
+function decodePartyMemberNames(value) {
+  if (!value) return [];
+
+  try {
+    const parsed = JSON.parse(decodeURIComponent(value));
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (error) {
+    return [];
+  }
+}
+
+function getPartyMemberValues(container) {
+  return Array.from(container.querySelectorAll('input[name="party_member_names"]')).map(function(input) {
+    return input.value;
+  });
+}
+
+function renderPartyMemberList(container, names) {
+  const values = (Array.isArray(names) ? names : []).filter(function(name) {
+    return String(name || '').trim();
+  });
+  const displayValues = values.length > 0 ? values : [''];
+
+  container.innerHTML = '';
+
+  displayValues.forEach(function(value, index) {
+    const row = document.createElement('div');
+    row.className = 'party-member-row';
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.name = 'party_member_names';
+    input.className = 'form-input';
+    input.placeholder = 'Person ' + (index + 1) + ' name';
+    input.value = value || '';
+    input.required = index === 0;
+    row.appendChild(input);
+
+    if (displayValues.length > 1) {
+      const removeButton = document.createElement('button');
+      removeButton.type = 'button';
+      removeButton.className = 'btn-secondary btn-sm';
+      removeButton.textContent = 'Remove';
+      removeButton.addEventListener('click', function() {
+        const nextValues = getPartyMemberValues(container);
+        nextValues.splice(index, 1);
+        renderPartyMemberList(container, nextValues);
+      });
+      row.appendChild(removeButton);
+    }
+
+    container.appendChild(row);
+  });
+}
+
+document.querySelectorAll('[data-party-add]').forEach(function(button) {
+  button.addEventListener('click', function() {
+    const container = document.getElementById(button.dataset.partyAdd);
+    const nextValues = getPartyMemberValues(container);
+    nextValues.push('');
+    renderPartyMemberList(container, nextValues);
+
+    const inputs = container.querySelectorAll('input[name="party_member_names"]');
+    const lastInput = inputs[inputs.length - 1];
+    if (lastInput) lastInput.focus();
+  });
+});
+
+renderPartyMemberList(document.getElementById('add-party-member-list'), ['']);
+renderPartyMemberList(document.getElementById('edit-party-member-list'), ['']);
+
 document.querySelectorAll('.edit-participant-btn').forEach(function(button) {
   button.addEventListener('click', function() {
     document.getElementById('edit-form').action = '/admin/participants/' + button.dataset.id + '/update';
-    document.getElementById('edit-name').value = button.dataset.name || '';
     document.getElementById('edit-email').value = button.dataset.email || '';
-    document.getElementById('edit-party-members').value = decodeURIComponent(button.dataset.partyMembers || '');
+    renderPartyMemberList(
+      document.getElementById('edit-party-member-list'),
+      decodePartyMemberNames(button.dataset.partyMembers)
+    );
     document.getElementById('edit-selected-event-id').value = button.dataset.selectedEventId || '';
     document.getElementById('edit-modal').style.display = 'flex';
   });

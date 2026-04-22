@@ -7,6 +7,10 @@ function normalizeName(value) {
 }
 
 function splitNames(value) {
+  if (Array.isArray(value)) {
+    return value.flatMap(item => splitNames(item));
+  }
+
   return String(value || '')
     .split(/[\n,;]+/)
     .map(normalizeName)
@@ -47,12 +51,31 @@ function parseStoredNames(value) {
   return uniqueNames(splitNames(value));
 }
 
+function inferHouseholdPartyMembers(value) {
+  const normalized = normalizeName(value);
+  if (!normalized) return [];
+
+  const match = normalized.match(/^(.*?)\s(?:and|&|\+)\s(.*?)$/i);
+  if (!match) return [normalized];
+
+  const left = normalizeName(match[1]);
+  const right = normalizeName(match[2]);
+  if (!(left && right)) return [normalized];
+
+  const leftWords = left.split(' ');
+  const rightWords = right.split(' ');
+  const leftHasSurname = leftWords.length > 1;
+  const rightSurname = rightWords.length > 1 ? rightWords[rightWords.length - 1] : '';
+  const expandedLeft = !leftHasSurname && rightSurname ? `${left} ${rightSurname}` : left;
+
+  return uniqueNames([expandedLeft, right]);
+}
+
 function parsePartyMembersInput(value, fallbackName = '') {
   const parsed = uniqueNames(splitNames(value));
   if (parsed.length > 0) return parsed;
 
-  const fallback = normalizeName(fallbackName);
-  return fallback ? [fallback] : [];
+  return inferHouseholdPartyMembers(fallbackName);
 }
 
 function getPartyMembersValidationError(partyMembers) {
@@ -71,12 +94,37 @@ function serializeNames(names) {
   return JSON.stringify(uniqueNames(names));
 }
 
+function buildParticipantDisplayName(names) {
+  const normalized = uniqueNames(names);
+  if (normalized.length === 0) return '';
+  if (normalized.length === 1) return normalized[0];
+
+  if (normalized.length === 2) {
+    const [first, second] = normalized;
+    const firstWords = first.split(' ');
+    const secondWords = second.split(' ');
+    const firstSurname = firstWords.length > 1 ? firstWords[firstWords.length - 1] : '';
+    const secondSurname = secondWords.length > 1 ? secondWords[secondWords.length - 1] : '';
+
+    if (firstSurname && firstSurname.toLowerCase() === secondSurname.toLowerCase()) {
+      return `${firstWords.slice(0, -1).join(' ')} and ${second}`;
+    }
+  }
+
+  return formatNameList(normalized);
+}
+
 function getParticipantPartyMembers(participant) {
   const stored = parseStoredNames(participant && participant.party_members);
-  if (stored.length > 0) return stored;
+  if (stored.length > 1) return stored;
+  if (stored.length === 1) {
+    const inferredStored = inferHouseholdPartyMembers(stored[0]);
+    if (inferredStored.length > 1) return inferredStored;
+    return stored;
+  }
 
   const fallback = normalizeName(participant && participant.name);
-  return fallback ? [fallback] : [];
+  return inferHouseholdPartyMembers(fallback);
 }
 
 function sanitizeSelectedAttendees(participant, selectedNames) {
@@ -167,6 +215,7 @@ function formatNameList(names) {
 
 module.exports = {
   MAX_PARTY_MEMBERS,
+  buildParticipantDisplayName,
   buildPartyResponseView,
   expandRosterIndividuals,
   formatNameList,

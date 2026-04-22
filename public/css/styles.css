@@ -1218,6 +1218,33 @@ input[type="file"].form-input { padding: 0.4rem; }
   align-items: flex-start;
 }
 .form-row .form-group { flex: 1; }
+.form-help {
+  margin: 0.45rem 0 0;
+  font-size: 0.9rem;
+  color: var(--gray-500);
+}
+.party-member-group {
+  min-width: min(420px, 100%);
+}
+.party-member-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+.party-member-row {
+  display: flex;
+  gap: 0.65rem;
+  align-items: center;
+}
+.party-member-row .form-input {
+  flex: 1;
+}
+.party-member-actions {
+  margin-top: 0.65rem;
+  display: flex;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+}
 
 .inline-form .form-row {
   align-items: flex-end;

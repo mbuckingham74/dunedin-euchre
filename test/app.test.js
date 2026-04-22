@@ -38,6 +38,10 @@ const {
   buildLocationMapEmbedUrl,
   buildLocationMapLinkUrl
 } = require('../services/locations');
+const {
+  buildParticipantDisplayName,
+  getParticipantPartyMembers
+} = require('../services/party');
 
 let server;
 let baseUrl;
@@ -386,6 +390,22 @@ test('party invite responses can confirm one attendee or both attendees for the 
   assert.match(body, /Charlie/);
 });
 
+test('legacy combined household names expand into separate invitees', () => {
+  const participant = {
+    name: 'Charlotte and Chuck Skene',
+    party_members: JSON.stringify(['Charlotte and Chuck Skene'])
+  };
+
+  assert.deepEqual(
+    getParticipantPartyMembers(participant),
+    ['Charlotte Skene', 'Chuck Skene']
+  );
+  assert.equal(
+    buildParticipantDisplayName(getParticipantPartyMembers(participant)),
+    'Charlotte and Chuck Skene'
+  );
+});
+
 test('RSVP updates are blocked after the event start time', async () => {
   const participant = insertParticipant();
   const event = insertEvent({
@@ -666,6 +686,10 @@ test('participant create route reactivates instead of duplicating an existing em
 
 test('participant create route stores party member names for shared invites', async () => {
   const cookie = await signInAsAdmin();
+  const body = new URLSearchParams();
+  body.append('email', 'pam.charlie@example.com');
+  body.append('party_member_names', 'Pam');
+  body.append('party_member_names', 'Charlie');
 
   const response = await fetch(`${baseUrl}/admin/participants`, {
     method: 'POST',
@@ -673,11 +697,7 @@ test('participant create route stores party member names for shared invites', as
       'Content-Type': 'application/x-www-form-urlencoded',
       cookie
     },
-    body: new URLSearchParams({
-      name: 'Pam & Charlie',
-      email: 'pam.charlie@example.com',
-      party_members: 'Pam, Charlie'
-    }),
+    body,
     redirect: 'manual'
   });
 
@@ -686,7 +706,7 @@ test('participant create route stores party member names for shared invites', as
     db.prepare('SELECT name, email, party_members FROM participants WHERE email = ?')
       .get('pam.charlie@example.com'),
     {
-      name: 'Pam & Charlie',
+      name: 'Pam and Charlie',
       email: 'pam.charlie@example.com',
       party_members: '["Pam","Charlie"]'
     }

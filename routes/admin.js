@@ -20,6 +20,7 @@ const {
 } = require('../services/events');
 const { buildPublicEventPath, buildRsvpPath } = require('../services/links');
 const {
+  buildParticipantDisplayName,
   buildPartyResponseView,
   getIndividualCounts,
   getParticipantPartyMembers,
@@ -202,9 +203,13 @@ function normalizeText(value) {
 }
 
 function normalizeParticipantInput(body) {
-  const name = (body.name || '').trim();
   const email = normalizeEmail(body.email);
-  const partyMembers = parsePartyMembersInput(body.party_members, name);
+  const explicitName = (body.name || '').trim();
+  const partyMemberSource = body.party_member_names !== undefined
+    ? body.party_member_names
+    : body.party_members;
+  const partyMembers = parsePartyMembersInput(partyMemberSource, explicitName);
+  const name = explicitName || buildParticipantDisplayName(partyMembers);
 
   return {
     name,
@@ -248,8 +253,8 @@ function getEventValidationError(eventInput) {
 }
 
 function getParticipantValidationError(participantInput) {
-  if (!participantInput.name || !participantInput.email) {
-    return 'Name and email are required.';
+  if (!participantInput.email || participantInput.partyMembers.length === 0) {
+    return 'Email and at least one invitee name are required.';
   }
 
   return getPartyMembersValidationError(participantInput.partyMembers);
@@ -1100,8 +1105,7 @@ router.get('/participants', requireAdmin, (req, res) => {
     'SELECT * FROM participants ORDER BY active DESC, name ASC'
   ).all().map(participant => ({
     ...participant,
-    partyMembers: getParticipantPartyMembers(participant),
-    partyMembersInput: getParticipantPartyMembers(participant).join(', ')
+    partyMembers: getParticipantPartyMembers(participant)
   }));
 
   const requestedEventId = parseEventId(req.query.eventId);
