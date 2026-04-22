@@ -9,7 +9,7 @@ const { v4: uuidv4 } = require('uuid');
 
 const db = require('../db/database');
 const { requireAdmin } = require('../middleware/auth');
-const { sendMagicLink, sendRsvpInvite, buildRsvpInviteEmail, formatEventDate, formatTime } = require('../services/email');
+const { sendMagicLink, sendRsvpInvite, formatEventDate, formatTime } = require('../services/email');
 const {
   buildMonthlyEventHistory,
   getArrivalNotes,
@@ -702,10 +702,11 @@ router.get('/dashboard', requireAdmin, (req, res) => {
     isPublicRosterVisible,
     buildPublicEventPath,
     baseUrl: BASE_URL,
-    defaultTestEmail: ADMIN_EMAILS[0] || '',
-    flash: req.session.flash || null
+    flash: req.session.flash || null,
+    showEditEventModal: Boolean(req.session.showEditEventModal)
   });
   delete req.session.flash;
+  delete req.session.showEditEventModal;
 });
 
 // ── GET /admin/testing ───────────────────────────────────────
@@ -989,12 +990,14 @@ router.post('/event/:id/update', requireAdmin, (req, res) => {
   const validationError = getEventValidationError(eventInput);
   if (validationError) {
     req.session.flash = validationError;
+    req.session.showEditEventModal = true;
     return res.redirect(buildDashboardRedirect(existing.id));
   }
 
   const locationDetails = resolveEventLocationDetails(eventInput, existing);
   if (locationDetails.error) {
     req.session.flash = locationDetails.error;
+    req.session.showEditEventModal = true;
     return res.redirect(buildDashboardRedirect(existing.id));
   }
 
@@ -1042,6 +1045,7 @@ router.post('/event/:id/update', requireAdmin, (req, res) => {
   } catch (error) {
     if (isPublicSlugConflictError(error) || isPublicSlugUniqueConstraint(error)) {
       req.session.flash = 'That public URL slug is already in use, including any older redirected event links.';
+      req.session.showEditEventModal = true;
       return res.redirect(buildDashboardRedirect(existing.id));
     }
     throw error;
@@ -1323,60 +1327,12 @@ router.get('/event/:id/preview', requireAdmin, (req, res) => {
     return res.status(404).send('<h1 style="font-family:sans-serif;padding:2rem">Event not found.</h1>');
   }
 
-  const participant = getParticipantById(parseParticipantId(req.query.participantId));
+  const participant = getInvitePreviewParticipant(listActiveParticipants(), req.query.participantId);
   if (!participant) {
     return res.status(404).send('<h1 style="font-family:sans-serif;padding:2rem">Participant not found.</h1>');
   }
 
   return res.redirect(buildRsvpPath(participant, event));
-});
-
-// ── GET /admin/event/:id/invite-review ───────────────────────
-router.get('/event/:id/invite-review', requireAdmin, (req, res) => {
-  const event = getEventById(req.params.id);
-  if (!event) {
-    return res.status(404).send('<h1 style="font-family:sans-serif;padding:2rem">Event not found.</h1>');
-  }
-
-  const inviteParticipants = listActiveParticipants();
-  const previewParticipant = getInvitePreviewParticipant(inviteParticipants, req.query.participantId);
-  if (!previewParticipant) {
-    req.session.flash = 'Add at least one active participant before sending invites.';
-    return res.redirect(buildDashboardRedirect(event.id));
-  }
-
-  const invitePreview = buildRsvpInviteEmail(previewParticipant, event);
-
-  res.render('admin/invite-review', {
-    event,
-    inviteParticipants,
-    previewParticipant,
-    invitePreview,
-    formatEventDate,
-    formatTime,
-    getEventTitle,
-    isEventPublished,
-    buildDashboardRedirect,
-    flash: req.session.flash || null
-  });
-  delete req.session.flash;
-});
-
-// ── GET /admin/event/:id/invite-review/render ────────────────
-router.get('/event/:id/invite-review/render', requireAdmin, (req, res) => {
-  const event = getEventById(req.params.id);
-  if (!event) {
-    return res.status(404).send('<h1 style="font-family:sans-serif;padding:2rem">Event not found.</h1>');
-  }
-
-  const inviteParticipants = listActiveParticipants();
-  const previewParticipant = getInvitePreviewParticipant(inviteParticipants, req.query.participantId);
-  if (!previewParticipant) {
-    return res.status(404).send('<h1 style="font-family:sans-serif;padding:2rem">Participant not found.</h1>');
-  }
-
-  const invitePreview = buildRsvpInviteEmail(previewParticipant, event);
-  res.type('html').send(invitePreview.html);
 });
 
 // ── POST /admin/event/:id/notify ─────────────────────────────

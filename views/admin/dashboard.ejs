@@ -6,7 +6,7 @@
   <title>Dunedin Euchre – Dashboard</title>
   <link rel="stylesheet" href="/css/styles.css">
 </head>
-<body class="admin-page">
+<body class="admin-page <%= showEditEventModal ? 'modal-open' : '' %>">
 
 <%- include('../partials/admin-nav', { active: 'dashboard' }) %>
 
@@ -123,10 +123,17 @@
             <% } %>
 
             <div class="admin-actions">
-              <% if (isEventPublished(event)) { %>
-                <a href="<%= publicPath %>" target="_blank" class="btn-secondary">View event page</a>
+              <button type="button" class="btn-secondary" onclick="openEditEventModal()">Edit event</button>
+              <% if (inviteParticipants.length > 0) { %>
+                <a href="/admin/event/<%= event.id %>/preview" target="_blank" class="btn-secondary">Preview</a>
+                <form
+                  method="POST"
+                  action="/admin/event/<%= event.id %>/notify"
+                  onsubmit="return confirm('Send RSVP emails now to all <%= inviteParticipants.length %> active <%= inviteParticipants.length === 1 ? 'invitee' : 'invitees' %>?')"
+                >
+                  <button type="submit" class="btn-primary">Confirm and send RSVP to <%= inviteParticipants.length %> <%= inviteParticipants.length === 1 ? 'invitee' : 'invitees' %></button>
+                </form>
               <% } %>
-              <button class="btn-secondary" onclick="toggleForm('edit-form')">Edit event</button>
               <form
                 method="POST"
                 action="/admin/event/<%= event.id %>/delete"
@@ -136,90 +143,6 @@
               </form>
             </div>
 
-            <% if (inviteParticipants.length > 0) { %>
-              <div class="dashboard-test-panel">
-                <div class="dashboard-test-header">
-                  <div>
-                    <p class="dashboard-kicker" style="margin-bottom:0.3rem;">Testing</p>
-                    <h4 class="dashboard-test-title">Preview what invitees see</h4>
-                  </div>
-                  <p class="dashboard-detail-meta" style="max-width:32rem;">
-                    Open the exact RSVP page for one participant or send a single test invite to your own inbox.
-                  </p>
-                </div>
-
-                <div class="dashboard-test-grid">
-                  <form
-                    method="GET"
-                    action="/admin/event/<%= event.id %>/preview"
-                    target="_blank"
-                    class="dashboard-test-card"
-                  >
-                    <div class="form-group">
-                      <label class="form-label">Preview as participant</label>
-                      <select name="participantId" class="form-input">
-                        <% inviteParticipants.forEach(function(participant) { %>
-                          <option value="<%= participant.id %>"><%= participant.name %> · <%= participant.email %></option>
-                        <% }); %>
-                      </select>
-                    </div>
-                    <button type="submit" class="btn-secondary">Open Invitee Preview</button>
-                  </form>
-
-                  <form
-                    method="POST"
-                    action="/admin/event/<%= event.id %>/test-invite"
-                    class="dashboard-test-card"
-                  >
-                    <div class="form-group">
-                      <label class="form-label">Use participant</label>
-                      <select name="participant_id" class="form-input">
-                        <% inviteParticipants.forEach(function(participant) { %>
-                          <option value="<%= participant.id %>"><%= participant.name %> · <%= participant.email %></option>
-                        <% }); %>
-                      </select>
-                    </div>
-                    <div class="form-group">
-                      <label class="form-label">Send test email to</label>
-                      <input
-                        type="email"
-                        name="test_email"
-                        class="form-input"
-                        value="<%= defaultTestEmail %>"
-                        placeholder="you@example.com"
-                        required
-                      >
-                    </div>
-                    <button type="submit" class="btn-secondary">Send One Test Invite</button>
-                  </form>
-                </div>
-              </div>
-            <% } %>
-
-            <div class="dashboard-test-panel dashboard-send-panel">
-              <div class="dashboard-test-header">
-                <div>
-                  <p class="dashboard-kicker" style="margin-bottom:0.3rem;">Final step</p>
-                  <h4 class="dashboard-test-title">Review invite before sending</h4>
-                </div>
-                <p class="dashboard-detail-meta" style="max-width:32rem;">
-                  Open the exact email preview first. The actual delivery happens on the next page when you click Send Now.
-                </p>
-              </div>
-
-              <% if (inviteParticipants.length > 0) { %>
-                <div class="admin-actions">
-                  <a href="/admin/event/<%= event.id %>/invite-review" class="btn-primary">
-                    &#128231; Review Invite &amp; Send (<%= inviteParticipants.length %> participants)
-                  </a>
-                  <p class="dashboard-detail-meta dashboard-send-meta">
-                    Each person gets the same invite with their own personal RSVP link.
-                  </p>
-                </div>
-              <% } else { %>
-                <p class="dashboard-detail-meta">Add at least one active participant before you can review and send invites.</p>
-              <% } %>
-            </div>
           </div>
         <% } else { %>
           <div class="dashboard-empty-state">
@@ -435,22 +358,32 @@
     </section>
 
     <% if (event) { %>
-      <section id="edit-form" class="card admin-card dashboard-form-card" style="display:none;margin-top:1.5rem;">
-        <div class="card-header">
-          <div class="admin-card-header-text">
-            <h2 class="card-title">Edit Event</h2>
-            <p class="admin-card-copy">Update the event details without leaving the dashboard.</p>
+      <div
+        id="edit-event-modal"
+        class="modal-overlay"
+        style="<%= showEditEventModal ? 'display:flex;' : 'display:none;' %>"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="edit-event-modal-title"
+        onclick="closeEditEventModal(event)"
+      >
+        <div class="modal-box event-edit-modal-box" onclick="event.stopPropagation()">
+          <div class="scheduled-create-modal-header">
+            <div class="admin-card-header-text">
+              <h2 id="edit-event-modal-title" class="card-title">Edit Event</h2>
+              <p class="admin-card-copy">Update the event details, then preview before sending the RSVP invite.</p>
+            </div>
           </div>
-        </div>
 
-        <form method="POST" action="/admin/event/<%= event.id %>/update">
-          <%- include('../partials/event-form', { event: event, locations: locations }) %>
-          <div class="admin-actions" style="margin-top:1rem;">
-            <button type="submit" class="btn-primary">Save Changes</button>
-            <button type="button" class="btn-secondary" onclick="toggleForm('edit-form')">Cancel</button>
-          </div>
-        </form>
-      </section>
+          <form method="POST" action="/admin/event/<%= event.id %>/update">
+            <%- include('../partials/event-form', { event: event, locations: locations }) %>
+            <div class="admin-actions" style="margin-top:1rem;">
+              <button type="submit" class="btn-primary">Save Changes</button>
+              <button type="button" class="btn-secondary" onclick="closeEditEventModal()">Cancel</button>
+            </div>
+          </form>
+        </div>
+      </div>
     <% } %>
 
   </div>
@@ -466,6 +399,33 @@ function toggleForm(id) {
     el.style.display = 'none';
   }
 }
+
+function openEditEventModal() {
+  const modal = document.getElementById('edit-event-modal');
+  if (!modal) return;
+  modal.style.display = 'flex';
+  document.body.classList.add('modal-open');
+
+  const focusTarget = modal.querySelector('input[name="title"]');
+  if (focusTarget) {
+    window.requestAnimationFrame(() => focusTarget.focus());
+  }
+}
+
+function closeEditEventModal(event) {
+  const modal = document.getElementById('edit-event-modal');
+  if (!modal) return;
+  if (!event || event.target === modal) {
+    modal.style.display = 'none';
+    document.body.classList.remove('modal-open');
+  }
+}
+
+document.addEventListener('keydown', function(event) {
+  if (event.key === 'Escape') {
+    closeEditEventModal();
+  }
+});
 </script>
 <script src="/js/admin.js"></script>
 </body>

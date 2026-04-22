@@ -850,12 +850,6 @@ body.modal-open {
   border-radius: 12px;
   background: var(--surface);
 }
-.dashboard-send-panel {
-  margin-top: 1rem;
-}
-.dashboard-send-meta {
-  margin: 0;
-}
 .testing-selection-form {
   margin-bottom: 1.25rem;
 }
@@ -1155,52 +1149,11 @@ body.modal-open {
   flex-wrap: wrap;
   align-items: stretch;
 }
-.invite-review-grid {
-  display: grid;
-  grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
-  gap: 1rem;
-  align-items: start;
-}
-.invite-review-sidebar,
-.invite-preview-card {
-  height: 100%;
-}
-.invite-review-actions {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  margin-top: 1rem;
-}
-.invite-preview-subject {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  padding: 0.9rem 1rem;
-  margin-bottom: 1rem;
-  border: 1px solid var(--gray-200);
-  border-radius: 12px;
-  background: var(--surface-gradient-soft);
-}
-.invite-preview-subject-label {
-  color: var(--gray-500);
-  font-family: system-ui, sans-serif;
-  font-size: 0.8rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-.invite-preview-frame {
-  width: 100%;
-  min-height: 720px;
-  border: 1px solid var(--gray-200);
-  border-radius: 16px;
-  background: #fff;
-}
-.invite-send-form {
-  display: flex;
-  flex-direction: column;
-  gap: 0.55rem;
-  margin-top: 1rem;
+.event-edit-modal-box {
+  max-width: 960px;
+  max-height: calc(100vh - 2rem);
+  overflow-y: auto;
+  padding: 2rem;
 }
 
 /* ── Forms (admin) ───────────────────────────────────────── */
@@ -1613,9 +1566,6 @@ input[type="file"].form-input { padding: 0.4rem; }
   .dashboard-card-third,
   .dashboard-card-half {
     grid-column: auto;
-  }
-  .invite-review-grid {
-    grid-template-columns: 1fr;
   }
 }
 

@@ -120,4 +120,4 @@ function formatTime(t) {
   return m === 0 ? `${hour} ${suffix}` : `${hour}:${String(m).padStart(2, '0')} ${suffix}`;
 }
 
-module.exports = { sendMagicLink, sendRsvpInvite, buildRsvpInviteEmail, formatEventDate, formatTime };
+module.exports = { sendMagicLink, sendRsvpInvite, formatEventDate, formatTime };

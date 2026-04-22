@@ -714,7 +714,7 @@ test('admin preview route opens the selected participant RSVP page for an event'
   assert.equal(response.headers.get('location'), buildRsvpPath(participant, event));
 });
 
-test('invite review page previews the final send workflow before bulk delivery', async () => {
+test('admin preview route defaults to the first active participant when none is selected', async () => {
   const participant = insertParticipant({
     name: 'Preview Person',
     email: 'preview@example.com',
@@ -731,46 +731,38 @@ test('invite review page previews the final send workflow before bulk delivery',
   });
   const cookie = await signInAsAdmin();
 
-  const response = await fetch(`${baseUrl}/admin/event/${event.id}/invite-review?participantId=${participant.id}`, {
+  const response = await fetch(`${baseUrl}/admin/event/${event.id}/preview`, {
     headers: { cookie }
   });
 
   assert.equal(response.status, 200);
-  const body = await response.text();
-  assert.match(body, /Review RSVP Invite/);
-  assert.match(body, /This is the final step before delivery\./);
-  assert.match(body, /Send Now to 2 Participants/);
-  assert.match(body, new RegExp(`action="/admin/event/${event.id}/notify"`));
-  assert.match(body, new RegExp(`src="/admin/event/${event.id}/invite-review/render\\?participantId=${participant.id}"`));
-  assert.match(body, /Open Sample RSVP Page/);
+  assert.equal(response.url, `${baseUrl}${buildRsvpPath(participant, event)}`);
 });
 
-test('invite review render shows the exact email content for the selected participant', async () => {
-  const participant = insertParticipant({
+test('dashboard shows edit, preview, and confirm-send actions for the selected event', async () => {
+  insertParticipant({
     name: 'Preview Person',
     email: 'preview@example.com',
     rsvp_token: 'preview-token'
   });
   const event = insertEvent({
-    title: 'Preview Event',
-    event_date: '2999-04-15',
-    location_name: 'Manatee Recreation Center',
-    arrival_notes: 'Bring a snack to share.'
+    title: 'Workflow Event',
+    event_date: '2999-04-15'
   });
   const cookie = await signInAsAdmin();
 
-  const response = await fetch(`${baseUrl}/admin/event/${event.id}/invite-review/render?participantId=${participant.id}`, {
+  const response = await fetch(`${baseUrl}/admin/dashboard?eventId=${event.id}`, {
     headers: { cookie }
   });
 
   assert.equal(response.status, 200);
   const body = await response.text();
-  assert.match(body, /Hi Preview,/);
-  assert.match(body, /Preview Event/);
-  assert.match(body, /Manatee Recreation Center/);
-  assert.match(body, /Event notes/);
-  assert.match(body, /Bring a snack to share\./);
-  assert.ok(body.includes(`http://127.0.0.1${buildRsvpPath(participant, event)}`));
+  assert.match(body, /Edit event/);
+  assert.match(body, /href="\/admin\/event\/\d+\/preview"/);
+  assert.match(body, /Confirm and send RSVP to 1 invitee/);
+  assert.match(body, /Update the event details, then preview before sending the RSVP invite\./);
+  assert.doesNotMatch(body, /Review Invite &amp; Send/);
+  assert.doesNotMatch(body, /Preview what invitees see/);
 });
 
 test('admin can send a single test invite without notifying the full roster', async () => {
