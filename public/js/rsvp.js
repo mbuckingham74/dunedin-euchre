@@ -14,6 +14,7 @@ const isPairInvite = PARTY_MEMBERS.length === 2;
 
 let canEdit = CAN_EDIT;
 let pendingMode = getModeFromState(selectedStatus, INITIAL_ATTENDEE_NAMES);
+let hasPendingInteraction = false;
 const initialState = {
   mode: pendingMode,
   comment: commentInput ? commentInput.value : '',
@@ -22,6 +23,7 @@ const initialState = {
 
 if (commentInput) {
   commentInput.addEventListener('input', () => {
+    hasPendingInteraction = true;
     charCount.textContent = commentInput.value.length;
     updateSubmitState();
   });
@@ -30,6 +32,7 @@ if (commentInput) {
 statusBtns.forEach(btn => {
   btn.addEventListener('click', () => {
     pendingMode = btn.dataset.mode || '';
+    hasPendingInteraction = true;
     setActiveStatusButton(pendingMode);
 
     if (pendingMode === 'yes-some' && attendeeCheckboxes.length > 0 && getSelectedAttendeeNames().length === 0) {
@@ -44,7 +47,10 @@ statusBtns.forEach(btn => {
 });
 
 attendeeCheckboxes.forEach(checkbox => {
-  checkbox.addEventListener('change', updateSubmitState);
+  checkbox.addEventListener('change', () => {
+    hasPendingInteraction = true;
+    updateSubmitState();
+  });
 });
 
 submitBtn.addEventListener('click', async () => {
@@ -91,6 +97,7 @@ submitBtn.addEventListener('click', async () => {
     initialState.comment = commentInput ? commentInput.value : '';
     initialState.attendeeNames = normalizeNameList(attendeeNames);
     selectedStatus = pendingStatus;
+    hasPendingInteraction = false;
 
     submitBtn.classList.add('submitted');
     submitBtn.textContent = 'Saved';
@@ -196,7 +203,7 @@ function updateSubmitState() {
     return;
   }
 
-  submitBtn.disabled = !hasChanges();
+  submitBtn.disabled = !(hasChanges() || hasPendingInteraction);
 }
 
 function hasChanges() {
