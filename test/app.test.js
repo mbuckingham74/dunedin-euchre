@@ -313,6 +313,15 @@ test('party invite responses can confirm one attendee or both attendees for the 
     show_public_roster: 1
   });
 
+  const invitePageResponse = await fetch(`${baseUrl}${buildRsvpPath(participant, event)}`);
+  const invitePageHtml = await invitePageResponse.text();
+
+  assert.equal(invitePageResponse.status, 200);
+  assert.match(invitePageHtml, /We&#39;ll both attend/);
+  assert.match(invitePageHtml, /Pam will attend/);
+  assert.match(invitePageHtml, /Charlie will attend/);
+  assert.match(invitePageHtml, /None of us can attend/);
+
   const firstResponse = await fetch(`${baseUrl}${buildRsvpPath(participant, event)}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -351,6 +360,7 @@ test('party invite responses can confirm one attendee or both attendees for the 
   assert.match(firstBody, />0 Pending</);
   assert.match(firstBody, /Pam/);
   assert.match(firstBody, /Charlie/);
+  assert.match(firstBody, /Coming: Pam\. Not attending: Charlie\./);
 
   const secondResponse = await fetch(`${baseUrl}${buildRsvpPath(participant, event)}`, {
     method: 'POST',

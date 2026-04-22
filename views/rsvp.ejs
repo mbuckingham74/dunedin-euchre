@@ -43,6 +43,25 @@
 
       <%
         const selectedAttendeeNames = myResponse ? myResponse.attendeeNames : [];
+        const householdInvite = participantPartyMembers.length > 1;
+        const pairInvite = participantPartyMembers.length === 2;
+        const firstPairMember = pairInvite ? participantPartyMembers[0] : '';
+        const secondPairMember = pairInvite ? participantPartyMembers[1] : '';
+        const householdAllSelected = householdInvite &&
+          selectedAttendeeNames.length === participantPartyMembers.length &&
+          participantPartyMembers.length > 0;
+        const householdPartialSelected = householdInvite &&
+          selectedAttendeeNames.length > 0 &&
+          selectedAttendeeNames.length < participantPartyMembers.length;
+        const firstOnlySelected = pairInvite &&
+          selectedAttendeeNames.length === 1 &&
+          selectedAttendeeNames[0] === firstPairMember;
+        const secondOnlySelected = pairInvite &&
+          selectedAttendeeNames.length === 1 &&
+          selectedAttendeeNames[0] === secondPairMember;
+        const householdAllLabel = participantPartyMembers.length === 2
+          ? "We'll both attend"
+          : 'Everyone will attend';
         function joinNames(names) {
           if (!names || names.length === 0) return '';
           if (names.length === 1) return names[0];
@@ -72,39 +91,99 @@
       %>
 
       <div class="status-buttons" id="status-buttons">
-        <button
-          type="button"
-          class="btn-status btn-yes <%= (myResponse && myResponse.status === 'yes') ? 'active' : '' %>"
-          data-status="yes"
-          <%= !canEdit ? 'disabled' : '' %>
-        >
-          ✓ Yes, I'll be there
-        </button>
-        <button
-          type="button"
-          class="btn-status btn-no <%= (myResponse && myResponse.status === 'no') ? 'active' : '' %>"
-          data-status="no"
-          <%= !canEdit ? 'disabled' : '' %>
-        >
-          ✕ Can't make it
-        </button>
-        <button
-          type="button"
-          class="btn-status btn-maybe <%= (myResponse && myResponse.status === 'maybe') ? 'active' : '' %>"
-          data-status="maybe"
-          <%= !canEdit ? 'disabled' : '' %>
-        >
-          ? Not sure yet
-        </button>
+        <% if (householdInvite) { %>
+          <button
+            type="button"
+            class="btn-status btn-yes <%= householdAllSelected ? 'active' : '' %>"
+            data-mode="yes-all"
+            <%= !canEdit ? 'disabled' : '' %>
+          >
+            ✓ <%= householdAllLabel %>
+          </button>
+          <% if (pairInvite) { %>
+            <button
+              type="button"
+              class="btn-status btn-some <%= firstOnlySelected ? 'active' : '' %>"
+              data-mode="yes-first"
+              <%= !canEdit ? 'disabled' : '' %>
+            >
+              ◐ <%= firstPairMember %> will attend
+            </button>
+            <button
+              type="button"
+              class="btn-status btn-some <%= secondOnlySelected ? 'active' : '' %>"
+              data-mode="yes-second"
+              <%= !canEdit ? 'disabled' : '' %>
+            >
+              ◐ <%= secondPairMember %> will attend
+            </button>
+          <% } else { %>
+            <button
+              type="button"
+              class="btn-status btn-some <%= householdPartialSelected ? 'active' : '' %>"
+              data-mode="yes-some"
+              <%= !canEdit ? 'disabled' : '' %>
+            >
+              ◐ Choose who will attend
+            </button>
+          <% } %>
+          <button
+            type="button"
+            class="btn-status btn-no <%= (myResponse && myResponse.status === 'no') ? 'active' : '' %>"
+            data-mode="no"
+            <%= !canEdit ? 'disabled' : '' %>
+          >
+            ✕ None of us can attend
+          </button>
+          <button
+            type="button"
+            class="btn-status btn-maybe <%= (myResponse && myResponse.status === 'maybe') ? 'active' : '' %>"
+            data-mode="maybe"
+            <%= !canEdit ? 'disabled' : '' %>
+          >
+            ? We're not sure yet
+          </button>
+        <% } else { %>
+          <button
+            type="button"
+            class="btn-status btn-yes <%= (myResponse && myResponse.status === 'yes') ? 'active' : '' %>"
+            data-mode="yes"
+            <%= !canEdit ? 'disabled' : '' %>
+          >
+            ✓ Yes, I'll be there
+          </button>
+          <button
+            type="button"
+            class="btn-status btn-no <%= (myResponse && myResponse.status === 'no') ? 'active' : '' %>"
+            data-mode="no"
+            <%= !canEdit ? 'disabled' : '' %>
+          >
+            ✕ Can't make it
+          </button>
+          <button
+            type="button"
+            class="btn-status btn-maybe <%= (myResponse && myResponse.status === 'maybe') ? 'active' : '' %>"
+            data-mode="maybe"
+            <%= !canEdit ? 'disabled' : '' %>
+          >
+            ? Not sure yet
+          </button>
+        <% } %>
       </div>
 
-      <% if (participantPartyMembers.length > 1) { %>
+      <% if (householdInvite && !pairInvite) { %>
         <div
-          class="party-selector <%= (myResponse && myResponse.status === 'yes') ? '' : 'party-selector-hidden' %>"
+          class="party-selector <%= householdPartialSelected ? '' : 'party-selector-hidden' %>"
           id="attendee-selector"
         >
-          <label class="comment-label">Who is coming?</label>
-          <p class="party-selector-copy">Choose one or both names for this event.</p>
+          <label class="comment-label">Who will attend?</label>
+          <p class="party-selector-copy">
+            <% if (participantPartyMembers.length === 2) { %>
+              Choose the person who can make it. Anyone left unchecked will be marked as not attending.
+            <% } else { %>
+              Choose everyone who can make it. Anyone left unchecked will be marked as not attending.
+            <% } %>
+          </p>
           <div class="party-selector-grid">
             <% participantPartyMembers.forEach(function(name) { %>
               <label class="party-checkbox">

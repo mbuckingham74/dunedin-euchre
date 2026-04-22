@@ -19,6 +19,15 @@
 </header>
 
 <main class="event-page-main">
+  <%
+    function joinNames(names) {
+      if (!names || names.length === 0) return '';
+      if (names.length === 1) return names[0];
+      if (names.length === 2) return names[0] + ' and ' + names[1];
+      return names.slice(0, -1).join(', ') + ', and ' + names[names.length - 1];
+    }
+  %>
+
   <%- include('./partials/event-overview', {
     event,
     formatEventDate,
@@ -50,7 +59,12 @@
           <% if (groupedRoster.yes.length > 0) { %>
             <ul class="public-roster-list">
               <% groupedRoster.yes.forEach(function(entry) { %>
-                <li class="public-roster-item"><%= entry.name %></li>
+                <li class="public-roster-item">
+                  <span class="public-roster-item-name"><%= entry.name %></span>
+                  <% if (entry.declinedNames && entry.declinedNames.length > 0) { %>
+                    <span class="public-roster-detail">Coming: <%= joinNames(entry.attendeeNames) %>. Not attending: <%= joinNames(entry.declinedNames) %>.</span>
+                  <% } %>
+                </li>
               <% }); %>
             </ul>
           <% } else { %>
@@ -63,7 +77,12 @@
           <% if (groupedRoster.maybe.length > 0) { %>
             <ul class="public-roster-list">
               <% groupedRoster.maybe.forEach(function(entry) { %>
-                <li class="public-roster-item"><%= entry.name %></li>
+                <li class="public-roster-item">
+                  <span class="public-roster-item-name"><%= entry.name %></span>
+                  <% if (entry.partySize > 1) { %>
+                    <span class="public-roster-detail">Still deciding for <%= joinNames(entry.partyMembers) %>.</span>
+                  <% } %>
+                </li>
               <% }); %>
             </ul>
           <% } else { %>
@@ -76,7 +95,12 @@
           <% if (groupedRoster.no.length > 0) { %>
             <ul class="public-roster-list">
               <% groupedRoster.no.forEach(function(entry) { %>
-                <li class="public-roster-item"><%= entry.name %></li>
+                <li class="public-roster-item">
+                  <span class="public-roster-item-name"><%= entry.name %></span>
+                  <% if (entry.partySize > 1) { %>
+                    <span class="public-roster-detail">Not attending: <%= joinNames(entry.partyMembers) %>.</span>
+                  <% } %>
+                </li>
               <% }); %>
             </ul>
           <% } else { %>

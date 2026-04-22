@@ -1,6 +1,6 @@
 'use strict';
 
-const statusBtns = document.querySelectorAll('.btn-status');
+const statusBtns = Array.from(document.querySelectorAll('.btn-status'));
 const submitBtn = document.getElementById('submit-btn');
 const commentInput = document.getElementById('comment-input');
 const charCount = document.getElementById('char-count');
@@ -9,11 +9,13 @@ const rosterList = document.getElementById('roster-list');
 const rosterCounts = document.getElementById('roster-counts');
 const attendeeSelector = document.getElementById('attendee-selector');
 const attendeeCheckboxes = Array.from(document.querySelectorAll('.attendee-checkbox'));
+const isHouseholdInvite = PARTY_MEMBERS.length > 1;
+const isPairInvite = PARTY_MEMBERS.length === 2;
 
 let canEdit = CAN_EDIT;
-let pendingStatus = selectedStatus;
+let pendingMode = getModeFromState(selectedStatus, INITIAL_ATTENDEE_NAMES);
 const initialState = {
-  status: selectedStatus,
+  mode: pendingMode,
   comment: commentInput ? commentInput.value : '',
   attendeeNames: normalizeNameList(INITIAL_ATTENDEE_NAMES)
 };
@@ -27,10 +29,10 @@ if (commentInput) {
 
 statusBtns.forEach(btn => {
   btn.addEventListener('click', () => {
-    pendingStatus = btn.dataset.status;
-    statusBtns.forEach(button => button.classList.toggle('active', button === btn));
+    pendingMode = btn.dataset.mode || '';
+    setActiveStatusButton(pendingMode);
 
-    if (pendingStatus === 'yes' && attendeeCheckboxes.length > 0 && getSelectedAttendeeNames().length === 0) {
+    if (pendingMode === 'yes-some' && attendeeCheckboxes.length > 0 && getSelectedAttendeeNames().length === 0) {
       attendeeCheckboxes.forEach(checkbox => {
         checkbox.checked = true;
       });
@@ -46,13 +48,12 @@ attendeeCheckboxes.forEach(checkbox => {
 });
 
 submitBtn.addEventListener('click', async () => {
-  if (!canEdit || !pendingStatus) return;
+  if (!canEdit || !pendingMode) return;
 
-  const attendeeNames = pendingStatus === 'yes'
-    ? (attendeeCheckboxes.length > 0 ? getSelectedAttendeeNames() : PARTY_MEMBERS.slice())
-    : [];
-  if (pendingStatus === 'yes' && PARTY_MEMBERS.length > 1 && attendeeNames.length === 0) {
-    setFeedback('Choose who is coming before saving this RSVP.', 'error');
+  const pendingStatus = getStatusForMode(pendingMode);
+  const attendeeNames = getPendingAttendeeNames(pendingMode);
+  if (hasInvalidPartialSelection()) {
+    setFeedback('Choose who can attend and leave anyone else unchecked.', 'error');
     updateSubmitState();
     return;
   }
@@ -86,7 +87,7 @@ submitBtn.addEventListener('click', async () => {
       return;
     }
 
-    initialState.status = pendingStatus;
+    initialState.mode = pendingMode;
     initialState.comment = commentInput ? commentInput.value : '';
     initialState.attendeeNames = normalizeNameList(attendeeNames);
     selectedStatus = pendingStatus;
@@ -109,8 +110,45 @@ submitBtn.addEventListener('click', async () => {
   }
 });
 
+setActiveStatusButton(pendingMode);
 syncAttendeeSelector();
 updateSubmitState();
+
+function getStatusForMode(mode) {
+  if (
+    mode === 'yes' ||
+    mode === 'yes-all' ||
+    mode === 'yes-first' ||
+    mode === 'yes-second' ||
+    mode === 'yes-some'
+  ) {
+    return 'yes';
+  }
+  return mode || '';
+}
+
+function getModeFromState(status, attendeeNames) {
+  const normalizedAttendeeNames = normalizeNameList(attendeeNames);
+  if (status !== 'yes') return status || '';
+  if (!isHouseholdInvite) return 'yes';
+  if (isPairInvite) {
+    if (normalizedAttendeeNames.length === 1) {
+      if (normalizedAttendeeNames[0] === PARTY_MEMBERS[0]) return 'yes-first';
+      if (normalizedAttendeeNames[0] === PARTY_MEMBERS[1]) return 'yes-second';
+    }
+    return 'yes-all';
+  }
+  if (normalizedAttendeeNames.length > 0 && normalizedAttendeeNames.length < PARTY_MEMBERS.length) {
+    return 'yes-some';
+  }
+  return 'yes-all';
+}
+
+function setActiveStatusButton(mode) {
+  statusBtns.forEach(button => {
+    button.classList.toggle('active', button.dataset.mode === mode);
+  });
+}
 
 function getSelectedAttendeeNames() {
   return attendeeCheckboxes
@@ -118,10 +156,26 @@ function getSelectedAttendeeNames() {
     .map(checkbox => checkbox.value);
 }
 
+function getPendingAttendeeNames(mode) {
+  if (getStatusForMode(mode) !== 'yes') return [];
+  if (!isHouseholdInvite) return PARTY_MEMBERS.slice();
+  if (mode === 'yes-first') return [PARTY_MEMBERS[0]];
+  if (mode === 'yes-second') return [PARTY_MEMBERS[1]];
+  if (mode === 'yes-all') return PARTY_MEMBERS.slice();
+  return getSelectedAttendeeNames();
+}
+
+function hasInvalidPartialSelection() {
+  if (pendingMode !== 'yes-some' || !isHouseholdInvite || isPairInvite) return false;
+
+  const selectedCount = getSelectedAttendeeNames().length;
+  return selectedCount === 0 || selectedCount === PARTY_MEMBERS.length;
+}
+
 function syncAttendeeSelector() {
   if (!attendeeSelector) return;
 
-  const showSelector = pendingStatus === 'yes' && PARTY_MEMBERS.length > 1;
+  const showSelector = pendingMode === 'yes-some' && isHouseholdInvite && !isPairInvite;
   attendeeSelector.classList.toggle('party-selector-hidden', !showSelector);
 
   attendeeCheckboxes.forEach(checkbox => {
@@ -132,12 +186,12 @@ function syncAttendeeSelector() {
 function updateSubmitState() {
   if (!submitBtn) return;
 
-  if (!canEdit || !pendingStatus) {
+  if (!canEdit || !pendingMode) {
     submitBtn.disabled = true;
     return;
   }
 
-  if (pendingStatus === 'yes' && PARTY_MEMBERS.length > 1 && getSelectedAttendeeNames().length === 0) {
+  if (hasInvalidPartialSelection()) {
     submitBtn.disabled = true;
     return;
   }
@@ -147,13 +201,9 @@ function updateSubmitState() {
 
 function hasChanges() {
   const currentComment = commentInput ? commentInput.value : '';
-  const currentAttendeeNames = normalizeNameList(
-    pendingStatus === 'yes'
-      ? (attendeeCheckboxes.length > 0 ? getSelectedAttendeeNames() : PARTY_MEMBERS.slice())
-      : []
-  );
+  const currentAttendeeNames = normalizeNameList(getPendingAttendeeNames(pendingMode));
 
-  return pendingStatus !== initialState.status ||
+  return pendingMode !== initialState.mode ||
     currentComment !== initialState.comment ||
     !arraysEqual(currentAttendeeNames, initialState.attendeeNames);
 }

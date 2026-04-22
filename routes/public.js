@@ -234,7 +234,7 @@ function renderPublicEventPage(res, event) {
   const summary = getRsvpSummary(event.id);
   const showPublicRoster = isPublicRosterVisible(event);
   const groupedRoster = showPublicRoster
-    ? groupPublicRoster(getPublicRoster(event.id))
+    ? groupPublicRoster(getRoster(event.id))
     : emptyGroupedRoster();
 
   return res.render('event', {
