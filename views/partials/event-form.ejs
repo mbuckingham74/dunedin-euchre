@@ -146,12 +146,11 @@
 </div>
 
 <div class="form-group" style="margin-top:0.75rem;">
-  <label class="form-label">Arrival / parking notes <span style="font-weight:400;color:var(--gray-500);">(optional)</span></label>
+  <label class="form-label">Event notes <span style="font-weight:400;color:var(--gray-500);">(optional)</span></label>
   <textarea
     name="arrival_notes"
     class="form-input"
     rows="3"
-    placeholder="e.g. Park in Lot B and use the west entrance."
   ><%= event ? ((event.arrival_notes || event.notes) || '') : '' %></textarea>
 </div>
 
