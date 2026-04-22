@@ -70,7 +70,21 @@
             <label class="form-label">Who is on this invite?</label>
             <div id="add-party-member-list" class="party-member-list" data-party-member-list></div>
             <div class="party-member-actions">
-              <button type="button" class="btn-secondary btn-sm" data-party-add="add-party-member-list">Add another person</button>
+              <button type="button" class="btn-secondary btn-sm" data-party-open="add">Add person</button>
+            </div>
+            <div id="add-party-member-composer" class="party-member-composer party-member-composer-hidden">
+              <label for="add-party-member-draft" class="form-label">Add person</label>
+              <div class="party-member-composer-row">
+                <input
+                  type="text"
+                  id="add-party-member-draft"
+                  class="form-input"
+                  data-party-draft="add"
+                  placeholder="Person name"
+                >
+                <button type="button" class="btn-primary btn-sm" data-party-save="add">Add</button>
+                <button type="button" class="btn-secondary btn-sm" data-party-cancel="add">Cancel</button>
+              </div>
             </div>
             <p class="form-help">Use one box per person sharing this email address.</p>
           </div>
@@ -173,7 +187,21 @@
         <label class="form-label">Who is on this invite?</label>
         <div id="edit-party-member-list" class="party-member-list" data-party-member-list></div>
         <div class="party-member-actions">
-          <button type="button" class="btn-secondary btn-sm" data-party-add="edit-party-member-list">Add another person</button>
+          <button type="button" class="btn-secondary btn-sm" data-party-open="edit">Add person</button>
+        </div>
+        <div id="edit-party-member-composer" class="party-member-composer party-member-composer-hidden">
+          <label for="edit-party-member-draft" class="form-label">Add person</label>
+          <div class="party-member-composer-row">
+            <input
+              type="text"
+              id="edit-party-member-draft"
+              class="form-input"
+              data-party-draft="edit"
+              placeholder="Person name"
+            >
+            <button type="button" class="btn-primary btn-sm" data-party-save="edit">Add</button>
+            <button type="button" class="btn-secondary btn-sm" data-party-cancel="edit">Cancel</button>
+          </div>
         </div>
         <p class="form-help">Use one box per person sharing this email address.</p>
       </div>
@@ -188,6 +216,7 @@
 <script>
 function closeEditModal(e) {
   if (!e || e.target === document.getElementById('edit-modal')) {
+    closePartyMemberComposer('edit');
     document.getElementById('edit-modal').style.display = 'none';
   }
 }
@@ -207,6 +236,14 @@ function getPartyMemberValues(container) {
   return Array.from(container.querySelectorAll('input[name="party_member_names"]')).map(function(input) {
     return input.value;
   });
+}
+
+function getPartyMemberElements(prefix) {
+  return {
+    list: document.getElementById(prefix + '-party-member-list'),
+    composer: document.getElementById(prefix + '-party-member-composer'),
+    draft: document.getElementById(prefix + '-party-member-draft')
+  };
 }
 
 function renderPartyMemberList(container, names) {
@@ -247,16 +284,66 @@ function renderPartyMemberList(container, names) {
   });
 }
 
-document.querySelectorAll('[data-party-add]').forEach(function(button) {
-  button.addEventListener('click', function() {
-    const container = document.getElementById(button.dataset.partyAdd);
-    const nextValues = getPartyMemberValues(container);
-    nextValues.push('');
-    renderPartyMemberList(container, nextValues);
+function openPartyMemberComposer(prefix) {
+  const elements = getPartyMemberElements(prefix);
+  if (!elements.composer || !elements.draft) return;
 
-    const inputs = container.querySelectorAll('input[name="party_member_names"]');
-    const lastInput = inputs[inputs.length - 1];
-    if (lastInput) lastInput.focus();
+  elements.composer.classList.remove('party-member-composer-hidden');
+  elements.draft.value = '';
+  elements.draft.focus();
+}
+
+function closePartyMemberComposer(prefix) {
+  const elements = getPartyMemberElements(prefix);
+  if (!elements.composer || !elements.draft) return;
+
+  elements.composer.classList.add('party-member-composer-hidden');
+  elements.draft.value = '';
+}
+
+function addPartyMemberFromComposer(prefix) {
+  const elements = getPartyMemberElements(prefix);
+  if (!elements.list || !elements.draft) return;
+
+  const value = String(elements.draft.value || '').trim();
+  if (!value) {
+    elements.draft.focus();
+    return;
+  }
+
+  const nextValues = getPartyMemberValues(elements.list);
+  nextValues.push(value);
+  renderPartyMemberList(elements.list, nextValues);
+  closePartyMemberComposer(prefix);
+}
+
+document.querySelectorAll('[data-party-open]').forEach(function(button) {
+  button.addEventListener('click', function() {
+    openPartyMemberComposer(button.dataset.partyOpen);
+  });
+});
+
+document.querySelectorAll('[data-party-save]').forEach(function(button) {
+  button.addEventListener('click', function() {
+    addPartyMemberFromComposer(button.dataset.partySave);
+  });
+});
+
+document.querySelectorAll('[data-party-cancel]').forEach(function(button) {
+  button.addEventListener('click', function() {
+    closePartyMemberComposer(button.dataset.partyCancel);
+  });
+});
+
+document.querySelectorAll('[data-party-draft]').forEach(function(input) {
+  input.addEventListener('keydown', function(event) {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      addPartyMemberFromComposer(input.dataset.partyDraft);
+    } else if (event.key === 'Escape') {
+      event.preventDefault();
+      closePartyMemberComposer(input.dataset.partyDraft);
+    }
   });
 });
 
@@ -271,6 +358,7 @@ document.querySelectorAll('.edit-participant-btn').forEach(function(button) {
       document.getElementById('edit-party-member-list'),
       decodePartyMemberNames(button.dataset.partyMembers)
     );
+    closePartyMemberComposer('edit');
     document.getElementById('edit-selected-event-id').value = button.dataset.selectedEventId || '';
     document.getElementById('edit-modal').style.display = 'flex';
   });

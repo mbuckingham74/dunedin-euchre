@@ -1059,6 +1059,9 @@ test('participants page exposes the add-member anchor for roster shortcuts', asy
   const body = await response.text();
   assert.match(body, /id="add-member"/);
   assert.match(body, /Add Participant/);
+  assert.match(body, /data-party-open="edit"/);
+  assert.match(body, /id="edit-party-member-composer"/);
+  assert.match(body, /placeholder="Person name"/);
 });
 
 test('testing workspace is available from admin and shows the end-to-end tools', async () => {
