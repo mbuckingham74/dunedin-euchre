@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dunedin Euchre – Review Invite</title>
+  <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body class="admin-page">
+
+<%- include('../partials/admin-nav', { active: 'dashboard' }) %>
+
+<main class="admin-main">
+  <div class="admin-content">
+
+    <% if (flash) { %>
+      <div class="flash-msg"><%= flash %></div>
+    <% } %>
+
+    <img src="/images/dunedin-logo-transparent.png" alt="Dunedin Euchre" class="dashboard-logo">
+
+    <section class="card admin-card" style="margin-bottom:1.5rem;">
+      <div class="card-header">
+        <div class="admin-card-header-text">
+          <h2 class="card-title">Review RSVP Invite</h2>
+          <p class="admin-card-copy">This is the final step before delivery. Sending happens immediately when you click Send Now.</p>
+        </div>
+      </div>
+
+      <div class="testing-alert" style="margin-bottom:1.25rem;">
+        <strong>Final confirmation:</strong> This will email <%= inviteParticipants.length %> active participants for <strong><%= getEventTitle(event) %></strong>.
+        Publishing stays separate from sending.
+      </div>
+
+      <div class="admin-history-summary-grid" style="margin-bottom:1.25rem;">
+        <div class="admin-history-summary-box">
+          <span class="admin-history-summary-label">Recipients</span>
+          <strong><%= inviteParticipants.length %> active participants</strong>
+          <p class="dashboard-detail-meta">Every email includes a unique RSVP link for that participant.</p>
+        </div>
+        <div class="admin-history-summary-box">
+          <span class="admin-history-summary-label">Event</span>
+          <strong><%= formatEventDate(event.event_date) %></strong>
+          <p class="dashboard-detail-meta"><%= formatTime(event.start_time) %> – <%= formatTime(event.end_time) %> at <%= event.location_name %></p>
+        </div>
+        <div class="admin-history-summary-box">
+          <span class="admin-history-summary-label">Status</span>
+          <strong><%= isEventPublished(event) ? 'Published event page' : 'Draft event page' %></strong>
+          <p class="dashboard-detail-meta">Invite sending is immediate. Event page publishing is controlled separately.</p>
+        </div>
+      </div>
+
+      <div class="invite-review-grid">
+        <section class="card admin-card invite-review-sidebar">
+          <div class="card-header">
+            <div class="admin-card-header-text">
+              <h3 class="card-title">Sample Recipient</h3>
+              <p class="admin-card-copy">Use one participant to preview the exact email content before you send the full batch.</p>
+            </div>
+          </div>
+
+          <form method="GET" action="/admin/event/<%= event.id %>/invite-review" class="testing-form-stack">
+            <div class="form-group">
+              <label class="form-label">Preview as participant</label>
+              <select name="participantId" class="form-input">
+                <% inviteParticipants.forEach(function(participant) { %>
+                  <option value="<%= participant.id %>" <%= previewParticipant.id === participant.id ? 'selected' : '' %>>
+                    <%= participant.name %> · <%= participant.email %>
+                  </option>
+                <% }); %>
+              </select>
+            </div>
+            <button type="submit" class="btn-secondary">Refresh Preview</button>
+          </form>
+
+          <div class="dashboard-note" style="margin-top:1rem;">
+            <span class="notes-label">Previewing now</span>
+            <p class="notes-text"><strong><%= previewParticipant.name %></strong><br><span style="font-family:system-ui,sans-serif;color:var(--gray-500);"><%= previewParticipant.email %></span></p>
+          </div>
+
+          <div class="invite-review-actions">
+            <a href="/admin/event/<%= event.id %>/preview?participantId=<%= previewParticipant.id %>" target="_blank" class="btn-secondary">Open Sample RSVP Page</a>
+            <a href="<%= buildDashboardRedirect(event.id) %>" class="btn-secondary">Back to Dashboard</a>
+          </div>
+        </section>
+
+        <section class="card admin-card invite-preview-card">
+          <div class="card-header">
+            <div class="admin-card-header-text">
+              <h3 class="card-title">Email Preview</h3>
+              <p class="admin-card-copy">This is the exact invite email body for the selected participant.</p>
+            </div>
+          </div>
+
+          <div class="invite-preview-subject">
+            <span class="invite-preview-subject-label">Subject</span>
+            <strong><%= invitePreview.subject %></strong>
+          </div>
+
+          <iframe
+            title="RSVP invite preview"
+            class="invite-preview-frame"
+            src="/admin/event/<%= event.id %>/invite-review/render?participantId=<%= previewParticipant.id %>"
+            sandbox=""
+          ></iframe>
+
+          <form
+            method="POST"
+            action="/admin/event/<%= event.id %>/notify"
+            class="invite-send-form"
+            onsubmit="return confirm('Send RSVP invites now to all <%= inviteParticipants.length %> active participants? This sends immediately.')"
+          >
+            <button type="submit" class="btn-primary">Send Now to <%= inviteParticipants.length %> Participants</button>
+            <p class="dashboard-detail-meta">Use this only when the event details and preview look correct.</p>
+          </form>
+        </section>
+      </div>
+    </section>
+  </div>
+</main>
+
+<script src="/js/admin.js"></script>
+</body>
+</html>

@@ -117,18 +117,12 @@
 
             <% if (arrivalNotes) { %>
               <div class="dashboard-note">
-                <span class="notes-label">Arrival notes</span>
+                <span class="notes-label">Event notes</span>
                 <p class="notes-text"><%= arrivalNotes %></p>
               </div>
             <% } %>
 
             <div class="admin-actions">
-              <form method="POST" action="/admin/event/<%= event.id %>/notify"
-                    onsubmit="return confirm('Send RSVP invites to all <%= roster.length %> active participants?')">
-                <button type="submit" class="btn-primary">
-                  &#128231; Send RSVP Invites (<%= roster.length %> participants)
-                </button>
-              </form>
               <% if (isEventPublished(event)) { %>
                 <a href="<%= publicPath %>" target="_blank" class="btn-secondary">View event page</a>
               <% } %>
@@ -201,6 +195,31 @@
                 </div>
               </div>
             <% } %>
+
+            <div class="dashboard-test-panel dashboard-send-panel">
+              <div class="dashboard-test-header">
+                <div>
+                  <p class="dashboard-kicker" style="margin-bottom:0.3rem;">Final step</p>
+                  <h4 class="dashboard-test-title">Review invite before sending</h4>
+                </div>
+                <p class="dashboard-detail-meta" style="max-width:32rem;">
+                  Open the exact email preview first. The actual delivery happens on the next page when you click Send Now.
+                </p>
+              </div>
+
+              <% if (inviteParticipants.length > 0) { %>
+                <div class="admin-actions">
+                  <a href="/admin/event/<%= event.id %>/invite-review" class="btn-primary">
+                    &#128231; Review Invite &amp; Send (<%= inviteParticipants.length %> participants)
+                  </a>
+                  <p class="dashboard-detail-meta dashboard-send-meta">
+                    Each person gets the same invite with their own personal RSVP link.
+                  </p>
+                </div>
+              <% } else { %>
+                <p class="dashboard-detail-meta">Add at least one active participant before you can review and send invites.</p>
+              <% } %>
+            </div>
           </div>
         <% } else { %>
           <div class="dashboard-empty-state">

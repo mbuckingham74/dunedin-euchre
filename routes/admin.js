@@ -9,7 +9,7 @@ const { v4: uuidv4 } = require('uuid');
 
 const db = require('../db/database');
 const { requireAdmin } = require('../middleware/auth');
-const { sendMagicLink, sendRsvpInvite, formatEventDate, formatTime } = require('../services/email');
+const { sendMagicLink, sendRsvpInvite, buildRsvpInviteEmail, formatEventDate, formatTime } = require('../services/email');
 const {
   buildMonthlyEventHistory,
   getArrivalNotes,
@@ -451,6 +451,15 @@ function listActiveParticipants() {
     WHERE active = 1
     ORDER BY name ASC
   `).all();
+}
+
+function getInvitePreviewParticipant(participants, participantId) {
+  const parsedParticipantId = parseParticipantId(participantId);
+  if (!parsedParticipantId) {
+    return participants[0] || null;
+  }
+
+  return participants.find(entry => entry.id === parsedParticipantId) || participants[0] || null;
 }
 
 function listRecentResponses(roster, options = {}) {
@@ -1314,12 +1323,60 @@ router.get('/event/:id/preview', requireAdmin, (req, res) => {
     return res.status(404).send('<h1 style="font-family:sans-serif;padding:2rem">Event not found.</h1>');
   }
 
-  const participant = getParticipantById(parseEventId(req.query.participantId));
+  const participant = getParticipantById(parseParticipantId(req.query.participantId));
   if (!participant) {
     return res.status(404).send('<h1 style="font-family:sans-serif;padding:2rem">Participant not found.</h1>');
   }
 
   return res.redirect(buildRsvpPath(participant, event));
+});
+
+// ── GET /admin/event/:id/invite-review ───────────────────────
+router.get('/event/:id/invite-review', requireAdmin, (req, res) => {
+  const event = getEventById(req.params.id);
+  if (!event) {
+    return res.status(404).send('<h1 style="font-family:sans-serif;padding:2rem">Event not found.</h1>');
+  }
+
+  const inviteParticipants = listActiveParticipants();
+  const previewParticipant = getInvitePreviewParticipant(inviteParticipants, req.query.participantId);
+  if (!previewParticipant) {
+    req.session.flash = 'Add at least one active participant before sending invites.';
+    return res.redirect(buildDashboardRedirect(event.id));
+  }
+
+  const invitePreview = buildRsvpInviteEmail(previewParticipant, event);
+
+  res.render('admin/invite-review', {
+    event,
+    inviteParticipants,
+    previewParticipant,
+    invitePreview,
+    formatEventDate,
+    formatTime,
+    getEventTitle,
+    isEventPublished,
+    buildDashboardRedirect,
+    flash: req.session.flash || null
+  });
+  delete req.session.flash;
+});
+
+// ── GET /admin/event/:id/invite-review/render ────────────────
+router.get('/event/:id/invite-review/render', requireAdmin, (req, res) => {
+  const event = getEventById(req.params.id);
+  if (!event) {
+    return res.status(404).send('<h1 style="font-family:sans-serif;padding:2rem">Event not found.</h1>');
+  }
+
+  const inviteParticipants = listActiveParticipants();
+  const previewParticipant = getInvitePreviewParticipant(inviteParticipants, req.query.participantId);
+  if (!previewParticipant) {
+    return res.status(404).send('<h1 style="font-family:sans-serif;padding:2rem">Participant not found.</h1>');
+  }
+
+  const invitePreview = buildRsvpInviteEmail(previewParticipant, event);
+  res.type('html').send(invitePreview.html);
 });
 
 // ── POST /admin/event/:id/notify ─────────────────────────────
