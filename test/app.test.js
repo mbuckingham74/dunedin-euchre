@@ -676,7 +676,7 @@ test('participant create route stores party member names for shared invites', as
     body: new URLSearchParams({
       name: 'Pam & Charlie',
       email: 'pam.charlie@example.com',
-      party_members: 'Pam\nCharlie'
+      party_members: 'Pam, Charlie'
     }),
     redirect: 'manual'
   });

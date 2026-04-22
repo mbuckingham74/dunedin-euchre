@@ -1101,7 +1101,7 @@ router.get('/participants', requireAdmin, (req, res) => {
   ).all().map(participant => ({
     ...participant,
     partyMembers: getParticipantPartyMembers(participant),
-    partyMembersInput: getParticipantPartyMembers(participant).join('\n')
+    partyMembersInput: getParticipantPartyMembers(participant).join(', ')
   }));
 
   const requestedEventId = parseEventId(req.query.eventId);

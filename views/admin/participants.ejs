@@ -71,13 +71,14 @@
             <input type="email" name="email" class="form-input" required placeholder="email@example.com">
           </div>
           <div class="form-group">
-            <label class="form-label">Party Members</label>
-            <textarea
+            <label class="form-label">Invitee names <span style="font-weight:400;color:var(--gray-500);">(optional)</span></label>
+            <input
+              type="text"
               name="party_members"
               class="form-input"
-              rows="3"
-              placeholder="One per line or comma-separated, e.g. Pam&#10;Charlie"
-            ></textarea>
+              placeholder="For shared emails, enter names separated by commas, e.g. Pam, Charlie"
+            >
+            <p style="margin:0.45rem 0 0;font-size:0.9rem;color:var(--gray-500);">Leave this blank for a single-person invite.</p>
           </div>
           <button type="submit" class="btn-primary" style="align-self:flex-end;">Add</button>
         </div>
@@ -97,7 +98,7 @@
             <tr>
               <th>Name</th>
               <th>Email</th>
-              <th>Party Members</th>
+              <th>Invitees</th>
               <th>RSVP Link</th>
               <th>Status</th>
               <th>Actions</th>
@@ -180,14 +181,15 @@
         <input type="email" id="edit-email" name="email" class="form-input" required>
       </div>
       <div class="form-group" style="margin-top:0.75rem;">
-        <label class="form-label">Party Members</label>
-        <textarea
+        <label class="form-label">Invitee names <span style="font-weight:400;color:var(--gray-500);">(optional)</span></label>
+        <input
+          type="text"
           id="edit-party-members"
           name="party_members"
           class="form-input"
-          rows="4"
-          placeholder="One per line or comma-separated"
-        ></textarea>
+          placeholder="For shared emails, enter names separated by commas"
+        >
+        <p style="margin:0.45rem 0 0;font-size:0.9rem;color:var(--gray-500);">Leave this blank for a single-person invite.</p>
       </div>
       <div style="margin-top:1.25rem;display:flex;gap:0.75rem;">
         <button type="submit" class="btn-primary">Save</button>
