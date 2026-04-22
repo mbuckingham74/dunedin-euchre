@@ -481,6 +481,18 @@ function buildDashboardRedirect(eventId) {
   return eventId ? `/admin/dashboard?eventId=${eventId}` : '/admin/dashboard';
 }
 
+function buildDashboardEditRedirect(eventId) {
+  return `${buildDashboardRedirect(eventId)}&edit=1`;
+}
+
+function buildInvitePreviewPath(eventId, participantId = null) {
+  const normalizedParticipantId = parseParticipantId(participantId);
+  const query = normalizedParticipantId
+    ? `?participantId=${normalizedParticipantId}`
+    : '';
+  return `/admin/event/${eventId}/invite-preview${query}`;
+}
+
 function buildParticipantsRedirect(eventId) {
   return eventId ? `/admin/participants?eventId=${eventId}` : '/admin/participants';
 }
@@ -703,7 +715,7 @@ router.get('/dashboard', requireAdmin, (req, res) => {
     buildPublicEventPath,
     baseUrl: BASE_URL,
     flash: req.session.flash || null,
-    showEditEventModal: Boolean(req.session.showEditEventModal)
+    showEditEventModal: Boolean(req.session.showEditEventModal || String(req.query.edit || '') === '1')
   });
   delete req.session.flash;
   delete req.session.showEditEventModal;
@@ -986,6 +998,7 @@ router.post('/event/:id/update', requireAdmin, (req, res) => {
     return res.status(404).json({ error: 'Event not found.' });
   }
 
+  const nextAction = String(req.body.next_action || '').trim().toLowerCase();
   const eventInput = normalizeEventInput(req.body);
   const validationError = getEventValidationError(eventInput);
   if (validationError) {
@@ -1049,6 +1062,11 @@ router.post('/event/:id/update', requireAdmin, (req, res) => {
       return res.redirect(buildDashboardRedirect(existing.id));
     }
     throw error;
+  }
+
+  if (nextAction === 'preview') {
+    req.session.flash = 'Event updated. Review the invite preview before sending.';
+    return res.redirect(buildInvitePreviewPath(existing.id));
   }
 
   req.session.flash = 'Event updated.';
@@ -1333,6 +1351,34 @@ router.get('/event/:id/preview', requireAdmin, (req, res) => {
   }
 
   return res.redirect(buildRsvpPath(participant, event));
+});
+
+// ── GET /admin/event/:id/invite-preview ─────────────────────
+router.get('/event/:id/invite-preview', requireAdmin, (req, res) => {
+  const event = getEventById(req.params.id);
+  if (!event) {
+    return res.status(404).send('<h1 style="font-family:sans-serif;padding:2rem">Event not found.</h1>');
+  }
+
+  const inviteParticipants = listActiveParticipants();
+  const previewParticipant = getInvitePreviewParticipant(inviteParticipants, req.query.participantId);
+  if (!previewParticipant) {
+    req.session.flash = 'Add at least one active invitee before previewing the RSVP page.';
+    return res.redirect(buildDashboardRedirect(event.id));
+  }
+
+  res.render('admin/invite-preview', {
+    event,
+    inviteParticipants,
+    previewParticipant,
+    previewPath: buildRsvpPath(previewParticipant, event),
+    editDashboardPath: buildDashboardEditRedirect(event.id),
+    getEventTitle,
+    formatEventDate,
+    formatTime,
+    flash: req.session.flash || null
+  });
+  delete req.session.flash;
 });
 
 // ── POST /admin/event/:id/notify ─────────────────────────────

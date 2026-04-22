@@ -739,7 +739,36 @@ test('admin preview route defaults to the first active participant when none is 
   assert.equal(response.url, `${baseUrl}${buildRsvpPath(participant, event)}`);
 });
 
-test('dashboard shows edit, preview, and confirm-send actions for the selected event', async () => {
+test('invite preview page shows the invitee view with the final send action', async () => {
+  const participant = insertParticipant({
+    name: 'Preview Person',
+    email: 'preview@example.com',
+    rsvp_token: 'preview-token'
+  });
+  insertParticipant({
+    name: 'Second Person',
+    email: 'second@example.com',
+    rsvp_token: 'second-token'
+  });
+  const event = insertEvent({
+    title: 'Workflow Event',
+    event_date: '2999-04-15'
+  });
+  const cookie = await signInAsAdmin();
+
+  const response = await fetch(`${baseUrl}/admin/event/${event.id}/invite-preview?participantId=${participant.id}`, {
+    headers: { cookie }
+  });
+
+  assert.equal(response.status, 200);
+  const body = await response.text();
+  assert.match(body, /Invite Preview/);
+  assert.match(body, /Confirm and send RSVP to 2 invitees/);
+  assert.ok(body.includes(`src="${buildRsvpPath(participant, event)}"`));
+  assert.match(body, /Back to Edit Event/);
+});
+
+test('dashboard and edit modal point to the invite preview workflow', async () => {
   insertParticipant({
     name: 'Preview Person',
     email: 'preview@example.com',
@@ -758,11 +787,54 @@ test('dashboard shows edit, preview, and confirm-send actions for the selected e
   assert.equal(response.status, 200);
   const body = await response.text();
   assert.match(body, /Edit event/);
-  assert.match(body, /href="\/admin\/event\/\d+\/preview"/);
-  assert.match(body, /Confirm and send RSVP to 1 invitee/);
-  assert.match(body, /Update the event details, then preview before sending the RSVP invite\./);
-  assert.doesNotMatch(body, /Review Invite &amp; Send/);
-  assert.doesNotMatch(body, /Preview what invitees see/);
+  assert.match(body, /href="\/admin\/event\/\d+\/invite-preview"/);
+  assert.match(body, /name="next_action" value="preview"/);
+  assert.match(body, />Invite Preview</);
+  assert.doesNotMatch(body, /Confirm and send RSVP to 1 invitee/);
+});
+
+test('edit event preview action saves changes and redirects to invite preview', async () => {
+  insertParticipant({
+    name: 'Preview Person',
+    email: 'preview@example.com',
+    rsvp_token: 'preview-token'
+  });
+  const event = insertEvent({
+    title: 'Original Event',
+    event_date: '2999-04-15',
+    location_name: 'Manatee Recreation Center'
+  });
+  const cookie = await signInAsAdmin();
+
+  const response = await fetch(`${baseUrl}/admin/event/${event.id}/update`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      cookie
+    },
+    body: new URLSearchParams({
+      title: 'Updated Event',
+      public_slug: '',
+      event_date: '2999-04-15',
+      location_id: '',
+      location_name: 'Manatee Recreation Center',
+      location_address: '',
+      start_time: '18:00',
+      end_time: '21:00',
+      arrival_notes: 'Bring a snack.',
+      next_action: 'preview'
+    }),
+    redirect: 'manual'
+  });
+
+  assert.equal(response.status, 302);
+  assert.equal(response.headers.get('location'), `/admin/event/${event.id}/invite-preview`);
+
+  const updatedEvent = db.prepare('SELECT title, arrival_notes FROM events WHERE id = ?').get(event.id);
+  assert.deepEqual(updatedEvent, {
+    title: 'Updated Event',
+    arrival_notes: 'Bring a snack.'
+  });
 });
 
 test('admin can send a single test invite without notifying the full roster', async () => {

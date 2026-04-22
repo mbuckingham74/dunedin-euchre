@@ -125,14 +125,7 @@
             <div class="admin-actions">
               <button type="button" class="btn-secondary" onclick="openEditEventModal()">Edit event</button>
               <% if (inviteParticipants.length > 0) { %>
-                <a href="/admin/event/<%= event.id %>/preview" target="_blank" class="btn-secondary">Preview</a>
-                <form
-                  method="POST"
-                  action="/admin/event/<%= event.id %>/notify"
-                  onsubmit="return confirm('Send RSVP emails now to all <%= inviteParticipants.length %> active <%= inviteParticipants.length === 1 ? 'invitee' : 'invitees' %>?')"
-                >
-                  <button type="submit" class="btn-primary">Confirm and send RSVP to <%= inviteParticipants.length %> <%= inviteParticipants.length === 1 ? 'invitee' : 'invitees' %></button>
-                </form>
+                <a href="/admin/event/<%= event.id %>/invite-preview" class="btn-secondary">Invite Preview</a>
               <% } %>
               <form
                 method="POST"
@@ -379,6 +372,9 @@
             <%- include('../partials/event-form', { event: event, locations: locations }) %>
             <div class="admin-actions" style="margin-top:1rem;">
               <button type="submit" class="btn-primary">Save Changes</button>
+              <% if (inviteParticipants.length > 0) { %>
+                <button type="submit" name="next_action" value="preview" class="btn-secondary">Invite Preview</button>
+              <% } %>
               <button type="button" class="btn-secondary" onclick="closeEditEventModal()">Cancel</button>
             </div>
           </form>
