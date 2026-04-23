@@ -213,15 +213,13 @@
         <div class="char-counter"><span id="char-count"><%= (myResponse && myResponse.comment) ? myResponse.comment.length : 0 %></span> / 400</div>
       </div>
 
-      <button
-        type="button"
-        class="btn-submit"
-        id="submit-btn"
-        <%= canEdit ? 'disabled' : 'disabled' %>
-        aria-label="Submit your RSVP"
-      >
-        Save RSVP
-      </button>
+      <p class="autosave-note" id="autosave-note">
+        <% if (canEdit) { %>
+          Your RSVP saves automatically when you choose an option. Notes save after you stop typing.
+        <% } else { %>
+          This RSVP is now locked.
+        <% } %>
+      </p>
 
       <div class="rsvp-feedback" id="rsvp-feedback" aria-live="polite"></div>
 
@@ -310,6 +308,32 @@
   <% } %>
 </footer>
 
+<div
+  id="rsvp-confirmation-modal"
+  class="modal-overlay rsvp-confirmation-modal"
+  style="display:none;"
+  role="dialog"
+  aria-modal="true"
+  aria-labelledby="rsvp-confirmation-title"
+  aria-describedby="rsvp-confirmation-detail"
+  aria-hidden="true"
+>
+  <div class="modal-box rsvp-confirmation-box theme-yes" id="rsvp-confirmation-box">
+    <button
+      type="button"
+      class="rsvp-confirmation-close"
+      id="rsvp-confirmation-close"
+      aria-label="Close RSVP confirmation"
+    >
+      Close
+    </button>
+    <p class="rsvp-confirmation-label">RSVP saved</p>
+    <div class="rsvp-confirmation-badge" id="rsvp-confirmation-badge" aria-hidden="true">✓</div>
+    <h2 class="rsvp-confirmation-title" id="rsvp-confirmation-title">You're in</h2>
+    <p class="rsvp-confirmation-detail" id="rsvp-confirmation-detail">Your RSVP has been saved.</p>
+  </div>
+</div>
+
 <script>
   const MY_PID    = <%= participant.id %>;
   const RSVP_POST_PATH = <%- JSON.stringify(rsvpPath) %>;
@@ -318,7 +342,7 @@
   const INITIAL_ATTENDEE_NAMES = <%- JSON.stringify(selectedAttendeeNames) %>;
   let selectedStatus = '<%= (myResponse && myResponse.status) ? myResponse.status : '' %>';
 </script>
-<script src="/js/rsvp.js?v=20260422b"></script>
+<script src="/js/rsvp.js?v=20260422c"></script>
 <script>
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/sw.js').catch(() => {});

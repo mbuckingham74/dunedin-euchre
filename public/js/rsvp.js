@@ -1,7 +1,6 @@
 'use strict';
 
 const statusBtns = Array.from(document.querySelectorAll('.btn-status'));
-const submitBtn = document.getElementById('submit-btn');
 const commentInput = document.getElementById('comment-input');
 const charCount = document.getElementById('char-count');
 const feedback = document.getElementById('rsvp-feedback');
@@ -9,73 +8,180 @@ const rosterList = document.getElementById('roster-list');
 const rosterCounts = document.getElementById('roster-counts');
 const attendeeSelector = document.getElementById('attendee-selector');
 const attendeeCheckboxes = Array.from(document.querySelectorAll('.attendee-checkbox'));
+const autoSaveNote = document.getElementById('autosave-note');
+const confirmationModal = document.getElementById('rsvp-confirmation-modal');
+const confirmationBox = document.getElementById('rsvp-confirmation-box');
+const confirmationBadge = document.getElementById('rsvp-confirmation-badge');
+const confirmationTitle = document.getElementById('rsvp-confirmation-title');
+const confirmationDetail = document.getElementById('rsvp-confirmation-detail');
+const confirmationCloseBtn = document.getElementById('rsvp-confirmation-close');
 const isHouseholdInvite = PARTY_MEMBERS.length > 1;
 const isPairInvite = PARTY_MEMBERS.length === 2;
+const COMMENT_SAVE_DELAY_MS = 700;
+const CONFIRMATION_MODAL_DELAY_MS = 1600;
+const CONFIRMATION_THEMES = ['theme-yes', 'theme-no', 'theme-maybe'];
 
 let canEdit = CAN_EDIT;
 let pendingMode = getModeFromState(selectedStatus, INITIAL_ATTENDEE_NAMES);
-let hasPendingInteraction = false;
 const initialState = {
   mode: pendingMode,
   comment: commentInput ? commentInput.value : '',
   attendeeNames: normalizeNameList(INITIAL_ATTENDEE_NAMES)
 };
 
+let saveInFlight = false;
+let queuedSaveOptions = null;
+let commentSaveTimer = 0;
+let confirmationHideTimer = 0;
+
 if (commentInput) {
   commentInput.addEventListener('input', () => {
-    hasPendingInteraction = true;
-    charCount.textContent = commentInput.value.length;
-    updateSubmitState();
+    updateCharacterCount();
+    hideConfirmationModal();
+    scheduleCommentSave();
+  });
+
+  commentInput.addEventListener('blur', () => {
+    flushCommentSave();
   });
 }
 
 statusBtns.forEach(btn => {
   btn.addEventListener('click', () => {
-    pendingMode = btn.dataset.mode || '';
-    hasPendingInteraction = true;
-    setActiveStatusButton(pendingMode);
+    if (!canEdit) return;
 
-    if (pendingMode === 'yes-some' && attendeeCheckboxes.length > 0 && getSelectedAttendeeNames().length === 0) {
-      attendeeCheckboxes.forEach(checkbox => {
-        checkbox.checked = true;
-      });
+    hideConfirmationModal();
+    pendingMode = btn.dataset.mode || '';
+    setActiveStatusButton(pendingMode);
+    syncAttendeeSelector();
+
+    if (hasInvalidPartialSelection()) {
+      setFeedback('Choose who can attend and leave anyone else unchecked.', 'pending');
+      return;
     }
 
-    syncAttendeeSelector();
-    updateSubmitState();
+    requestSave({ reason: 'selection', showConfirmation: true });
   });
 });
 
 attendeeCheckboxes.forEach(checkbox => {
   checkbox.addEventListener('change', () => {
-    hasPendingInteraction = true;
-    updateSubmitState();
+    if (!canEdit) return;
+
+    hideConfirmationModal();
+    if (hasInvalidPartialSelection()) {
+      setFeedback('Choose who can attend and leave anyone else unchecked.', 'pending');
+      return;
+    }
+
+    requestSave({ reason: 'selection', showConfirmation: true });
   });
 });
 
-submitBtn.addEventListener('click', async () => {
-  if (!canEdit || !pendingMode) return;
+if (confirmationModal) {
+  confirmationModal.addEventListener('click', event => {
+    if (event.target === confirmationModal) {
+      hideConfirmationModal();
+    }
+  });
+}
 
-  const pendingStatus = getStatusForMode(pendingMode);
-  const attendeeNames = getPendingAttendeeNames(pendingMode);
-  if (hasInvalidPartialSelection()) {
-    setFeedback('Choose who can attend and leave anyone else unchecked.', 'error');
-    updateSubmitState();
+if (confirmationCloseBtn) {
+  confirmationCloseBtn.addEventListener('click', () => {
+    hideConfirmationModal();
+  });
+}
+
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape') {
+    hideConfirmationModal();
+  }
+});
+
+setActiveStatusButton(pendingMode);
+syncAttendeeCheckboxes(initialState.attendeeNames);
+syncAttendeeSelector();
+updateCharacterCount();
+
+function scheduleCommentSave() {
+  clearCommentSaveTimer();
+
+  if (!canEdit || !pendingMode || !hasChanges()) {
     return;
   }
 
-  submitBtn.disabled = true;
-  submitBtn.textContent = 'Saving...';
-  setFeedback('', '');
+  commentSaveTimer = window.setTimeout(() => {
+    commentSaveTimer = 0;
+    requestSave({ reason: 'comment', showConfirmation: false });
+  }, COMMENT_SAVE_DELAY_MS);
+}
+
+function flushCommentSave() {
+  if (!commentSaveTimer) return;
+
+  clearCommentSaveTimer();
+  requestSave({ reason: 'comment', showConfirmation: false });
+}
+
+function clearCommentSaveTimer() {
+  if (!commentSaveTimer) return;
+  window.clearTimeout(commentSaveTimer);
+  commentSaveTimer = 0;
+}
+
+function mergeSaveOptions(currentOptions, nextOptions) {
+  if (!currentOptions) {
+    return {
+      reason: nextOptions.reason,
+      showConfirmation: Boolean(nextOptions.showConfirmation)
+    };
+  }
+
+  return {
+    reason: nextOptions.reason || currentOptions.reason,
+    showConfirmation: Boolean(currentOptions.showConfirmation || nextOptions.showConfirmation)
+  };
+}
+
+async function requestSave(options) {
+  clearCommentSaveTimer();
+
+  if (!canEdit || !pendingMode) {
+    return;
+  }
+
+  if (hasInvalidPartialSelection()) {
+    setFeedback('Choose who can attend and leave anyone else unchecked.', 'pending');
+    return;
+  }
+
+  if (!hasChanges()) {
+    if (!options.showConfirmation) {
+      setFeedback('', '');
+    }
+    return;
+  }
+
+  if (saveInFlight) {
+    queuedSaveOptions = mergeSaveOptions(queuedSaveOptions, options);
+    return;
+  }
+
+  const saveSnapshot = buildSaveSnapshot(options);
+  saveInFlight = true;
+  setFeedback(
+    saveSnapshot.showConfirmation ? 'Saving your RSVP...' : 'Saving note...',
+    'pending'
+  );
 
   try {
     const resp = await fetch(RSVP_POST_PATH, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        status: pendingStatus,
-        comment: commentInput ? commentInput.value : '',
-        attendeeNames
+        status: saveSnapshot.status,
+        comment: saveSnapshot.comment,
+        attendeeNames: saveSnapshot.attendeeNames
       })
     });
 
@@ -85,41 +191,158 @@ submitBtn.addEventListener('click', async () => {
       if (resp.status === 409) {
         lockEditing(data.error || 'RSVP changes are now closed.');
       } else {
-        submitBtn.disabled = false;
-        submitBtn.textContent = 'Save RSVP';
+        setFeedback(data.error || 'Something went wrong. Please try again.', 'error');
       }
-
-      setFeedback(data.error || 'Something went wrong. Please try again.', 'error');
       return;
     }
 
-    initialState.mode = pendingMode;
-    initialState.comment = commentInput ? commentInput.value : '';
-    initialState.attendeeNames = normalizeNameList(attendeeNames);
-    selectedStatus = pendingStatus;
-    hasPendingInteraction = false;
+    const savedAttendeeNames = normalizeNameList(data.attendeeNames || saveSnapshot.attendeeNames);
+    initialState.mode = saveSnapshot.mode;
+    initialState.comment = saveSnapshot.comment;
+    initialState.attendeeNames = savedAttendeeNames;
+    selectedStatus = saveSnapshot.status;
 
-    submitBtn.classList.add('submitted');
-    submitBtn.textContent = 'Saved';
-    setFeedback('Your response has been saved.', 'success');
-    renderCurrentResponse(pendingStatus, initialState.attendeeNames);
+    syncAttendeeCheckboxes(saveSnapshot.status === 'yes' ? savedAttendeeNames : []);
+    renderCurrentResponse(saveSnapshot.status, savedAttendeeNames);
     renderRoster(data.roster, MY_PID);
 
-    setTimeout(() => {
-      submitBtn.classList.remove('submitted');
-      submitBtn.textContent = 'Save RSVP';
-      updateSubmitState();
-    }, 1500);
-  } catch (error) {
-    submitBtn.disabled = false;
-    submitBtn.textContent = 'Save RSVP';
-    setFeedback('Network error. Please try again.', 'error');
-  }
-});
+    const shouldShowConfirmation =
+      saveSnapshot.showConfirmation &&
+      !queuedSaveOptions &&
+      snapshotMatchesCurrentState(saveSnapshot);
 
-setActiveStatusButton(pendingMode);
-syncAttendeeSelector();
-updateSubmitState();
+    if (shouldShowConfirmation) {
+      showConfirmationModal(saveSnapshot.status, savedAttendeeNames);
+    }
+
+    if (!queuedSaveOptions && snapshotMatchesCurrentState(saveSnapshot)) {
+      setFeedback(
+        saveSnapshot.showConfirmation ? 'Saved just now.' : 'Note saved.',
+        'success'
+      );
+    }
+  } catch (error) {
+    setFeedback('Network error. Please try again.', 'error');
+  } finally {
+    saveInFlight = false;
+    processQueuedSave();
+  }
+}
+
+function processQueuedSave() {
+  if (!canEdit || !queuedSaveOptions) {
+    return;
+  }
+
+  const nextOptions = queuedSaveOptions;
+  queuedSaveOptions = null;
+  requestSave(nextOptions);
+}
+
+function buildSaveSnapshot(options) {
+  return {
+    reason: options.reason,
+    showConfirmation: Boolean(options.showConfirmation),
+    mode: pendingMode,
+    status: getStatusForMode(pendingMode),
+    comment: commentInput ? commentInput.value : '',
+    attendeeNames: normalizeNameList(getPendingAttendeeNames(pendingMode))
+  };
+}
+
+function snapshotMatchesCurrentState(snapshot) {
+  return snapshot.mode === pendingMode &&
+    snapshot.comment === (commentInput ? commentInput.value : '') &&
+    arraysEqual(snapshot.attendeeNames, normalizeNameList(getPendingAttendeeNames(pendingMode)));
+}
+
+function updateCharacterCount() {
+  if (charCount && commentInput) {
+    charCount.textContent = commentInput.value.length;
+  }
+}
+
+function showConfirmationModal(status, attendeeNames) {
+  if (!confirmationModal || !confirmationBox || !confirmationBadge || !confirmationTitle || !confirmationDetail) {
+    return;
+  }
+
+  const content = getConfirmationContent(status, attendeeNames);
+  confirmationBox.classList.remove(...CONFIRMATION_THEMES);
+  confirmationBox.classList.add(`theme-${content.theme}`);
+  confirmationBadge.textContent = content.badge;
+  confirmationTitle.textContent = content.title;
+  confirmationDetail.textContent = content.detail;
+  confirmationModal.style.display = 'flex';
+  confirmationModal.setAttribute('aria-hidden', 'false');
+  document.body.classList.add('modal-open');
+
+  if (confirmationHideTimer) {
+    window.clearTimeout(confirmationHideTimer);
+  }
+
+  confirmationHideTimer = window.setTimeout(() => {
+    hideConfirmationModal();
+  }, CONFIRMATION_MODAL_DELAY_MS);
+}
+
+function hideConfirmationModal() {
+  if (!confirmationModal) return;
+
+  confirmationModal.style.display = 'none';
+  confirmationModal.setAttribute('aria-hidden', 'true');
+  document.body.classList.remove('modal-open');
+
+  if (confirmationHideTimer) {
+    window.clearTimeout(confirmationHideTimer);
+    confirmationHideTimer = 0;
+  }
+}
+
+function getConfirmationContent(status, attendeeNames) {
+  const normalizedAttendeeNames = normalizeNameList(attendeeNames);
+  const declinedNames = PARTY_MEMBERS.filter(name => !normalizedAttendeeNames.includes(name));
+
+  if (status === 'yes') {
+    if (!isHouseholdInvite) {
+      return {
+        theme: 'yes',
+        badge: '✓',
+        title: 'You\'re in',
+        detail: 'Your RSVP has been saved.'
+      };
+    }
+
+    return {
+      theme: 'yes',
+      badge: normalizedAttendeeNames.length === PARTY_MEMBERS.length ? '✓' : '◐',
+      title: `${formatNameList(normalizedAttendeeNames)} ${normalizedAttendeeNames.length === 1 ? 'is' : 'are'} in`,
+      detail: declinedNames.length > 0
+        ? `${formatNameList(declinedNames)} ${declinedNames.length === 1 ? 'is' : 'are'} marked as not attending.`
+        : 'Your RSVP has been saved.'
+    };
+  }
+
+  if (status === 'no') {
+    return {
+      theme: 'no',
+      badge: '✕',
+      title: isHouseholdInvite ? 'Marked as not attending' : 'Can\'t make it',
+      detail: isHouseholdInvite
+        ? `${formatNameList(PARTY_MEMBERS)} ${PARTY_MEMBERS.length === 1 ? 'won\'t' : 'won\'t'} be attending.`
+        : 'Your RSVP has been saved.'
+    };
+  }
+
+  return {
+    theme: 'maybe',
+    badge: '?',
+    title: isHouseholdInvite ? 'Marked as maybe' : 'Not sure yet',
+    detail: isHouseholdInvite
+      ? `${formatNameList(PARTY_MEMBERS)} ${PARTY_MEMBERS.length === 1 ? 'is' : 'are'} still deciding.`
+      : 'Your RSVP has been saved.'
+  };
+}
 
 function getStatusForMode(mode) {
   if (
@@ -163,6 +386,15 @@ function getSelectedAttendeeNames() {
     .map(checkbox => checkbox.value);
 }
 
+function syncAttendeeCheckboxes(attendeeNames) {
+  if (attendeeCheckboxes.length === 0) return;
+
+  const selectedNames = new Set(normalizeNameList(attendeeNames));
+  attendeeCheckboxes.forEach(checkbox => {
+    checkbox.checked = selectedNames.has(checkbox.value);
+  });
+}
+
 function getPendingAttendeeNames(mode) {
   if (getStatusForMode(mode) !== 'yes') return [];
   if (!isHouseholdInvite) return PARTY_MEMBERS.slice();
@@ -188,22 +420,6 @@ function syncAttendeeSelector() {
   attendeeCheckboxes.forEach(checkbox => {
     checkbox.disabled = !canEdit || !showSelector;
   });
-}
-
-function updateSubmitState() {
-  if (!submitBtn) return;
-
-  if (!canEdit || !pendingMode) {
-    submitBtn.disabled = true;
-    return;
-  }
-
-  if (hasInvalidPartialSelection()) {
-    submitBtn.disabled = true;
-    return;
-  }
-
-  submitBtn.disabled = !(hasChanges() || hasPendingInteraction);
 }
 
 function hasChanges() {
@@ -264,12 +480,26 @@ function renderCurrentResponse(status, attendeeNames) {
 }
 
 function setFeedback(message, type) {
+  if (!feedback) return;
+
   feedback.textContent = message;
-  feedback.className = `rsvp-feedback ${type === 'success' ? 'feedback-success' : type === 'error' ? 'feedback-error' : ''}`;
+  feedback.className = `rsvp-feedback ${
+    type === 'success'
+      ? 'feedback-success'
+      : type === 'error'
+        ? 'feedback-error'
+        : type === 'pending'
+          ? 'feedback-pending'
+          : ''
+  }`;
 }
 
 function lockEditing(message) {
+  hideConfirmationModal();
   canEdit = false;
+  clearCommentSaveTimer();
+  queuedSaveOptions = null;
+
   statusBtns.forEach(button => {
     button.disabled = true;
   });
@@ -280,14 +510,17 @@ function lockEditing(message) {
     commentInput.disabled = true;
   }
 
-  submitBtn.disabled = true;
-  submitBtn.textContent = 'RSVP Closed';
+  if (autoSaveNote) {
+    autoSaveNote.textContent = 'This RSVP is now locked.';
+  }
 
   const note = document.getElementById('changes-note');
   if (note) {
     note.classList.add('limit-reached');
     note.textContent = message;
   }
+
+  setFeedback(message, 'error');
 }
 
 function renderRoster(roster, myPid) {

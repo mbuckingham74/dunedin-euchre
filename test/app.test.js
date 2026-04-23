@@ -275,8 +275,8 @@ test('health endpoint returns ok', async () => {
 
 test('event-scoped RSVP submissions write to the invited event', async () => {
   const participant = insertParticipant();
-  const olderEvent = insertEvent({ event_date: '2026-04-15' });
-  insertEvent({ event_date: '2026-05-15' });
+  const olderEvent = insertEvent({ event_date: '2999-04-15' });
+  insertEvent({ event_date: '2999-05-15' });
 
   const response = await fetch(`${baseUrl}${buildRsvpPath(participant, olderEvent)}`, {
     method: 'POST',
@@ -296,6 +296,19 @@ test('event-scoped RSVP submissions write to the invited event', async () => {
     status: 'yes',
     comment: 'See you there'
   });
+});
+
+test('rsvp page explains auto-save and renders the confirmation modal shell', async () => {
+  const participant = insertParticipant();
+  const event = insertEvent({ event_date: '2999-04-15' });
+
+  const response = await fetch(`${baseUrl}${buildRsvpPath(participant, event)}`);
+  const body = await response.text();
+
+  assert.equal(response.status, 200);
+  assert.match(body, /Your RSVP saves automatically when you choose an option\./);
+  assert.match(body, /id="rsvp-confirmation-modal"/);
+  assert.doesNotMatch(body, /Save RSVP/);
 });
 
 test('party invite responses can confirm one attendee or both attendees for the same event', async () => {
@@ -640,7 +653,7 @@ test('RSVP and event pages send no-referrer headers and RSVP pages use no-referr
   assert.equal(rsvpResponse.headers.get('referrer-policy'), 'no-referrer');
   assert.equal(rsvpResponse.headers.get('cache-control'), 'private, no-store, max-age=0');
   assert.match(rsvpBody, /referrerpolicy="no-referrer"/);
-  assert.match(rsvpBody, /src="\/js\/rsvp\.js\?v=20260422b"/);
+  assert.match(rsvpBody, /src="\/js\/rsvp\.js\?v=20260422c"/);
   assert.equal(eventResponse.status, 200);
   assert.equal(eventResponse.headers.get('referrer-policy'), 'no-referrer');
 });
