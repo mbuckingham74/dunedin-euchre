@@ -27,44 +27,11 @@
     </div>
   <% } %>
 
-  <% if (event.location_image || event.map_embed_url || event.map_image) { %>
-    <div class="event-media-grid">
-      <% if (event.location_image) { %>
-        <div class="event-media-card">
-          <p class="location-image-caption">Venue photo</p>
-          <img
-            src="/uploads/<%= event.location_image %>"
-            alt="Venue for <%= eventTitle %>"
-            class="location-image"
-          >
-        </div>
-      <% } %>
-      <% if (event.map_embed_url) { %>
-        <div class="event-media-card">
-          <div class="event-media-card-header">
-            <p class="location-image-caption">Map</p>
-            <% if (event.map_link_url) { %>
-              <a href="<%= event.map_link_url %>" target="_blank" rel="noreferrer" class="event-map-link">Open map</a>
-            <% } %>
-          </div>
-          <iframe
-            src="<%= event.map_embed_url %>"
-            title="Map for <%= eventTitle %>"
-            class="event-map-embed"
-            loading="lazy"
-            referrerpolicy="no-referrer"
-          ></iframe>
-        </div>
-      <% } else if (event.map_image) { %>
-        <div class="event-media-card">
-          <p class="location-image-caption">Map image</p>
-          <img
-            src="/uploads/<%= event.map_image %>"
-            alt="Map for <%= eventTitle %>"
-            class="location-image"
-          >
-        </div>
-      <% } %>
-    </div>
+  <% const shouldShowMedia = typeof showMedia === 'undefined' ? true : showMedia; %>
+  <% if (shouldShowMedia && (event.location_image || event.map_embed_url || event.map_image)) { %>
+    <%- include('./event-media', {
+      event,
+      eventTitle
+    }) %>
   <% } %>
 </section>

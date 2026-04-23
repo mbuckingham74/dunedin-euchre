@@ -1654,6 +1654,31 @@ input[type="file"].form-input { padding: 0.4rem; }
   margin: 0 auto;
   padding: 1.5rem;
 }
+.public-event-layout {
+  max-width: 1200px;
+  display: grid;
+  grid-template-columns: minmax(320px, 400px) minmax(0, 1fr);
+  gap: 1.5rem;
+  align-items: start;
+}
+.public-event-left {
+  position: sticky;
+  top: 132px;
+}
+.public-event-main-column {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  min-width: 0;
+}
+.public-roster-card,
+.public-event-media-section {
+  margin-top: 0;
+}
+.public-page-kicker,
+.public-page-heading {
+  margin-bottom: 0;
+}
 .public-page-header {
   display: flex;
   align-items: flex-end;
@@ -1662,14 +1687,18 @@ input[type="file"].form-input { padding: 0.4rem; }
   margin-bottom: 1rem;
   flex-wrap: wrap;
 }
+.public-media-header {
+  align-items: center;
+}
 .public-summary-copy {
   color: var(--gray-500);
   margin: 0;
 }
 .public-roster-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 1rem;
+  align-items: start;
 }
 .public-roster-privacy {
   margin-top: 1rem;
@@ -1683,6 +1712,9 @@ input[type="file"].form-input { padding: 0.4rem; }
   border-radius: 6px;
   padding: 1rem;
   background: var(--gray-50);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 .public-roster-heading {
   font-size: 1rem;
@@ -1692,6 +1724,9 @@ input[type="file"].form-input { padding: 0.4rem; }
   list-style: none;
   margin: 0;
   padding: 0;
+  max-height: min(52vh, 420px);
+  overflow: auto;
+  padding-right: 0.2rem;
 }
 .public-roster-item {
   padding: 0.35rem 0;
@@ -1714,8 +1749,26 @@ input[type="file"].form-input { padding: 0.4rem; }
   color: var(--gray-500);
   margin: 0;
 }
+.public-roster-privacy-copy {
+  margin: 0;
+}
+.public-event-media-section .event-media-grid {
+  margin-top: 0;
+}
+.public-map-link {
+  font-size: 0.95rem;
+}
 
 /* ── Responsive ──────────────────────────────────────────── */
+@media (max-width: 1100px) {
+  .public-event-layout {
+    grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
+  }
+  .public-roster-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 900px) {
   .rsvp-layout {
     grid-template-columns: 1fr;
@@ -1723,6 +1776,21 @@ input[type="file"].form-input { padding: 0.4rem; }
   }
   .rsvp-left {
     position: static;
+  }
+  .public-event-layout {
+    grid-template-columns: 1fr;
+    padding: 1rem;
+  }
+  .public-event-left {
+    position: static;
+  }
+  .public-roster-grid {
+    grid-template-columns: 1fr;
+  }
+  .public-roster-list {
+    max-height: none;
+    overflow: visible;
+    padding-right: 0;
   }
   .dashboard-grid {
     grid-template-columns: 1fr;
