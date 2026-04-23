@@ -9,7 +9,7 @@
   <meta name="theme-color" content="#0077b6">
   <meta name="referrer" content="no-referrer">
 </head>
-<body>
+<body class="public-event-page">
 <header class="site-header">
   <div class="header-inner">
     <img src="/images/dunedin-logo-transparent.png" alt="Dunedin Euchre" class="site-logo">
@@ -18,7 +18,7 @@
   </div>
 </header>
 
-<main class="event-page-main public-event-layout">
+<main class="event-page-main public-event-shell">
   <%
     function joinNames(names) {
       if (!names || names.length === 0) return '';
@@ -26,117 +26,171 @@
       if (names.length === 2) return names[0] + ' and ' + names[1];
       return names.slice(0, -1).join(', ') + ', and ' + names[names.length - 1];
     }
+
+    const responded = Number(summary.responded || 0);
+    const invited = Number(summary.invited || 0);
+    const responseRate = invited > 0 ? Math.round((responded / invited) * 100) : 0;
   %>
 
-  <div class="public-event-left">
-    <%- include('./partials/event-overview', {
-      event,
-      formatEventDate,
-      formatTime,
-      eventTitle,
-      arrivalNotes,
-      showMedia: false
-    }) %>
-  </div>
+  <section class="card public-event-hero">
+    <div class="public-event-lead">
+      <p class="public-section-kicker">Upcoming event</p>
+      <h1 class="public-event-title"><%= eventTitle %></h1>
+      <p class="public-event-date"><%= formatEventDate(event.event_date) %></p>
 
-  <div class="public-event-main-column">
-    <section class="card roster-card public-roster-card">
-      <div class="public-page-header">
-        <div>
-          <p class="event-kicker public-page-kicker">Player summary</p>
-          <h3 class="roster-heading public-page-heading">RSVP summary</h3>
+      <div class="public-event-actions">
+        <% if (event.map_link_url) { %>
+          <a href="<%= event.map_link_url %>" target="_blank" rel="noreferrer" class="public-hero-action">Open in Maps</a>
+        <% } %>
+        <span class="public-hero-chip"><strong><%= responded %></strong> responded</span>
+        <span class="public-hero-chip"><strong><%= summary.yes %></strong> coming</span>
+      </div>
+    </div>
+
+    <div class="public-event-facts">
+      <article class="public-fact-card">
+        <span class="public-fact-label">Time</span>
+        <span class="public-fact-value"><%= formatTime(event.start_time) %> – <%= formatTime(event.end_time) %></span>
+      </article>
+      <article class="public-fact-card">
+        <span class="public-fact-label">Venue</span>
+        <span class="public-fact-value"><%= event.location_name %></span>
+      </article>
+      <% if (event.location_address) { %>
+        <article class="public-fact-card public-fact-card-wide">
+          <span class="public-fact-label">Address</span>
+          <span class="public-fact-value public-fact-address"><%= event.location_address %></span>
+        </article>
+      <% } %>
+    </div>
+
+    <aside class="public-event-side">
+      <div class="public-progress-card">
+        <p class="public-section-kicker public-progress-kicker">RSVP activity</p>
+        <div class="public-progress-topline">
+          <span class="public-progress-value"><%= responseRate %>%</span>
+          <span class="public-progress-copy"><strong><%= responded %></strong> of <strong><%= invited %></strong> invited players have responded.</span>
         </div>
-        <p class="public-summary-copy"><strong><%= summary.responded %></strong> of <strong><%= summary.invited %></strong> invited players have responded.</p>
+        <div class="public-progress-bar" aria-hidden="true">
+          <span style="width:<%= responseRate %>%"></span>
+        </div>
       </div>
 
-      <div class="roster-counts">
-        <span class="count-badge count-yes"><%= summary.yes %> Yes</span>
-        <span class="count-badge count-maybe"><%= summary.maybe %> Maybe</span>
-        <span class="count-badge count-no"><%= summary.no %> No</span>
-        <span class="count-badge count-none"><%= summary.pending %> Pending</span>
-      </div>
-
-      <% if (showPublicRoster) { %>
-        <div class="public-roster-grid">
-          <section class="public-roster-section">
-            <h4 class="public-roster-heading">Coming</h4>
-            <% if (groupedRoster.yes.length > 0) { %>
-              <ul class="public-roster-list">
-                <% groupedRoster.yes.forEach(function(entry) { %>
-                  <li class="public-roster-item">
-                    <span class="public-roster-item-name"><%= entry.name %></span>
-                    <% if (entry.declinedNames && entry.declinedNames.length > 0) { %>
-                      <span class="public-roster-detail">Coming: <%= joinNames(entry.attendeeNames) %>. Not attending: <%= joinNames(entry.declinedNames) %>.</span>
-                    <% } %>
-                  </li>
-                <% }); %>
-              </ul>
-            <% } else { %>
-              <p class="public-roster-empty">No confirmations yet.</p>
-            <% } %>
-          </section>
-
-          <section class="public-roster-section">
-            <h4 class="public-roster-heading">Maybe</h4>
-            <% if (groupedRoster.maybe.length > 0) { %>
-              <ul class="public-roster-list">
-                <% groupedRoster.maybe.forEach(function(entry) { %>
-                  <li class="public-roster-item">
-                    <span class="public-roster-item-name"><%= entry.name %></span>
-                    <% if (entry.partySize > 1) { %>
-                      <span class="public-roster-detail">Still deciding for <%= joinNames(entry.partyMembers) %>.</span>
-                    <% } %>
-                  </li>
-                <% }); %>
-              </ul>
-            <% } else { %>
-              <p class="public-roster-empty">No maybes yet.</p>
-            <% } %>
-          </section>
-
-          <section class="public-roster-section">
-            <h4 class="public-roster-heading">Can't make it</h4>
-            <% if (groupedRoster.no.length > 0) { %>
-              <ul class="public-roster-list">
-                <% groupedRoster.no.forEach(function(entry) { %>
-                  <li class="public-roster-item">
-                    <span class="public-roster-item-name"><%= entry.name %></span>
-                    <% if (entry.partySize > 1) { %>
-                      <span class="public-roster-detail">Not attending: <%= joinNames(entry.partyMembers) %>.</span>
-                    <% } %>
-                  </li>
-                <% }); %>
-              </ul>
-            <% } else { %>
-              <p class="public-roster-empty">No declines yet.</p>
-            <% } %>
-          </section>
-        </div>
-      <% } else { %>
-        <div class="public-roster-privacy">
-          <p class="public-roster-empty public-roster-privacy-copy">Attendee names are hidden for this event. RSVP counts are still shown above.</p>
+      <% if (arrivalNotes) { %>
+        <div class="public-note-panel">
+          <span class="public-note-label">Event notes</span>
+          <p class="public-note-text"><%= arrivalNotes %></p>
         </div>
       <% } %>
-    </section>
+    </aside>
+  </section>
 
-    <% if (event.location_image || event.map_embed_url || event.map_image) { %>
-      <section class="card public-event-media-section">
-        <div class="public-page-header public-media-header">
-          <div>
-            <p class="event-kicker public-page-kicker">Location</p>
-            <h3 class="roster-heading public-page-heading">Map and venue details</h3>
-          </div>
-          <% if (event.map_link_url) { %>
-            <a href="<%= event.map_link_url %>" target="_blank" rel="noreferrer" class="event-map-link public-map-link">Open full map</a>
-          <% } %>
+  <section class="card public-attendance-board">
+    <div class="public-page-header public-attendance-header">
+      <div>
+        <p class="public-section-kicker">Attendance board</p>
+        <h2 class="public-attendance-heading">Who is and isn’t attending</h2>
+      </div>
+      <div class="public-attendance-summary">
+        <span class="public-summary-line">Attendance snapshot for this month’s event</span>
+        <div class="roster-counts public-roster-counts">
+          <span class="count-badge count-yes"><%= summary.yes %> Yes</span>
+          <span class="count-badge count-maybe"><%= summary.maybe %> Maybe</span>
+          <span class="count-badge count-no"><%= summary.no %> No</span>
+          <span class="count-badge count-none"><%= summary.pending %> Pending</span>
         </div>
-        <%- include('./partials/event-media', {
-          event,
-          eventTitle
-        }) %>
-      </section>
+      </div>
+    </div>
+
+    <% if (showPublicRoster) { %>
+      <div class="public-attendance-grid">
+        <section class="public-roster-section public-roster-section-yes">
+          <div class="public-roster-section-head">
+            <h3 class="public-roster-heading">Coming</h3>
+            <span class="public-roster-total"><%= summary.yes %></span>
+          </div>
+          <% if (groupedRoster.yes.length > 0) { %>
+            <ul class="public-roster-list">
+              <% groupedRoster.yes.forEach(function(entry) { %>
+                <li class="public-roster-item">
+                  <span class="public-roster-item-name"><%= entry.name %></span>
+                  <% if (entry.declinedNames && entry.declinedNames.length > 0) { %>
+                    <span class="public-roster-detail">Coming: <%= joinNames(entry.attendeeNames) %>. Not attending: <%= joinNames(entry.declinedNames) %>.</span>
+                  <% } %>
+                </li>
+              <% }); %>
+            </ul>
+          <% } else { %>
+            <p class="public-roster-empty">No confirmations yet.</p>
+          <% } %>
+        </section>
+
+        <section class="public-roster-section public-roster-section-maybe">
+          <div class="public-roster-section-head">
+            <h3 class="public-roster-heading">Maybe</h3>
+            <span class="public-roster-total"><%= summary.maybe %></span>
+          </div>
+          <% if (groupedRoster.maybe.length > 0) { %>
+            <ul class="public-roster-list">
+              <% groupedRoster.maybe.forEach(function(entry) { %>
+                <li class="public-roster-item">
+                  <span class="public-roster-item-name"><%= entry.name %></span>
+                  <% if (entry.partySize > 1) { %>
+                    <span class="public-roster-detail">Still deciding for <%= joinNames(entry.partyMembers) %>.</span>
+                  <% } %>
+                </li>
+              <% }); %>
+            </ul>
+          <% } else { %>
+            <p class="public-roster-empty">No maybes yet.</p>
+          <% } %>
+        </section>
+
+        <section class="public-roster-section public-roster-section-no">
+          <div class="public-roster-section-head">
+            <h3 class="public-roster-heading">Can't make it</h3>
+            <span class="public-roster-total"><%= summary.no %></span>
+          </div>
+          <% if (groupedRoster.no.length > 0) { %>
+            <ul class="public-roster-list">
+              <% groupedRoster.no.forEach(function(entry) { %>
+                <li class="public-roster-item">
+                  <span class="public-roster-item-name"><%= entry.name %></span>
+                  <% if (entry.partySize > 1) { %>
+                    <span class="public-roster-detail">Not attending: <%= joinNames(entry.partyMembers) %>.</span>
+                  <% } %>
+                </li>
+              <% }); %>
+            </ul>
+          <% } else { %>
+            <p class="public-roster-empty">No declines yet.</p>
+          <% } %>
+        </section>
+      </div>
+    <% } else { %>
+      <div class="public-roster-privacy">
+        <p class="public-roster-empty public-roster-privacy-copy">Attendee names are hidden for this event. RSVP counts are still shown above.</p>
+      </div>
     <% } %>
-  </div>
+  </section>
+
+  <% if (event.location_image || event.map_embed_url || event.map_image) { %>
+    <section class="card public-location-section">
+      <div class="public-page-header public-location-header">
+        <div>
+          <p class="public-section-kicker">Location</p>
+          <h2 class="public-attendance-heading">Venue and directions</h2>
+        </div>
+        <% if (event.map_link_url) { %>
+          <a href="<%= event.map_link_url %>" target="_blank" rel="noreferrer" class="public-hero-action public-location-action">Open full map</a>
+        <% } %>
+      </div>
+      <%- include('./partials/event-media', {
+        event,
+        eventTitle
+      }) %>
+    </section>
+  <% } %>
 </main>
 </body>
 </html>
