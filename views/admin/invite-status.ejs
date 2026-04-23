@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dunedin Euchre – Invite Delivery</title>
+  <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body class="admin-page">
+
+<%- include('../partials/admin-nav', { active: 'dashboard' }) %>
+
+<main class="admin-main">
+  <div class="admin-content">
+
+    <% if (flash) { %>
+      <div class="flash-msg"><%= flash %></div>
+    <% } %>
+
+    <img src="/images/dunedin-logo-transparent.png" alt="Dunedin Euchre" class="dashboard-logo">
+
+    <section class="card admin-card">
+      <div class="card-header">
+        <div class="admin-card-header-text">
+          <h2 class="card-title">Invite Delivery</h2>
+          <p class="admin-card-copy">Check which invitees have a matching RSVP email for this event without leaving the admin app.</p>
+        </div>
+      </div>
+
+      <div class="testing-alert" style="margin-bottom:1rem;">
+        <strong>Checking now:</strong> <%= getEventTitle(event) %> on <%= formatEventDate(event.event_date) %> at <%= formatTime(event.start_time) %>.
+      </div>
+
+      <div class="invite-preview-toolbar">
+        <a href="<%= dashboardPath %>" class="btn-secondary">Back to Dashboard</a>
+        <a href="<%= invitePreviewPath %>" class="btn-secondary">Open Invite Preview</a>
+        <a href="/event/<%= event.id %>" target="_blank" class="btn-secondary">Open Event Page</a>
+        <% if (delivery.available) { %>
+          <p class="dashboard-detail-meta invite-preview-meta">Last checked: <%= formatInviteSentAt(delivery.checkedAt) %></p>
+        <% } %>
+      </div>
+
+      <% if (!delivery.available) { %>
+        <div class="dashboard-note">
+          <span class="notes-label">Delivery status unavailable</span>
+          <p class="notes-text"><%= delivery.error %></p>
+        </div>
+      <% } else { %>
+        <div class="admin-counts dashboard-counts" style="margin-bottom:1rem;">
+          <div class="admin-count-box count-yes"><span class="count-num"><%= delivery.summary.delivered %></span><span class="count-lbl">Delivered</span></div>
+          <div class="admin-count-box count-maybe"><span class="count-num"><%= delivery.summary.pending %></span><span class="count-lbl">In flight</span></div>
+          <div class="admin-count-box count-no"><span class="count-num"><%= delivery.summary.issue %></span><span class="count-lbl">Needs help</span></div>
+          <div class="admin-count-box count-none"><span class="count-num"><%= delivery.summary.missing %></span><span class="count-lbl">Missing</span></div>
+        </div>
+
+        <p class="admin-card-note dashboard-summary-note">
+          <strong><%= delivery.summary.delivered %></strong> of
+          <strong><%= delivery.statuses.length %></strong>
+          active participant<%= delivery.statuses.length === 1 ? '' : 's' %> currently show a delivered invite email.
+        </p>
+
+        <div class="admin-table-wrap" style="margin-top:1rem;">
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Email</th>
+                <th>Status</th>
+                <th>Sent</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% delivery.statuses.forEach(function(entry) { %>
+                <tr>
+                  <td><%= entry.participant.name %></td>
+                  <td><%= entry.participant.email %></td>
+                  <td>
+                    <span class="status-pill <%= getInviteStatusTone(entry.group) %>"><%= entry.label %></span>
+                  </td>
+                  <td><%= formatInviteSentAt(entry.sentAt) %></td>
+                  <td class="actions-cell">
+                    <% if (entry.group === 'missing' || entry.group === 'issue') { %>
+                      <form
+                        method="POST"
+                        action="/admin/event/<%= event.id %>/send-invite"
+                        style="display:inline;"
+                        onsubmit="return confirm('Send the live RSVP invite to <%= entry.participant.email %>?')"
+                      >
+                        <input type="hidden" name="participant_id" value="<%= entry.participant.id %>">
+                        <button type="submit" class="btn-sm btn-secondary">Send Now</button>
+                      </form>
+                    <% } else { %>
+                      <span class="dashboard-detail-meta">No action needed</span>
+                    <% } %>
+                  </td>
+                </tr>
+              <% }); %>
+            </tbody>
+          </table>
+        </div>
+      <% } %>
+    </section>
+  </div>
+</main>
+
+<script src="/js/admin.js"></script>
+</body>
+</html>

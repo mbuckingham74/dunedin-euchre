@@ -10,6 +10,7 @@ const { v4: uuidv4 } = require('uuid');
 const db = require('../db/database');
 const { requireAdmin } = require('../middleware/auth');
 const { sendMagicLink, sendRsvpInvite, formatEventDate, formatTime } = require('../services/email');
+const { getEventInviteDeliveryStatus } = require('../services/invite-status');
 const {
   buildMonthlyEventHistory,
   getArrivalNotes,
@@ -509,6 +510,10 @@ function buildInvitePreviewPath(eventId, participantId = null) {
   return `/admin/event/${eventId}/invite-preview${query}`;
 }
 
+function buildInviteStatusPath(eventId) {
+  return `/admin/event/${eventId}/invite-status`;
+}
+
 function buildParticipantsRedirect(eventId) {
   return eventId ? `/admin/participants?eventId=${eventId}` : '/admin/participants';
 }
@@ -549,6 +554,28 @@ function buildTestingRedirect(eventId, participantId) {
 
   const query = searchParams.toString();
   return query ? `/admin/testing?${query}` : '/admin/testing';
+}
+
+function getInviteStatusTone(group) {
+  if (group === 'delivered') return 'pill-yes';
+  if (group === 'issue') return 'pill-no';
+  if (group === 'pending') return 'pill-maybe';
+  return 'pill-none';
+}
+
+function formatInviteSentAt(timestamp) {
+  if (!timestamp) return 'Not found';
+
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return 'Not found';
+
+  return date.toLocaleString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit'
+  });
 }
 
 function getDateKeyInTimeZone(referenceDate = new Date(), timeZone = process.env.EVENT_TIMEZONE || 'America/New_York') {
@@ -1387,6 +1414,7 @@ router.get('/event/:id/invite-preview', requireAdmin, (req, res) => {
     inviteParticipants,
     previewParticipant,
     previewPath: buildRsvpPath(previewParticipant, event),
+    inviteStatusPath: buildInviteStatusPath(event.id),
     editDashboardPath: buildDashboardEditRedirect(event.id),
     getEventTitle,
     formatEventDate,
@@ -1394,6 +1422,42 @@ router.get('/event/:id/invite-preview', requireAdmin, (req, res) => {
     flash: req.session.flash || null
   });
   delete req.session.flash;
+});
+
+// ── GET /admin/event/:id/invite-status ──────────────────────
+router.get('/event/:id/invite-status', requireAdmin, async (req, res, next) => {
+  const event = getEventById(req.params.id);
+  if (!event) {
+    return res.status(404).send('<h1 style="font-family:sans-serif;padding:2rem">Event not found.</h1>');
+  }
+
+  const inviteParticipants = listActiveParticipants();
+  if (inviteParticipants.length === 0) {
+    req.session.flash = 'Add at least one active invitee before checking invite delivery.';
+    return res.redirect(buildDashboardRedirect(event.id));
+  }
+
+  try {
+    const delivery = await getEventInviteDeliveryStatus(inviteParticipants, event, {
+      baseUrl: BASE_URL
+    });
+
+    res.render('admin/invite-status', {
+      event,
+      delivery,
+      dashboardPath: buildDashboardRedirect(event.id),
+      invitePreviewPath: buildInvitePreviewPath(event.id),
+      getEventTitle,
+      getInviteStatusTone,
+      formatEventDate,
+      formatInviteSentAt,
+      formatTime,
+      flash: req.session.flash || null
+    });
+    delete req.session.flash;
+  } catch (error) {
+    next(error);
+  }
 });
 
 // ── POST /admin/event/:id/notify ─────────────────────────────
@@ -1424,6 +1488,30 @@ router.post('/event/:id/notify', requireAdmin, async (req, res) => {
 
   req.session.flash = `Invites sent: ${sent} delivered${failed ? `, ${failed} failed` : ''}.`;
   res.redirect(buildDashboardRedirect(event.id));
+});
+
+// ── POST /admin/event/:id/send-invite ───────────────────────
+router.post('/event/:id/send-invite', requireAdmin, async (req, res) => {
+  const event = getEventById(req.params.id);
+  if (!event) {
+    return res.status(404).send('<h1 style="font-family:sans-serif;padding:2rem">Event not found.</h1>');
+  }
+
+  const participant = getParticipantById(parseParticipantId(req.body.participant_id));
+  if (!participant) {
+    req.session.flash = 'Choose an active participant to send an invite.';
+    return res.redirect(buildInviteStatusPath(event.id));
+  }
+
+  try {
+    await sendRsvpInvite(participant, event);
+    req.session.flash = `Invite sent to ${participant.email} for ${participant.name}.`;
+  } catch (error) {
+    console.error(`Failed to send invite to ${participant.email}:`, error.message);
+    req.session.flash = `Unable to send invite to ${participant.email}.`;
+  }
+
+  res.redirect(buildInviteStatusPath(event.id));
 });
 
 // ── POST /admin/event/:id/test-invite ───────────────────────

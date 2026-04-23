@@ -126,6 +126,7 @@
               <button type="button" class="btn-secondary" onclick="openEditEventModal()">Edit event</button>
               <% if (inviteParticipants.length > 0) { %>
                 <a href="/admin/event/<%= event.id %>/invite-preview" class="btn-secondary">Invite Preview</a>
+                <a href="/admin/event/<%= event.id %>/invite-status" class="btn-secondary">Invite Delivery</a>
               <% } %>
               <form
                 method="POST"

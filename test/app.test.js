@@ -29,6 +29,35 @@ emailService.sendRsvpInvite = async (participant, event) => {
 };
 require.cache[emailServicePath].exports = emailService;
 
+const inviteStatusServicePath = require.resolve('../services/invite-status');
+delete require.cache[inviteStatusServicePath];
+const inviteStatusService = require(inviteStatusServicePath);
+let mockInviteDeliveryStatus;
+inviteStatusService.getEventInviteDeliveryStatus = async (participants, event) => (
+  mockInviteDeliveryStatus
+    ? mockInviteDeliveryStatus(participants, event)
+    : {
+      available: true,
+      checkedAt: '2999-04-15T12:00:00.000Z',
+      summary: {
+        delivered: participants.length,
+        pending: 0,
+        issue: 0,
+        missing: 0
+      },
+      statuses: participants.map(participant => ({
+        participant,
+        sentAt: '2999-04-15T12:00:00.000Z',
+        emailId: `email-${participant.id}`,
+        lastEvent: 'delivered',
+        group: 'delivered',
+        label: 'Delivered'
+      })),
+      error: null
+    }
+);
+require.cache[inviteStatusServicePath].exports = inviteStatusService;
+
 const serverModulePath = require.resolve('../server');
 delete require.cache[serverModulePath];
 const { app } = require('../server');
@@ -246,6 +275,7 @@ test.beforeEach(() => {
   resetDatabase();
   resetUploadsDirectory();
   sentRsvpInvites.length = 0;
+  mockInviteDeliveryStatus = null;
 });
 
 test('root shows the landing page instead of redirecting to admin', async () => {
@@ -808,6 +838,7 @@ test('invite preview page shows the invitee view with the final send action', as
   const body = await response.text();
   assert.match(body, /Invite Preview/);
   assert.match(body, /Confirm and send RSVP to 2 invitees/);
+  assert.match(body, /Invite Delivery/);
   assert.ok(body.includes(`src="${buildRsvpPath(participant, event)}"`));
   assert.match(body, /Back to Edit Event/);
 });
@@ -832,8 +863,10 @@ test('dashboard and edit modal point to the invite preview workflow', async () =
   const body = await response.text();
   assert.match(body, /Edit event/);
   assert.match(body, /href="\/admin\/event\/\d+\/invite-preview"/);
+  assert.match(body, /href="\/admin\/event\/\d+\/invite-status"/);
   assert.match(body, /name="next_action" value="preview"/);
   assert.match(body, />Invite Preview</);
+  assert.match(body, />Invite Delivery</);
   assert.doesNotMatch(body, /Confirm and send RSVP to 1 invitee/);
 });
 
@@ -920,6 +953,100 @@ test('admin can send a single test invite without notifying the full roster', as
       id: participant.id,
       name: participant.name,
       email: 'me@example.com',
+      eventId: event.id
+    }
+  );
+});
+
+test('invite delivery page shows live status for each participant', async () => {
+  const deliveredParticipant = insertParticipant({
+    name: 'Delivered Person',
+    email: 'delivered@example.com',
+    rsvp_token: 'delivered-token'
+  });
+  const missingParticipant = insertParticipant({
+    name: 'Missing Person',
+    email: 'missing@example.com',
+    rsvp_token: 'missing-token'
+  });
+  const event = insertEvent({
+    title: 'Delivery Check Event',
+    event_date: '2999-04-15'
+  });
+  mockInviteDeliveryStatus = participants => ({
+    available: true,
+    checkedAt: '2999-04-15T12:00:00.000Z',
+    summary: {
+      delivered: 1,
+      pending: 0,
+      issue: 0,
+      missing: 1
+    },
+    statuses: participants.map(participant => ({
+      participant,
+      sentAt: participant.id === deliveredParticipant.id ? '2999-04-15T12:00:00.000Z' : null,
+      emailId: participant.id === deliveredParticipant.id ? 'email-delivered' : null,
+      lastEvent: participant.id === deliveredParticipant.id ? 'delivered' : null,
+      group: participant.id === deliveredParticipant.id ? 'delivered' : 'missing',
+      label: participant.id === deliveredParticipant.id ? 'Delivered' : 'Missing'
+    })),
+    error: null
+  });
+  const cookie = await signInAsAdmin();
+
+  const response = await fetch(`${baseUrl}/admin/event/${event.id}/invite-status`, {
+    headers: { cookie }
+  });
+
+  assert.equal(response.status, 200);
+  const body = await response.text();
+  assert.match(body, /Invite Delivery/);
+  assert.match(body, /Delivered Person/);
+  assert.match(body, /Missing Person/);
+  assert.match(body, /No action needed/);
+  assert.match(body, /Send Now/);
+  assert.match(body, /1<\/span><span class="count-lbl">Delivered/);
+  assert.match(body, /1<\/span><span class="count-lbl">Missing/);
+});
+
+test('admin can send a single live invite from the invite delivery page', async () => {
+  const participant = insertParticipant({
+    name: 'Resend Person',
+    email: 'resend@example.com',
+    rsvp_token: 'resend-token'
+  });
+  const event = insertEvent({
+    title: 'Delivery Check Event',
+    event_date: '2999-04-15'
+  });
+  const cookie = await signInAsAdmin();
+
+  const response = await fetch(`${baseUrl}/admin/event/${event.id}/send-invite`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      cookie
+    },
+    body: new URLSearchParams({
+      participant_id: String(participant.id)
+    }),
+    redirect: 'manual'
+  });
+
+  assert.equal(response.status, 302);
+  assert.equal(response.headers.get('location'), `/admin/event/${event.id}/invite-status`);
+  assert.equal(sentRsvpInvites.length, 1);
+  assert.deepEqual(
+    {
+      id: sentRsvpInvites[0].participant.id,
+      name: sentRsvpInvites[0].participant.name,
+      email: sentRsvpInvites[0].participant.email,
+      eventId: sentRsvpInvites[0].event.id
+    },
+    {
+      id: participant.id,
+      name: participant.name,
+      email: participant.email,
       eventId: event.id
     }
   );

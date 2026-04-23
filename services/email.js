@@ -192,6 +192,7 @@ function formatTime(t) {
 }
 
 module.exports = {
+  buildRsvpInviteEmail,
   sendMagicLink,
   sendRsvpInvite,
   formatEventDate,
