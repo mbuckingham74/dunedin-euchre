@@ -49,6 +49,8 @@ const ADMIN_EMAILS = (process.env.ADMIN_EMAIL || '')
   .split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
 const TEST_EVENT_PREFIX = '[TEST]';
 const DEFAULT_TESTING_PARTICIPANT_EMAIL = 'mikebuckingham@gmail.com';
+const BULK_INVITE_SENDS_PER_SECOND = parsePositiveInteger(process.env.RESEND_BULK_EMAILS_PER_SECOND, 4);
+const BULK_INVITE_DELAY_MS = Math.ceil(1000 / BULK_INVITE_SENDS_PER_SECOND);
 const uploadsDir = getUploadsDir();
 
 if (!fs.existsSync(uploadsDir)) {
@@ -93,6 +95,15 @@ const EVENT_SELECT_FIELDS = `
   l.map_embed_url AS managed_map_embed_url,
   l.map_link_url AS managed_map_link_url
 `;
+
+function parsePositiveInteger(value, fallback) {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function wait(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
 
 function getMostRecentEvent() {
   return listProductionEvents()[0] || null;
@@ -1396,12 +1407,17 @@ router.post('/event/:id/notify', requireAdmin, async (req, res) => {
 
   let sent = 0;
   let failed = 0;
-  for (const participant of participants) {
+  for (const [index, participant] of participants.entries()) {
+    if (index > 0) {
+      await wait(BULK_INVITE_DELAY_MS);
+    }
+
     try {
       await sendRsvpInvite(participant, event);
       sent++;
     } catch (err) {
-      console.error(`Failed to email ${participant.email}:`, err.message);
+      const statusCode = err && err.statusCode ? ` (status ${err.statusCode})` : '';
+      console.error(`Failed to email ${participant.email}: ${err.message}${statusCode}`);
       failed++;
     }
   }

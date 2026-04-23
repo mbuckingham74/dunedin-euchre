@@ -6,10 +6,81 @@ const { buildRsvpUrl } = require('./links');
 const resend = new Resend(process.env.RESEND_API_KEY);
 const FROM = process.env.FROM_EMAIL || 'admin@dunedin-euchre.com';
 const BASE_URL = process.env.BASE_URL || 'https://dunedin-euchre.com';
+const RESEND_MAX_RETRIES = parsePositiveInteger(process.env.RESEND_MAX_RETRIES, 3);
+const RESEND_RETRY_DELAY_MS = parsePositiveInteger(process.env.RESEND_RETRY_DELAY_MS, 1000);
+
+function parsePositiveInteger(value, fallback) {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function getStatusCode(error) {
+  const statusCode = Number(error && (error.statusCode || error.status));
+  return Number.isInteger(statusCode) ? statusCode : null;
+}
+
+function normalizeResendError(error) {
+  if (error instanceof Error) {
+    return error;
+  }
+
+  const normalized = new Error(
+    error && error.message
+      ? error.message
+      : 'Unable to send email with Resend.'
+  );
+  normalized.name = error && error.name ? error.name : 'resend_error';
+
+  const statusCode = getStatusCode(error);
+  if (statusCode) {
+    normalized.statusCode = statusCode;
+  }
+
+  return normalized;
+}
+
+function isRetryableResendError(error) {
+  const statusCode = getStatusCode(error);
+  return statusCode === 429 || statusCode >= 500 || error.name === 'application_error';
+}
+
+function getRetryDelayMs(attempt, error) {
+  const multiplier = getStatusCode(error) === 429 ? attempt + 1 : 2 ** attempt;
+  return RESEND_RETRY_DELAY_MS * multiplier;
+}
+
+async function sendEmail(payload, options = {}) {
+  const send = options.send || (message => resend.emails.send(message));
+  const wait = options.sleep || sleep;
+  const maxRetries = options.maxRetries ?? RESEND_MAX_RETRIES;
+
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      const response = await send(payload);
+
+      if (!response || !response.error) {
+        return response ? response.data : null;
+      }
+
+      throw normalizeResendError(response.error);
+    } catch (error) {
+      const normalizedError = normalizeResendError(error);
+      if (attempt >= maxRetries || !isRetryableResendError(normalizedError)) {
+        throw normalizedError;
+      }
+
+      await wait(getRetryDelayMs(attempt, normalizedError));
+    }
+  }
+}
 
 async function sendMagicLink(toEmail, token) {
   const link = `${BASE_URL}/admin/auth/${token}`;
-  await resend.emails.send({
+  await sendEmail({
     from: FROM,
     to: toEmail,
     subject: 'Your Dunedin Euchre admin sign-in link',
@@ -99,7 +170,7 @@ function buildRsvpInviteEmail(participant, event) {
 async function sendRsvpInvite(participant, event) {
   const invite = buildRsvpInviteEmail(participant, event);
 
-  await resend.emails.send({
+  await sendEmail({
     from: FROM,
     to: participant.email,
     subject: invite.subject,
@@ -120,4 +191,16 @@ function formatTime(t) {
   return m === 0 ? `${hour} ${suffix}` : `${hour}:${String(m).padStart(2, '0')} ${suffix}`;
 }
 
-module.exports = { sendMagicLink, sendRsvpInvite, formatEventDate, formatTime };
+module.exports = {
+  sendMagicLink,
+  sendRsvpInvite,
+  formatEventDate,
+  formatTime,
+  __test__: {
+    getRetryDelayMs,
+    isRetryableResendError,
+    normalizeResendError,
+    sendEmail,
+    sleep
+  }
+};
