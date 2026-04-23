@@ -1741,7 +1741,7 @@ test('location manager saves reusable venues and gated event pages render the em
     },
     body: new URLSearchParams({
       title: 'Harbor Hall Night',
-      event_date: '2026-09-26',
+      event_date: '2000-01-01',
       location_id: String(location.id),
       start_time: '18:00',
       end_time: '21:00',
@@ -1981,6 +1981,68 @@ test('events admin page shows the recurring schedule and recorded events', async
   assert.match(body, /create-modal-2026-04-25/);
   assert.match(body, /Event Notes/);
   assert.doesNotMatch(body, /Create from dashboard/);
+});
+
+test('dashboard defaults to the nearest upcoming production event', async () => {
+  const aprilEvent = insertEvent({
+    title: 'April Game',
+    event_date: '2999-04-25',
+    is_published: 1
+  });
+  const mayEvent = insertEvent({
+    title: 'May Game',
+    event_date: '2999-05-23',
+    is_published: 1
+  });
+  const cookie = await signInAsAdmin();
+
+  const response = await fetch(`${baseUrl}/admin/dashboard`, {
+    headers: { cookie }
+  });
+  const body = await response.text();
+
+  assert.equal(response.status, 200);
+  assert.match(body, new RegExp(`<option value="${aprilEvent.id}" selected`));
+  assert.doesNotMatch(body, new RegExp(`<option value="${mayEvent.id}" selected`));
+  assert.match(body, /April Game/);
+});
+
+test('future events are created as drafts even when publish is requested immediately', async () => {
+  const cookie = await signInAsAdmin();
+  const location = insertLocation({ name: 'Harbor Hall' });
+
+  const response = await fetch(`${baseUrl}/admin/event`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      cookie
+    },
+    body: new URLSearchParams({
+      title: 'Future Game',
+      public_slug: '',
+      event_date: '2999-05-23',
+      location_id: String(location.id),
+      start_time: '18:00',
+      end_time: '21:00',
+      arrival_notes: 'Planning ahead.',
+      is_published: '1'
+    }),
+    redirect: 'manual'
+  });
+
+  assert.equal(response.status, 302);
+  assert.deepEqual(
+    db.prepare(`
+      SELECT title, event_date, is_published
+      FROM events
+      WHERE title = ?
+    `).get('Future Game'),
+    {
+      title: 'Future Game',
+      event_date: '2999-05-23',
+      is_published: 0
+    }
+  );
 });
 
 test('quick-create from the events schedule returns to the scheduled entry instead of the dashboard default', async () => {

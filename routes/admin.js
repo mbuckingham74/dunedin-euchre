@@ -106,8 +106,37 @@ function wait(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-function getMostRecentEvent() {
-  return listProductionEvents()[0] || null;
+function compareEventsByDateAsc(left, right) {
+  return (
+    left.event_date.localeCompare(right.event_date) ||
+    Number(right.id || 0) - Number(left.id || 0)
+  );
+}
+
+function compareEventsByDateDesc(left, right) {
+  return (
+    right.event_date.localeCompare(left.event_date) ||
+    Number(right.id || 0) - Number(left.id || 0)
+  );
+}
+
+function getDashboardEventOptions(allEvents, options = {}) {
+  const events = Array.isArray(allEvents)
+    ? allEvents.filter(event => event && event.event_date && !isTestEvent(event))
+    : [];
+  const todayKey = getDateKeyInTimeZone(options.referenceDate, options.timeZone);
+  const upcomingEvents = events
+    .filter(event => event.event_date >= todayKey)
+    .sort(compareEventsByDateAsc);
+  const pastEvents = events
+    .filter(event => event.event_date < todayKey)
+    .sort(compareEventsByDateDesc);
+
+  return [...upcomingEvents, ...pastEvents];
+}
+
+function getDefaultProductionEvent(allEvents, options = {}) {
+  return getDashboardEventOptions(allEvents, options)[0] || null;
 }
 
 function getEventById(eventId) {
@@ -180,14 +209,6 @@ function listLocationsWithEventCounts() {
 
 function getLocationById(locationId) {
   return db.prepare('SELECT * FROM locations WHERE id = ?').get(locationId);
-}
-
-function getDashboardEvent(requestedEventId) {
-  if (requestedEventId) {
-    const event = getEventById(requestedEventId);
-    return event && !isTestEvent(event) ? event : null;
-  }
-  return getMostRecentEvent();
 }
 
 function parseEventId(value) {
@@ -595,6 +616,14 @@ function getDateKeyInTimeZone(referenceDate = new Date(), timeZone = process.env
   return `${parts.year}-${parts.month}-${parts.day}`;
 }
 
+function shouldForceFutureEventDraft(eventInput, options = {}) {
+  if (!eventInput || !eventInput.event_date || !Number(eventInput.is_published)) {
+    return false;
+  }
+
+  return eventInput.event_date > getDateKeyInTimeZone(options.referenceDate, options.timeZone);
+}
+
 function getSafeTestEventDate(sourceEventDate) {
   const todayKey = getDateKeyInTimeZone();
   if (sourceEventDate && sourceEventDate > todayKey) {
@@ -697,6 +726,7 @@ router.get('/auth/:token', (req, res) => {
 router.get('/dashboard', requireAdmin, (req, res) => {
   const requestedEventId = parseEventId(req.query.eventId);
   const allEvents = listProductionEvents();
+  const dashboardEventOptions = getDashboardEventOptions(allEvents);
   const locations = listLocationsWithEventCounts();
   const requestedRawEvent = requestedEventId ? getEventById(requestedEventId) : null;
   if (requestedRawEvent && isTestEvent(requestedRawEvent)) {
@@ -704,7 +734,7 @@ router.get('/dashboard', requireAdmin, (req, res) => {
   }
   const event = requestedEventId
     ? requestedRawEvent
-    : (allEvents[0] || null);
+    : (dashboardEventOptions[0] || null);
   const inviteParticipants = listActiveParticipants();
 
   if (requestedEventId && !event) {
@@ -747,7 +777,7 @@ router.get('/dashboard', requireAdmin, (req, res) => {
     upcomingDashboardEntries,
     publicSlugHistory,
     previousPublicSlugs,
-    allEvents,
+    allEvents: dashboardEventOptions,
     selectedEventId: event ? event.id : null,
     formatEventDate,
     formatTime,
@@ -955,7 +985,14 @@ router.get('/roster', requireAdmin, (req, res) => {
 
 // ── POST /admin/event ─────────────────────────────────────────
 router.post('/event', requireAdmin, (req, res) => {
-  const eventInput = normalizeEventInput(req.body);
+  let eventInput = normalizeEventInput(req.body);
+  const forcedFutureDraft = shouldForceFutureEventDraft(eventInput);
+  if (forcedFutureDraft) {
+    eventInput = {
+      ...eventInput,
+      is_published: 0
+    };
+  }
   const returnToEvents = shouldReturnToEvents(req.body);
 
   const validationError = getEventValidationError(eventInput);
@@ -1019,7 +1056,9 @@ router.post('/event', requireAdmin, (req, res) => {
       return created;
     })();
 
-    req.session.flash = 'Event created successfully.';
+    req.session.flash = forcedFutureDraft
+      ? 'Event created as a draft. Future-dated events can be published later from the dashboard.'
+      : 'Event created successfully.';
     return res.redirect(returnToEvents
       ? `${buildEventsRedirect()}#scheduled-${eventInput.event_date}`
       : buildDashboardRedirect(result.lastInsertRowid));
@@ -1147,11 +1186,14 @@ router.get('/participants', requireAdmin, (req, res) => {
   }));
 
   const requestedEventId = parseEventId(req.query.eventId);
+  const allEvents = getDashboardEventOptions(listProductionEvents());
   const requestedRawEvent = requestedEventId ? getEventById(requestedEventId) : null;
   if (requestedRawEvent && isTestEvent(requestedRawEvent)) {
     return res.redirect(buildTestingRedirect(requestedRawEvent.id));
   }
-  const selectedEvent = getDashboardEvent(requestedEventId);
+  const selectedEvent = requestedEventId
+    ? requestedRawEvent
+    : (allEvents[0] || null);
 
   if (requestedEventId && !selectedEvent) {
     return res.status(404).send('<h1 style="font-family:sans-serif;padding:2rem">Event not found.</h1>');
@@ -1160,7 +1202,7 @@ router.get('/participants', requireAdmin, (req, res) => {
   res.render('admin/participants', {
     participants,
     selectedEvent,
-    allEvents: listProductionEvents(),
+    allEvents,
     buildRsvpPath,
     buildPublicEventPath,
     getEventTitle,
