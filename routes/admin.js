@@ -49,6 +49,7 @@ const {
   normalizeLocationAddress
 } = require('../services/locations');
 const { getUploadsDir } = require('../services/uploads');
+const { writeAuditLog } = require('../services/audit-logger');
 
 const router = express.Router();
 
@@ -93,6 +94,46 @@ const magicLinkLimiter = rateLimit({
   max: 5,
   message: 'Too many requests. Please wait 15 minutes and try again.'
 });
+
+// ── Progressive server-side backoff for failed magic-link attempts ─
+const failedLoginAttempts = new Map();
+
+function getClientIp(req) {
+  return req.headers['x-forwarded-for']
+    ? String(req.headers['x-forwarded-for']).split(',')[0].trim()
+    : req.ip || 'unknown';
+}
+
+async function applyLoginBackoff(req) {
+  const ip = getClientIp(req);
+  const record = failedLoginAttempts.get(ip);
+  if (record) {
+    const delay = Math.min(1000 * Math.pow(2, record.count - 1), 16000); // max 16s
+    await wait(delay);
+  }
+}
+
+function recordLoginFailure(req) {
+  const ip = getClientIp(req);
+  const existing = failedLoginAttempts.get(ip);
+  failedLoginAttempts.set(ip, {
+    count: existing ? existing.count + 1 : 1,
+    lastAttempt: Date.now()
+  });
+}
+
+function recordLoginSuccess(req) {
+  const ip = getClientIp(req);
+  failedLoginAttempts.delete(ip);
+}
+
+// Periodic cleanup every minute
+setInterval(() => {
+  const cutoff = Date.now() - 15 * 60 * 1000;
+  for (const [ip, record] of failedLoginAttempts) {
+    if (record.lastAttempt < cutoff) failedLoginAttempts.delete(ip);
+  }
+}, 60 * 1000);
 
 // ── Helpers ──────────────────────────────────────────────────
 const EVENT_SELECT_FIELDS = `
@@ -731,8 +772,11 @@ router.get('/', (req, res) => {
 router.post('/request-link', magicLinkLimiter, async (req, res) => {
   const email = normalizeEmail(req.body.email);
 
+  await applyLoginBackoff(req);
+
   // Always show "sent" regardless of whether email matches (no enumeration)
   if (!ADMIN_EMAILS.includes(email)) {
+    recordLoginFailure(req);
     return res.render('admin/login', { error: null, sent: true });
   }
 
@@ -775,10 +819,12 @@ router.get('/auth/:token', (req, res) => {
       });
     }
 
+    recordLoginSuccess(req);
     req.session.adminAuthenticated = true;
     res.redirect('/admin/dashboard');
   });
 });
+
 
 // ── GET /admin/dashboard ─────────────────────────────────────
 router.get('/dashboard', requireAdmin, (req, res) => {
@@ -1027,6 +1073,8 @@ router.post('/locations/:id/delete', requireAdmin, (req, res) => {
   db.prepare('DELETE FROM locations WHERE id = ?').run(existing.id);
   removeUploadedFileIfUnused(existing.location_image);
 
+  writeAuditLog('delete-location', { locationId: existing.id, locationName: existing.name }, req);
+
   req.session.flash = 'Location deleted.';
   res.redirect('/admin/locations');
 });
@@ -1230,6 +1278,8 @@ router.post('/event/:id/delete', requireAdmin, (req, res) => {
   removeUploadedFileIfUnused(existing.location_image);
   removeEventMapImageIfUnused(existing.map_image, { excludeEventId: existing.id });
 
+  writeAuditLog('delete-event', { eventId: existing.id, eventTitle: existing.title }, req);
+
   req.session.flash = 'Event deleted.';
   res.redirect('/admin/dashboard');
 });
@@ -1359,6 +1409,9 @@ router.post('/participants/:id/update', requireAdmin, (req, res) => {
 router.post('/participants/:id/delete', requireAdmin, (req, res) => {
   const selectedEventId = parseEventId(req.body.selected_event_id);
   db.prepare('UPDATE participants SET active = 0 WHERE id = ?').run(req.params.id);
+
+  writeAuditLog('delete-participant', { participantId: req.params.id }, req);
+
   req.session.flash = 'Participant removed.';
   res.redirect(buildParticipantsRedirect(selectedEventId));
 });
@@ -1594,6 +1647,9 @@ router.post('/event/:id/notify', requireAdmin, async (req, res) => {
   }
 
   req.session.flash = `Invites sent: ${sent} delivered${failed ? `, ${failed} failed` : ''}.`;
+
+  writeAuditLog('send-invites', { eventId: event.id, eventTitle: event.title, sent, failed }, req);
+
   res.redirect(buildDashboardRedirect(event.id));
 });
 
@@ -1639,6 +1695,8 @@ router.post('/event/:id/send-invite', requireAdmin, async (req, res) => {
   try {
     await sendRsvpInvite(participant, event);
     req.session.flash = `Invite sent to ${participant.email} for ${participant.name}.`;
+
+    writeAuditLog('send-invite', { eventId: event.id, participantId: participant.id, email: participant.email }, req);
   } catch (error) {
     console.error(`Failed to send invite to ${participant.email}:`, error.message);
     req.session.flash = `Unable to send invite to ${participant.email}.`;
@@ -1676,6 +1734,8 @@ router.post('/event/:id/test-invite', requireAdmin, async (req, res) => {
       email: testEmail
     }, event);
     req.session.flash = `Test invite sent to ${testEmail} for ${participant.name}.`;
+
+    writeAuditLog('send-test-invite', { eventId: event.id, participantId: participant.id, testEmail }, req);
   } catch (error) {
     console.error(`Failed to send test invite to ${testEmail}:`, error.message);
     req.session.flash = `Unable to send test invite to ${testEmail}.`;

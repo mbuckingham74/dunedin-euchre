@@ -219,6 +219,11 @@ function parsePublicSlugInput(value) {
     return { value: null, error: null };
   }
 
+  // Reject path traversal and control characters before normalization
+  if (/\.\.|%2e%2f|%2f%2e|%252e|%252f|0x2e|0x2f|[\x00-\x1f\x7f]/.test(rawValue)) {
+    return { value: null, error: 'Public URL slug contains invalid characters.' };
+  }
+
   const normalized = normalizePublicSlug(rawValue);
   if (!normalized) {
     return {

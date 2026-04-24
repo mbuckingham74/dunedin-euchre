@@ -14,6 +14,34 @@ const adminRoutes = require('./routes/admin');
 const { startReminderWorker } = require('./services/reminders');
 const { getUploadsDir } = require('./services/uploads');
 
+// ── Upload magic-byte verification ─────────────────────────────
+function verifyMagicBytes(buffer, ext) {
+  if (!buffer || buffer.length < 4) return false;
+
+  const sigs = {
+    '.png': [0x89, 0x50, 0x4E, 0x47],
+    '.jpg': [0xFF, 0xD8, 0xFF],
+    '.jpeg': [0xFF, 0xD8, 0xFF],
+    '.gif': [0x47, 0x49, 0x46, 0x38],
+    '.webp': buffer.length >= 12
+      && buffer[0] === 0x52 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x46
+      && buffer[8] === 0x57 && buffer[9] === 0x45 && buffer[10] === 0x42 && buffer[11] === 0x50,
+    '.bmp': [0x42, 0x4D],
+    '.tiff': buffer.length >= 4
+      && ((buffer[0] === 0x49 && buffer[1] === 0x49 && buffer[2] === 0x2A && buffer[3] === 0x00)
+        || (buffer[0] === 0x4D && buffer[1] === 0x4D && buffer[2] === 0x00 && buffer[3] === 0x2A)),
+    '.ico': [0x00, 0x00, 0x01, 0x00],
+  };
+
+  const expected = sigs[ext];
+  if (expected === undefined) return true;          // unknown / text-based (SVG)
+  if (typeof expected === 'boolean') return expected;
+  for (let i = 0; i < expected.length; i++) {
+    if (buffer[i] !== expected[i]) return false;
+  }
+  return true;
+}
+
 // ── Production secret enforcement ────────────────────────────
 if (process.env.NODE_ENV === 'production') {
   if (!process.env.SESSION_SECRET) {
@@ -29,7 +57,12 @@ if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
+
+
 const app = express();
+
+// ── Privacy / fingerprinting ─────────────────────────────────
+app.disable('x-powered-by');
 
 // Trust one proxy hop (Nginx Proxy Manager) so express-rate-limit
 // and session cookies work correctly with X-Forwarded-For / X-Forwarded-Proto
@@ -51,6 +84,7 @@ app.use(helmet({
       blockAllMixedContent: process.env.NODE_ENV === 'production' ? [] : null,
     },
   },
+  frameguard: { action: 'deny' },
   hsts: process.env.NODE_ENV === 'production'
     ? { maxAge: 63072000, includeSubDomains: true, preload: true }
     : false,
@@ -65,8 +99,11 @@ app.set('views', path.join(__dirname, 'views'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// ── Static files ─────────────────────────────────────────────
-app.use(express.static(path.join(__dirname, 'public')));
+// ── Static files (long-lived cache for immutable assets) ─────
+app.use(express.static(path.join(__dirname, 'public'), {
+  maxAge: '1y',
+  immutable: true,
+}));
 
 // ── Secure uploaded file serving ─────────────────────────────
 app.use('/uploads', (req, res, next) => {
@@ -102,6 +139,23 @@ app.use('/uploads', (req, res, next) => {
     '.ico': 'image/x-icon',
   };
 
+  // Verify magic bytes for non-text image types
+  if (ext !== '.svg') {
+    let fd;
+    try {
+      fd = fs.openSync(filePath, 'r');
+      const header = Buffer.alloc(12);
+      fs.readSync(fd, header, 0, 12, 0);
+      if (!verifyMagicBytes(header, ext)) {
+        return res.status(400).send('Invalid file content');
+      }
+    } catch {
+      return res.status(500).send('Error reading file');
+    } finally {
+      if (fd !== undefined) fs.closeSync(fd);
+    }
+  }
+
   res.set('X-Content-Type-Options', 'nosniff');
   res.set('Content-Type', mimeMap[ext] || 'application/octet-stream');
   res.set('Cache-Control', 'public, max-age=86400');
@@ -111,7 +165,10 @@ app.use('/uploads', (req, res, next) => {
   stream.pipe(res);
 });
 
-app.use('/images', express.static(path.join(__dirname, 'images')));
+app.use('/images', express.static(path.join(__dirname, 'images'), {
+  maxAge: '1y',
+  immutable: true,
+}));
 
 app.get('/healthz', (req, res) => {
   try {
