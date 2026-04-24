@@ -8,6 +8,7 @@
     "dev": "node --watch server.js",
     "seed": "node db/seed.js",
     "import:participants": "node scripts/import-participants-csv.js",
+    "schedule:reminder": "node scripts/schedule-reminder-email.js",
     "test": "node --test",
     "security:scan": "bash scripts/trivy-scan.sh",
     "security:scan:fs": "bash scripts/trivy-scan.sh fs",
