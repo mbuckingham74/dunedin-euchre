@@ -48,10 +48,11 @@ app.use(helmet({
       fontSrc: ["'self'"],
       objectSrc: ["'none'"],
       upgradeInsecureRequests: process.env.NODE_ENV === 'production' ? [] : null,
+      blockAllMixedContent: process.env.NODE_ENV === 'production' ? [] : null,
     },
   },
   hsts: process.env.NODE_ENV === 'production'
-    ? { maxAge: 31536000, includeSubDomains: true }
+    ? { maxAge: 63072000, includeSubDomains: true, preload: true }
     : false,
   referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
 }));

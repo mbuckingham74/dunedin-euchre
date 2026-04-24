@@ -198,13 +198,13 @@
                 </div>
               </div>
               <div class="testing-link-row">
-                <a href="/admin/event/<%= event.id %>/preview?participantId=<%= participant.id %>" target="_blank" class="btn-secondary">Open Invitee Preview</a>
+                <a href="/admin/event/<%= event.id %>/preview?participantId=<%= participant.id %>" target="_blank" rel="noopener noreferrer" class="btn-secondary">Open Invitee Preview</a>
                 <button class="btn-copy btn-sm" data-copy="<%= baseUrl + previewPath %>" title="Copy RSVP link">Copy RSVP Link</button>
               </div>
               <p class="dashboard-detail-meta"><%= baseUrl + previewPath %></p>
               <div class="admin-actions" style="margin-top:0.4rem;">
                 <% if (isEventPublished(event)) { %>
-                  <a href="<%= buildPublicEventPath(event) %>" target="_blank" class="btn-sm btn-secondary">Open Event Page</a>
+                  <a href="<%= buildPublicEventPath(event) %>" target="_blank" rel="noopener noreferrer" class="btn-sm btn-secondary">Open Event Page</a>
                 <% } %>
               </div>
             </section>

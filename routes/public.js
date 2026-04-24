@@ -2,6 +2,7 @@
 
 const express = require('express');
 const router = express.Router();
+const rateLimit = require('express-rate-limit');
 const db = require('../db/database');
 const { formatEventDate, formatTime } = require('../services/email');
 const {
@@ -28,6 +29,23 @@ const {
   grantEventPageAccess,
   hasEventPageAccess
 } = require('../middleware/auth');
+
+// ── Rate limiters ────────────────────────────────────────────
+const rsvpRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 60,
+  message: { error: 'Too many RSVP attempts. Please try again later.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const eventPageRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 120,
+  message: { error: 'Too many requests. Please try again later.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 // ── Root landing page ─────────────────────────────────────────
 router.get('/', (req, res) => {
@@ -250,7 +268,7 @@ function renderPublicEventPage(res, event) {
 }
 
 // ── GET /rsvp/:token/:eventId ────────────────────────────────
-router.get('/rsvp/:token/:eventId', (req, res) => {
+router.get('/rsvp/:token/:eventId', rsvpRateLimiter, (req, res) => {
   const invite = getInviteByToken(req.params.token);
   if (invite && String(invite.event.id) === String(req.params.eventId)) {
     grantEventPageAccess(req, invite.event.id);
@@ -266,7 +284,7 @@ router.get('/rsvp/:token/:eventId', (req, res) => {
 });
 
 // ── GET /rsvp/:token ─────────────────────────────────────────
-router.get('/rsvp/:token', (req, res) => {
+router.get('/rsvp/:token', rsvpRateLimiter, (req, res) => {
   const invite = getInviteByToken(req.params.token);
   if (!invite) {
     const participant = getLegacyParticipantByToken(req.params.token);
@@ -282,7 +300,7 @@ router.get('/rsvp/:token', (req, res) => {
 });
 
 // ── POST /rsvp/:token ────────────────────────────────────────
-router.post('/rsvp/:token', express.json(), (req, res) => {
+router.post('/rsvp/:token', express.json(), rsvpRateLimiter, (req, res) => {
   const invite = getInviteByToken(req.params.token);
 
   if (!invite) {
@@ -301,7 +319,7 @@ router.post('/rsvp/:token', express.json(), (req, res) => {
 });
 
 // ── POST /rsvp/:token/:eventId ───────────────────────────────
-router.post('/rsvp/:token/:eventId', express.json(), (req, res) => {
+router.post('/rsvp/:token/:eventId', express.json(), rsvpRateLimiter, (req, res) => {
   const participant = getLegacyParticipantByToken(req.params.token);
   if (participant) {
     return res.status(410).json({
@@ -313,7 +331,7 @@ router.post('/rsvp/:token/:eventId', express.json(), (req, res) => {
 });
 
 // ── GET /e/:slug ─────────────────────────────────────────────
-router.get('/e/:slug', (req, res) => {
+router.get('/e/:slug', eventPageRateLimiter, (req, res) => {
   const event = getEventByPublicSlug(req.params.slug);
   if (!event || !isEventPublished(event)) {
     return renderNotFound(res);
@@ -332,7 +350,7 @@ router.get('/e/:slug', (req, res) => {
 });
 
 // ── GET /event/:id ───────────────────────────────────────────
-router.get('/event/:id', (req, res) => {
+router.get('/event/:id', eventPageRateLimiter, (req, res) => {
   const event = getEventById(req.params.id);
   if (!event || !isEventPublished(event)) {
     return renderNotFound(res);

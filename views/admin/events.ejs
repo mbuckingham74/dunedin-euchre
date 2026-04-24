@@ -98,7 +98,7 @@
                       <div class="admin-actions">
                         <a href="/admin/dashboard?eventId=<%= event.id %>" class="btn-sm btn-secondary">Open in dashboard</a>
                         <% if (isEventPublished(event)) { %>
-                          <a href="<%= buildPublicEventPath(event) %>" target="_blank" class="btn-sm btn-secondary">View event page</a>
+                          <a href="<%= buildPublicEventPath(event) %>" target="_blank" rel="noopener noreferrer" class="btn-sm btn-secondary">View event page</a>
                         <% } %>
                       </div>
                     </div>
@@ -240,10 +240,10 @@
                       <p class="admin-history-meta">
                         <%= event.yes_count %> yes · <%= event.maybe_count %> maybe · <%= event.no_count %> no
                       </p>
-                      <div class="admin-actions">
+                       <div class="admin-actions">
                         <a href="/admin/dashboard?eventId=<%= event.id %>" class="btn-sm btn-secondary">Open in dashboard</a>
                         <% if (isEventPublished(event)) { %>
-                          <a href="<%= buildPublicEventPath(event) %>" target="_blank" class="btn-sm btn-secondary">View event page</a>
+                          <a href="<%= buildPublicEventPath(event) %>" target="_blank" rel="noopener noreferrer" class="btn-sm btn-secondary">View event page</a>
                         <% } %>
                       </div>
                     </div>

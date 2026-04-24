@@ -34,7 +34,7 @@
       <div class="invite-preview-toolbar">
         <a href="<%= dashboardPath %>" class="btn-secondary">Back to Dashboard</a>
         <a href="<%= invitePreviewPath %>" class="btn-secondary">Open Invite Preview</a>
-        <a href="/event/<%= event.id %>" target="_blank" class="btn-secondary">Open Event Page</a>
+        <a href="/event/<%= event.id %>" target="_blank" rel="noopener noreferrer" class="btn-secondary">Open Event Page</a>
         <% if (delivery.available) { %>
           <p class="dashboard-detail-meta invite-preview-meta">Last checked: <%= formatInviteSentAt(delivery.checkedAt) %></p>
         <% } %>

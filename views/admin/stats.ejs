@@ -82,7 +82,7 @@
             <li style="padding:0.6rem 0;border-bottom:1px solid var(--gray-100);display:flex;align-items:center;gap:1rem;flex-wrap:wrap;">
               <span style="font-weight:600;"><%= formatEventDate(e.event_date) %></span>
               <span style="color:var(--gray-500);"><%= e.location_name %></span>
-              <a href="/event/<%= e.id %>" target="_blank" class="btn-sm btn-secondary">View roster</a>
+              <a href="/event/<%= e.id %>" target="_blank" rel="noopener noreferrer" class="btn-sm btn-secondary">View roster</a>
             </li>
           <% }); %>
         </ul>

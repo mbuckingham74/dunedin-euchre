@@ -46,7 +46,7 @@
             Links below point to <strong><%= getEventTitle(selectedEvent) %></strong>.
             <% if (isEventPublished(selectedEvent)) { %>
               Event page:
-              <a href="<%= buildPublicEventPath(selectedEvent) %>" target="_blank"><%= baseUrl + buildPublicEventPath(selectedEvent) %></a>
+              <a href="<%= buildPublicEventPath(selectedEvent) %>" target="_blank" rel="noopener noreferrer"><%= baseUrl + buildPublicEventPath(selectedEvent) %></a>
             <% } %>
           </p>
         <% } %>
@@ -127,11 +127,12 @@
                 <td>
                   <% const link = selectedEvent ? baseUrl + buildRsvpPath(p, selectedEvent) : null; %>
                   <% if (p.active && link) { %>
-                    <a href="<%= link %>" target="_blank" class="rsvp-link-preview"><%= link %></a>
+                    <a href="<%= link %>" target="_blank" rel="noopener noreferrer" class="rsvp-link-preview"><%= link %></a>
                     <button class="btn-copy btn-sm" data-copy="<%= link %>" title="Copy link">Copy</button>
                     <a
                       href="/admin/event/<%= selectedEvent.id %>/preview?participantId=<%= p.id %>"
                       target="_blank"
+                      rel="noopener noreferrer"
                       class="btn-sm btn-secondary"
                       style="margin-left:0.4rem;"
                     >Preview RSVP</a>
