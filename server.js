@@ -3,14 +3,25 @@
 require('dotenv').config();
 const express = require('express');
 const session = require('express-session');
+const helmet = require('helmet');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 
 const db = require('./db/database');
 const publicRoutes = require('./routes/public');
 const adminRoutes = require('./routes/admin');
 const { startReminderWorker } = require('./services/reminders');
 const { getUploadsDir } = require('./services/uploads');
+
+// ── Production secret enforcement ────────────────────────────
+if (process.env.NODE_ENV === 'production') {
+  if (!process.env.SESSION_SECRET) {
+    throw new Error('SESSION_SECRET must be set in production.');
+  }
+}
+
+const sessionSecret = process.env.SESSION_SECRET;
 
 // Ensure uploads directory exists
 const uploadsDir = getUploadsDir();
@@ -19,15 +30,31 @@ if (!fs.existsSync(uploadsDir)) {
 }
 
 const app = express();
-const sessionSecret = process.env.SESSION_SECRET;
-
-if (!sessionSecret && process.env.NODE_ENV === 'production') {
-  throw new Error('SESSION_SECRET must be set in production.');
-}
 
 // Trust one proxy hop (Nginx Proxy Manager) so express-rate-limit
 // and session cookies work correctly with X-Forwarded-For / X-Forwarded-Proto
 app.set('trust proxy', 1);
+
+// ── Security headers ─────────────────────────────────────────
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      scriptSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", "data:", "https://www.google.com"],
+      frameSrc: ["'self'", "https://www.google.com"],
+      connectSrc: ["'self'"],
+      fontSrc: ["'self'"],
+      objectSrc: ["'none'"],
+      upgradeInsecureRequests: process.env.NODE_ENV === 'production' ? [] : null,
+    },
+  },
+  hsts: process.env.NODE_ENV === 'production'
+    ? { maxAge: 31536000, includeSubDomains: true }
+    : false,
+  referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
+}));
 
 // ── View engine ──────────────────────────────────────────────
 app.set('view engine', 'ejs');
@@ -39,7 +66,50 @@ app.use(express.urlencoded({ extended: true }));
 
 // ── Static files ─────────────────────────────────────────────
 app.use(express.static(path.join(__dirname, 'public')));
-app.use('/uploads', express.static(uploadsDir));
+
+// ── Secure uploaded file serving ─────────────────────────────
+app.use('/uploads', (req, res, next) => {
+  if (req.method !== 'GET' && req.method !== 'HEAD') {
+    return next();
+  }
+
+  const requestedName = path.basename(req.path);
+  if (!requestedName || requestedName.startsWith('.') || requestedName.includes('..')) {
+    return res.status(400).send('Invalid filename');
+  }
+
+  const filePath = path.resolve(uploadsDir, requestedName);
+  const resolvedUploadsDir = path.resolve(uploadsDir);
+  if (!filePath.startsWith(resolvedUploadsDir + path.sep)) {
+    return res.status(403).send('Forbidden');
+  }
+
+  if (!fs.existsSync(filePath)) {
+    return res.status(404).send('Not found');
+  }
+
+  const ext = path.extname(requestedName).toLowerCase();
+  const mimeMap = {
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.png': 'image/png',
+    '.gif': 'image/gif',
+    '.webp': 'image/webp',
+    '.svg': 'image/svg+xml',
+    '.bmp': 'image/bmp',
+    '.tiff': 'image/tiff',
+    '.ico': 'image/x-icon',
+  };
+
+  res.set('X-Content-Type-Options', 'nosniff');
+  res.set('Content-Type', mimeMap[ext] || 'application/octet-stream');
+  res.set('Cache-Control', 'public, max-age=86400');
+
+  const stream = fs.createReadStream(filePath);
+  stream.on('error', () => res.status(500).send('Error reading file'));
+  stream.pipe(res);
+});
+
 app.use('/images', express.static(path.join(__dirname, 'images')));
 
 app.get('/healthz', (req, res) => {
@@ -103,9 +173,10 @@ class SQLiteStore extends session.Store {
   }
 }
 
+// ── Session store (SQLite-backed, survives restarts) ─────────
 app.use(session({
   store: new SQLiteStore(db),
-  secret: sessionSecret || 'dev-secret-change-me',
+  secret: sessionSecret,
   resave: false,
   saveUninitialized: false,
   name: 'euchre.sid',
@@ -117,8 +188,41 @@ app.use(session({
   }
 }));
 
+// ── CSRF middleware (custom, session-backed) ─────────────────
+function generateCsrfToken() {
+  return crypto.randomBytes(32).toString('base64url');
+}
+
+function csrfMiddleware(req, res, next) {
+  if (!req.session.csrfToken) {
+    req.session.csrfToken = generateCsrfToken();
+  }
+  res.locals._csrf = req.session.csrfToken;
+  next();
+}
+
+function validateCsrfToken(req, res, next) {
+  const safeMethods = ['GET', 'HEAD', 'OPTIONS'];
+  if (safeMethods.includes(req.method)) {
+    return next();
+  }
+
+  const submitted = req.body && req.body._csrf || req.headers['x-csrf-token'];
+  if (!submitted || submitted !== req.session.csrfToken) {
+    if (req.xhr) {
+      return res.status(403).json({ error: 'Invalid or missing CSRF token.' });
+    }
+    return res.status(403).send(
+      '<h1 style="font-family:sans-serif;padding:2rem">Invalid or missing CSRF token. Refresh the page and try again.</h1>'
+    );
+  }
+  next();
+}
+
 // ── Routes ───────────────────────────────────────────────────
 app.use('/', publicRoutes);
+app.use('/admin', csrfMiddleware);
+app.use('/admin', validateCsrfToken);
 app.use('/admin', adminRoutes);
 
 // ── 404 ──────────────────────────────────────────────────────

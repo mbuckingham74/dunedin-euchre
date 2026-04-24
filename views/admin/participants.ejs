@@ -60,6 +60,7 @@
         <h2 class="card-title">Add Participant</h2>
       </div>
       <form method="POST" action="/admin/participants" class="inline-form">
+        <input type="hidden" name="_csrf" value="<%= _csrf %>">
         <input type="hidden" name="selected_event_id" value="<%= selectedEvent ? selectedEvent.id : '' %>">
         <div class="form-row">
           <div class="form-group">
@@ -159,6 +160,7 @@
                     >Edit</button>
                     <form method="POST" action="/admin/participants/<%= p.id %>/delete" style="display:inline;"
                           onsubmit="return confirm('Remove <%= p.name %>?')">
+                      <input type="hidden" name="_csrf" value="<%= _csrf %>">
                       <input type="hidden" name="selected_event_id" value="<%= selectedEvent ? selectedEvent.id : '' %>">
                       <button type="submit" class="btn-sm btn-danger">Remove</button>
                     </form>
@@ -178,6 +180,7 @@
   <div class="modal-box" onclick="event.stopPropagation()">
     <h3 style="margin-bottom:1rem;">Edit Participant</h3>
     <form id="edit-form" method="POST" action="">
+      <input type="hidden" name="_csrf" value="<%= _csrf %>">
       <input type="hidden" id="edit-selected-event-id" name="selected_event_id" value="">
       <div class="form-group">
         <label class="form-label">Email</label>

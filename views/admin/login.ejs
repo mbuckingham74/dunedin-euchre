@@ -65,6 +65,7 @@
       <% } %>
 
       <form method="POST" action="/admin/request-link">
+        <input type="hidden" name="_csrf" value="<%= _csrf %>">
         <div class="form-group">
           <label for="email" class="form-label">Email address</label>
           <input

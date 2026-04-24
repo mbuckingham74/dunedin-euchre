@@ -49,6 +49,7 @@
           action="<%= reminderSchedulePath %>"
           onsubmit="return confirm('Queue the reminder email for <%= formatReminderTimestamp(defaultReminderSchedule.scheduledAt) %>?')"
         >
+          <input type="hidden" name="_csrf" value="<%= _csrf %>">
           <button type="submit" class="btn-secondary">Queue Day-Before Reminder</button>
         </form>
         <form
@@ -56,6 +57,7 @@
           action="/admin/event/<%= event.id %>/notify"
           onsubmit="return confirm('Send RSVP emails now to all <%= inviteParticipants.length %> active <%= inviteParticipants.length === 1 ? 'invitee' : 'invitees' %>?')"
         >
+          <input type="hidden" name="_csrf" value="<%= _csrf %>">
           <button type="submit" class="btn-primary">Confirm and send RSVP to <%= inviteParticipants.length %> <%= inviteParticipants.length === 1 ? 'invitee' : 'invitees' %></button>
         </form>
         <p class="dashboard-detail-meta invite-preview-meta">Invites send immediately. Reminder emails queue for the day before at 9:00 AM Pacific.</p>

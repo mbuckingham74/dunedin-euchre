@@ -101,6 +101,7 @@
                         style="display:inline;"
                         onsubmit="return confirm('Send the live RSVP invite to <%= entry.participant.email %>?')"
                       >
+                        <input type="hidden" name="_csrf" value="<%= _csrf %>">
                         <input type="hidden" name="participant_id" value="<%= entry.participant.id %>">
                         <button type="submit" class="btn-sm btn-secondary">Send Now</button>
                       </form>

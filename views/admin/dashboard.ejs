@@ -133,6 +133,7 @@
                 action="/admin/event/<%= event.id %>/delete"
                 onsubmit="return confirm('Delete this event and all of its RSVP responses? This cannot be undone.')"
               >
+                <input type="hidden" name="_csrf" value="<%= _csrf %>">
                 <button type="submit" class="btn-secondary btn-danger">Delete event</button>
               </form>
             </div>
@@ -343,6 +344,7 @@
       </div>
 
       <form method="POST" action="/admin/event">
+        <input type="hidden" name="_csrf" value="<%= _csrf %>">
         <%- include('../partials/event-form', { event: null, locations: locations }) %>
         <div class="admin-actions" style="margin-top:1rem;">
           <button type="submit" class="btn-primary">Create Event</button>
@@ -370,6 +372,7 @@
           </div>
 
           <form method="POST" action="/admin/event/<%= event.id %>/update">
+            <input type="hidden" name="_csrf" value="<%= _csrf %>">
             <%- include('../partials/event-form', { event: event, locations: locations }) %>
             <div class="admin-actions" style="margin-top:1rem;">
               <button type="submit" class="btn-primary">Save Changes</button>

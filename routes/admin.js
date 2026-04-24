@@ -522,6 +522,44 @@ function listRecentResponses(roster, options = {}) {
     .slice(0, limit);
 }
 
+const ALLOWED_PATHS = [
+  'dashboard',
+  'events',
+  'participants',
+  'locations',
+  'testing',
+  'roster',
+  'stats',
+  'login',
+  '',
+];
+
+function safeRedirect(req, rawPath, fallbackPath) {
+  const host = req.get('host') || '';
+  let redirectPath = (rawPath || '').trim();
+
+  if (!redirectPath || redirectPath.length > 2000) {
+    return fallbackPath;
+  }
+
+  if (/[\r\n]/.test(redirectPath)) {
+    return fallbackPath;
+  }
+
+  if (redirectPath.startsWith('http://') || redirectPath.startsWith('https://') || redirectPath.startsWith('//')) {
+    return fallbackPath;
+  }
+
+  const normalized = redirectPath.replace(/^\//, '').split(/[?#]/)[0];
+  const root = normalized.split('/')[0];
+
+  if (!ALLOWED_PATHS.includes(root)) {
+    return fallbackPath;
+  }
+
+  return redirectPath;
+}
+
 function buildDashboardRedirect(eventId) {
   return eventId ? `/admin/dashboard?eventId=${eventId}` : '/admin/dashboard';
 }
@@ -728,9 +766,18 @@ router.get('/auth/:token', (req, res) => {
 
   db.prepare('UPDATE admin_tokens SET used = 1 WHERE token = ?').run(row.token);
 
-  req.session.adminAuthenticated = true;
+  req.session.regenerate(function(err) {
+    if (err) {
+      console.error('Session regeneration failed:', err);
+      return res.render('admin/login', {
+        error: 'Something went wrong. Please request a new sign-in link.',
+        sent: false
+      });
+    }
 
-  res.redirect('/admin/dashboard');
+    req.session.adminAuthenticated = true;
+    res.redirect('/admin/dashboard');
+  });
 });
 
 // ── GET /admin/dashboard ─────────────────────────────────────

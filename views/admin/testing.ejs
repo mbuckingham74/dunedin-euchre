@@ -53,6 +53,7 @@
               </div>
             </div>
             <form method="POST" action="/admin/testing/create-event" class="testing-form-stack">
+              <input type="hidden" name="_csrf" value="<%= _csrf %>">
               <div class="form-group">
                 <label class="form-label">Use saved location</label>
                 <select name="location_id" class="form-input">
@@ -84,7 +85,8 @@
               </div>
             </div>
             <% if (sourceEvents.length > 0) { %>
-              <form method="POST" action="/admin/testing/create-event" class="testing-form-stack">
+            <form method="POST" action="/admin/testing/create-event" class="testing-form-stack">
+              <input type="hidden" name="_csrf" value="<%= _csrf %>">
                 <div class="form-group">
                   <label class="form-label">Clone from real event</label>
                   <select name="source_event_id" class="form-input">
@@ -215,6 +217,7 @@
                 </div>
               </div>
               <form method="POST" action="/admin/event/<%= event.id %>/test-invite" class="testing-form-stack">
+                <input type="hidden" name="_csrf" value="<%= _csrf %>">
                 <input type="hidden" name="participant_id" value="<%= participant.id %>">
                 <input type="hidden" name="return_to" value="testing">
                 <div class="form-group">
@@ -246,6 +249,7 @@
                 class="testing-form-stack"
                 onsubmit="return confirm('Clear all responses for this [TEST] event?')"
               >
+                <input type="hidden" name="_csrf" value="<%= _csrf %>">
                 <input type="hidden" name="event_id" value="<%= event.id %>">
                 <input type="hidden" name="participant_id" value="<%= participant.id %>">
                 <button type="submit" class="btn-secondary btn-danger">Reset Responses For This [TEST] Event</button>

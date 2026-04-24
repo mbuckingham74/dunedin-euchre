@@ -88,6 +88,7 @@
                 </div>
 
                 <form method="POST" action="/admin/locations/<%= location.id %>/update" enctype="multipart/form-data" class="location-card-form">
+                  <input type="hidden" name="_csrf" value="<%= _csrf %>">
                   <div class="form-group">
                     <label class="form-label">Location name</label>
                     <input
@@ -166,6 +167,7 @@
       </div>
 
       <form method="POST" action="/admin/locations" enctype="multipart/form-data">
+        <input type="hidden" name="_csrf" value="<%= _csrf %>">
         <div class="form-row">
           <div class="form-group">
             <label class="form-label">Location name</label>

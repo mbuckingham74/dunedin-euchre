@@ -137,7 +137,7 @@
                         </div>
 
                         <form method="POST" action="/admin/event" class="scheduled-create-card scheduled-create-card-modal">
-                        <input type="hidden" name="return_to" value="events">
+                        <input type="hidden" name="_csrf" value="<%= _csrf %>">
                         <input type="hidden" name="title" value="Dunedin Euchre Night">
                         <input type="hidden" name="public_slug" value="">
                         <input type="hidden" name="event_date" value="<%= entry.dateKey %>">
