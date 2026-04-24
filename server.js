@@ -9,6 +9,7 @@ const fs = require('fs');
 const db = require('./db/database');
 const publicRoutes = require('./routes/public');
 const adminRoutes = require('./routes/admin');
+const { startReminderWorker } = require('./services/reminders');
 const { getUploadsDir } = require('./services/uploads');
 
 // Ensure uploads directory exists
@@ -133,6 +134,8 @@ app.use((err, req, res, next) => {
 
 // ── Start ─────────────────────────────────────────────────────
 const PORT = process.env.PORT || 3456;
+
+startReminderWorker();
 
 if (require.main === module) {
   app.listen(PORT, () => {

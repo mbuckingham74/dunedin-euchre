@@ -31,9 +31,26 @@
         <strong>Previewing now:</strong> <%= getEventTitle(event) %> on <%= formatEventDate(event.event_date) %> at <%= formatTime(event.start_time) %>.
       </div>
 
+      <div class="dashboard-note" style="margin-bottom:1rem;">
+        <span class="notes-label">Reminder email</span>
+        <p class="notes-text">
+          <strong><%= getReminderStatusLabel(reminderSummary) %></strong><br>
+          Default send time:
+          <strong><%= formatReminderTimestamp(defaultReminderSchedule.scheduledAt) %></strong>
+          for all invitees who already received the original event invite.
+        </p>
+      </div>
+
       <div class="invite-preview-toolbar">
         <a href="<%= editDashboardPath %>" class="btn-secondary">Back to Edit Event</a>
         <a href="<%= inviteStatusPath %>" class="btn-secondary">Invite Delivery</a>
+        <form
+          method="POST"
+          action="<%= reminderSchedulePath %>"
+          onsubmit="return confirm('Queue the reminder email for <%= formatReminderTimestamp(defaultReminderSchedule.scheduledAt) %>?')"
+        >
+          <button type="submit" class="btn-secondary">Queue Day-Before Reminder</button>
+        </form>
         <form
           method="POST"
           action="/admin/event/<%= event.id %>/notify"
@@ -41,7 +58,7 @@
         >
           <button type="submit" class="btn-primary">Confirm and send RSVP to <%= inviteParticipants.length %> <%= inviteParticipants.length === 1 ? 'invitee' : 'invitees' %></button>
         </form>
-        <p class="dashboard-detail-meta invite-preview-meta">Sending happens immediately after confirmation.</p>
+        <p class="dashboard-detail-meta invite-preview-meta">Invites send immediately. Reminder emails queue for the day before at 9:00 AM Pacific.</p>
       </div>
 
       <div class="invite-preview-shell">

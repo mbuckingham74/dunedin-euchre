@@ -82,6 +82,7 @@ function resetUploadsDirectory() {
 
 function resetDatabase() {
   db.exec(`
+    DELETE FROM scheduled_reminders;
     DELETE FROM responses;
     DELETE FROM participants;
     DELETE FROM event_public_slugs;
@@ -838,9 +839,67 @@ test('invite preview page shows the invitee view with the final send action', as
   const body = await response.text();
   assert.match(body, /Invite Preview/);
   assert.match(body, /Confirm and send RSVP to 2 invitees/);
+  assert.match(body, /Queue Day-Before Reminder/);
+  assert.match(body, /9:00 AM PDT/);
   assert.match(body, /Invite Delivery/);
   assert.ok(body.includes(`src="${buildRsvpPath(participant, event)}"`));
   assert.match(body, /Back to Edit Event/);
+});
+
+test('admin can queue the default day-before reminder for invite recipients', async () => {
+  const participant = insertParticipant({
+    name: 'Reminder Person',
+    email: 'reminder@example.com',
+    rsvp_token: 'reminder-token'
+  });
+  const event = insertEvent({
+    title: 'Workflow Event',
+    event_date: '2026-04-25'
+  });
+  mockInviteDeliveryStatus = async participants => ({
+    available: true,
+    checkedAt: '2026-04-22T12:00:00.000Z',
+    summary: {
+      delivered: participants.length,
+      pending: 0,
+      issue: 0,
+      missing: 0
+    },
+    statuses: participants.map(entry => ({
+      participant: entry,
+      sentAt: '2026-04-22T12:00:00.000Z',
+      emailId: `invite-${entry.id}`,
+      lastEvent: 'delivered',
+      group: 'delivered',
+      label: 'Delivered'
+    })),
+    error: null
+  });
+  const cookie = await signInAsAdmin();
+
+  const response = await fetch(`${baseUrl}/admin/event/${event.id}/schedule-reminder`, {
+    method: 'POST',
+    headers: { cookie },
+    redirect: 'manual'
+  });
+
+  assert.equal(response.status, 302);
+  assert.equal(response.headers.get('location'), `/admin/event/${event.id}/invite-preview`);
+
+  const reminders = db.prepare(`
+    SELECT event_id, participant_id, kind, send_at, subject, status
+    FROM scheduled_reminders
+    ORDER BY id ASC
+  `).all();
+
+  assert.deepEqual(reminders, [{
+    event_id: event.id,
+    participant_id: participant.id,
+    kind: 'day_before_9am_pacific',
+    send_at: '2026-04-24T16:00:00.000Z',
+    subject: 'Reminder and Last Call for Workflow Event',
+    status: 'pending'
+  }]);
 });
 
 test('dashboard and edit modal point to the invite preview workflow', async () => {

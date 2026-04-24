@@ -40,6 +40,20 @@
         <% } %>
       </div>
 
+      <div class="dashboard-note" style="margin-bottom:1rem;">
+        <span class="notes-label">Queued reminder</span>
+        <p class="notes-text">
+          <% if (reminderSummary.total > 0) { %>
+            <strong><%= reminderSummary.pending %></strong> pending,
+            <strong><%= reminderSummary.sent %></strong> sent,
+            <strong><%= reminderSummary.failed %></strong> failed.
+            Scheduled for <strong><%= formatReminderTimestamp(reminderSummary.scheduledAt) %></strong>.
+          <% } else { %>
+            No reminder is queued yet. Schedule it from Invite Preview.
+          <% } %>
+        </p>
+      </div>
+
       <% if (!delivery.available) { %>
         <div class="dashboard-note">
           <span class="notes-label">Delivery status unavailable</span>

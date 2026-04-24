@@ -329,6 +329,34 @@ const migrations = [
         updateResponse.run(attendeeNames, response.id);
       }
     }
+  },
+  {
+    id: '008_scheduled_reminders',
+    up(db) {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS scheduled_reminders (
+          id               INTEGER PRIMARY KEY AUTOINCREMENT,
+          event_id         INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+          participant_id   INTEGER NOT NULL REFERENCES participants(id) ON DELETE CASCADE,
+          kind             TEXT NOT NULL,
+          send_at          TEXT NOT NULL,
+          subject          TEXT NOT NULL,
+          status           TEXT NOT NULL DEFAULT 'pending'
+                           CHECK(status IN ('pending', 'processing', 'sent', 'failed', 'canceled')),
+          resend_email_id  TEXT,
+          last_error       TEXT,
+          created_at       TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at       TEXT NOT NULL DEFAULT (datetime('now')),
+          sent_at          TEXT
+        );
+
+        CREATE UNIQUE INDEX IF NOT EXISTS scheduled_reminders_event_participant_kind_unique
+        ON scheduled_reminders(event_id, participant_id, kind);
+
+        CREATE INDEX IF NOT EXISTS scheduled_reminders_status_send_at_idx
+        ON scheduled_reminders(status, send_at);
+      `);
+    }
   }
 ];
 

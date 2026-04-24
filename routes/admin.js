@@ -12,6 +12,13 @@ const { requireAdmin } = require('../middleware/auth');
 const { sendMagicLink, sendRsvpInvite, formatEventDate, formatTime } = require('../services/email');
 const { getEventInviteDeliveryStatus } = require('../services/invite-status');
 const {
+  formatReminderTimestamp,
+  getDefaultReminderSchedule,
+  getEventReminderSummary,
+  getReminderStatusLabel,
+  scheduleEventReminder
+} = require('../services/reminders');
+const {
   buildMonthlyEventHistory,
   getArrivalNotes,
   getEventTitle,
@@ -533,6 +540,10 @@ function buildInvitePreviewPath(eventId, participantId = null) {
 
 function buildInviteStatusPath(eventId) {
   return `/admin/event/${eventId}/invite-status`;
+}
+
+function buildReminderSchedulePath(eventId) {
+  return `/admin/event/${eventId}/schedule-reminder`;
 }
 
 function buildParticipantsRedirect(eventId) {
@@ -1457,9 +1468,14 @@ router.get('/event/:id/invite-preview', requireAdmin, (req, res) => {
     previewParticipant,
     previewPath: buildRsvpPath(previewParticipant, event),
     inviteStatusPath: buildInviteStatusPath(event.id),
+    reminderSchedulePath: buildReminderSchedulePath(event.id),
     editDashboardPath: buildDashboardEditRedirect(event.id),
+    reminderSummary: getEventReminderSummary(event.id),
+    defaultReminderSchedule: getDefaultReminderSchedule(event),
     getEventTitle,
+    getReminderStatusLabel,
     formatEventDate,
+    formatReminderTimestamp,
     formatTime,
     flash: req.session.flash || null
   });
@@ -1489,10 +1505,12 @@ router.get('/event/:id/invite-status', requireAdmin, async (req, res, next) => {
       delivery,
       dashboardPath: buildDashboardRedirect(event.id),
       invitePreviewPath: buildInvitePreviewPath(event.id),
+      reminderSummary: getEventReminderSummary(event.id),
       getEventTitle,
       getInviteStatusTone,
       formatEventDate,
       formatInviteSentAt,
+      formatReminderTimestamp,
       formatTime,
       flash: req.session.flash || null
     });
@@ -1530,6 +1548,32 @@ router.post('/event/:id/notify', requireAdmin, async (req, res) => {
 
   req.session.flash = `Invites sent: ${sent} delivered${failed ? `, ${failed} failed` : ''}.`;
   res.redirect(buildDashboardRedirect(event.id));
+});
+
+// ── POST /admin/event/:id/schedule-reminder ──────────────────
+router.post('/event/:id/schedule-reminder', requireAdmin, async (req, res) => {
+  const event = getEventById(req.params.id);
+  if (!event) {
+    return res.status(404).send('<h1 style="font-family:sans-serif;padding:2rem">Event not found.</h1>');
+  }
+
+  const participants = listActiveParticipants();
+  if (participants.length === 0) {
+    req.session.flash = 'Add at least one active invitee before scheduling a reminder.';
+    return res.redirect(buildInvitePreviewPath(event.id));
+  }
+
+  try {
+    const result = await scheduleEventReminder(event, participants, {
+      baseUrl: BASE_URL
+    });
+    req.session.flash = `Reminder queued for ${result.recipients.length} invitee${result.recipients.length === 1 ? '' : 's'} on ${formatReminderTimestamp(result.schedule.scheduledAt)}.`;
+  } catch (error) {
+    console.error(`Failed to schedule reminder for event ${event.id}:`, error.message);
+    req.session.flash = `Unable to queue the reminder: ${error.message}`;
+  }
+
+  res.redirect(buildInvitePreviewPath(event.id));
 });
 
 // ── POST /admin/event/:id/send-invite ───────────────────────
