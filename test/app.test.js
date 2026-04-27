@@ -2034,7 +2034,9 @@ test('events admin page shows the recurring schedule and recorded events', async
   assert.match(body, /Upcoming Schedule/);
   assert.match(body, /Past Event History/);
   assert.match(body, /Spring Euchre Social/);
-  assert.match(body, new RegExp(`/admin/dashboard\\?eventId=${event.id}`));
+  assert.match(body, new RegExp(`/admin/dashboard\\?eventId=${event.id}&edit=1`));
+  assert.match(body, /Edit event/);
+  assert.doesNotMatch(body, /Open in dashboard/);
   assert.match(body, /Create event/);
   assert.match(body, /scheduled-create-modal/);
   assert.match(body, /create-modal-2026-04-25/);
@@ -2064,6 +2066,24 @@ test('dashboard defaults to the nearest upcoming production event', async () => 
   assert.match(body, new RegExp(`<option value="${aprilEvent.id}" selected`));
   assert.doesNotMatch(body, new RegExp(`<option value="${mayEvent.id}" selected`));
   assert.match(body, /April Game/);
+});
+
+test('dashboard upcoming schedule shows a clickable edit action for draft events', async () => {
+  const event = insertEvent({
+    title: 'May Draft Game',
+    event_date: '2026-05-23',
+    is_published: 0
+  });
+  const cookie = await signInAsAdmin();
+
+  const response = await fetch(`${baseUrl}/admin/dashboard`, {
+    headers: { cookie }
+  });
+  const body = await response.text();
+
+  assert.equal(response.status, 200);
+  assert.match(body, /Edit draft/);
+  assert.match(body, new RegExp(`/admin/dashboard\\?eventId=${event.id}&amp;edit=1`));
 });
 
 test('future events are created as drafts even when publish is requested immediately', async () => {

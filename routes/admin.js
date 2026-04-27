@@ -890,6 +890,7 @@ router.get('/dashboard', requireAdmin, (req, res) => {
     isEventPublished,
     isPublicRosterVisible,
     buildPublicEventPath,
+    buildDashboardEditRedirect,
     baseUrl: BASE_URL,
     flash: req.session.flash || null,
     showEditEventModal: Boolean(req.session.showEditEventModal || String(req.query.edit || '') === '1')
@@ -1793,6 +1794,7 @@ router.get('/events', requireAdmin, (req, res) => {
     formatTime,
     getEventTitle,
     isEventPublished,
+    buildDashboardEditRedirect,
     buildPublicEventPath,
     flash: req.session.flash || null
   });

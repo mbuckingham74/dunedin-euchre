@@ -74,11 +74,11 @@
                   <% } else { %>
                     <span class="status-pill pill-none">Upcoming</span>
                   <% } %>
-                  <% if (entry.hasEvent) { %>
+                  <% if (entry.hasEvent && isEventPublished(entry.primaryEvent)) { %>
                     <span class="status-pill <%= isEventPublished(entry.primaryEvent) ? 'pill-yes' : 'pill-none' %>">
-                      <%= isEventPublished(entry.primaryEvent) ? 'Published' : 'Draft' %>
+                      Published
                     </span>
-                  <% } else { %>
+                  <% } else if (!entry.hasEvent) { %>
                     <span class="status-pill pill-none">Not created</span>
                   <% } %>
                 </div>
@@ -96,7 +96,7 @@
                         <%= event.yes_count %> yes · <%= event.maybe_count %> maybe · <%= event.no_count %> no
                       </p>
                       <div class="admin-actions">
-                        <a href="/admin/dashboard?eventId=<%= event.id %>" class="btn-sm btn-secondary">Open in dashboard</a>
+                        <a href="<%= buildDashboardEditRedirect(event.id) %>" class="btn-sm btn-secondary">Edit event</a>
                         <% if (isEventPublished(event)) { %>
                           <a href="<%= buildPublicEventPath(event) %>" target="_blank" rel="noopener noreferrer" class="btn-sm btn-secondary">View event page</a>
                         <% } %>
@@ -219,11 +219,11 @@
                 <strong><%= entry.formattedDate %></strong>
                 <div class="admin-history-pill-row">
                   <span class="status-pill pill-none">Past</span>
-                  <% if (entry.hasEvent) { %>
+                  <% if (entry.hasEvent && isEventPublished(entry.primaryEvent)) { %>
                     <span class="status-pill <%= isEventPublished(entry.primaryEvent) ? 'pill-yes' : 'pill-none' %>">
-                      <%= isEventPublished(entry.primaryEvent) ? 'Published' : 'Draft' %>
+                      Published
                     </span>
-                  <% } else { %>
+                  <% } else if (!entry.hasEvent) { %>
                     <span class="status-pill pill-no">Missing record</span>
                   <% } %>
                 </div>
@@ -241,7 +241,7 @@
                         <%= event.yes_count %> yes · <%= event.maybe_count %> maybe · <%= event.no_count %> no
                       </p>
                        <div class="admin-actions">
-                        <a href="/admin/dashboard?eventId=<%= event.id %>" class="btn-sm btn-secondary">Open in dashboard</a>
+                        <a href="<%= buildDashboardEditRedirect(event.id) %>" class="btn-sm btn-secondary">Edit event</a>
                         <% if (isEventPublished(event)) { %>
                           <a href="<%= buildPublicEventPath(event) %>" target="_blank" rel="noopener noreferrer" class="btn-sm btn-secondary">View event page</a>
                         <% } %>

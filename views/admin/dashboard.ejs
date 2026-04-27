@@ -279,9 +279,11 @@
 
               <div class="dashboard-schedule-actions">
                 <% if (entry.hasEvent) { %>
-                  <span class="status-pill <%= isEventPublished(entry.primaryEvent) ? 'pill-yes' : 'pill-none' %>">
-                    <%= isEventPublished(entry.primaryEvent) ? 'Published' : 'Draft' %>
-                  </span>
+                  <% if (isEventPublished(entry.primaryEvent)) { %>
+                    <span class="status-pill pill-yes">Published</span>
+                  <% } else { %>
+                    <a href="<%= buildDashboardEditRedirect(entry.primaryEvent.id) %>" class="btn-sm btn-secondary">Edit draft</a>
+                  <% } %>
                   <a href="/admin/dashboard?eventId=<%= entry.primaryEvent.id %>" class="btn-sm btn-secondary">Open</a>
                 <% } else { %>
                   <span class="status-pill pill-none">Not created</span>
