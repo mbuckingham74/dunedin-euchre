@@ -20,11 +20,13 @@ const {
   expandRosterIndividuals,
   getIndividualCounts,
   getParticipantPartyMembers,
-  getSelectedAttendeeNames,
-  sanitizeSelectedAttendees,
-  serializeNames
+  getSelectedAttendeeNames
 } = require('../services/party');
 const { getEventByPublicSlug } = require('../services/public-slugs');
+const {
+  prepareRsvpResponse,
+  saveRsvpResponseRecord
+} = require('../services/rsvp');
 const {
   grantEventPageAccess,
   hasEventPageAccess
@@ -182,9 +184,9 @@ function renderRsvpPage(res, participant, event) {
 
 function saveRsvpResponse(res, participant, event, body) {
   setSensitiveResponseHeaders(res);
-  const { status, comment } = body;
-  if (!['yes', 'no', 'maybe'].includes(status)) {
-    return res.status(400).json({ error: 'Invalid status.' });
+  const responseInput = prepareRsvpResponse(participant, body);
+  if (responseInput.error) {
+    return res.status(400).json({ error: responseInput.error });
   }
 
   if (hasEventStarted(event)) {
@@ -193,58 +195,20 @@ function saveRsvpResponse(res, participant, event, body) {
     });
   }
 
-  const trimmedComment = (comment || '').trim().slice(0, 400);
-  const partyMembers = getParticipantPartyMembers(participant);
-  const selectedAttendeeNames = sanitizeSelectedAttendees(participant, body.attendeeNames);
-  const normalizedAttendeeNames = status === 'yes' && selectedAttendeeNames.length === 0 && partyMembers.length === 1
-    ? partyMembers
-    : selectedAttendeeNames;
-  if (status === 'yes' && normalizedAttendeeNames.length === 0) {
-    return res.status(400).json({
-      error: 'Choose who is coming before saving this RSVP.'
+  try {
+    const { record } = saveRsvpResponseRecord(db, participant.id, event.id, responseInput);
+    const roster = getRoster(event.id);
+
+    return res.json({
+      ok: true,
+      roster,
+      canEdit: true,
+      attendeeNames: getSelectedAttendeeNames(record, participant)
     });
+  } catch (error) {
+    console.error(`Failed to save RSVP for participant ${participant.id} on event ${event.id}:`, error.message);
+    return res.status(500).json({ error: 'Unable to save this RSVP right now. Please try again.' });
   }
-
-  const existing = db.prepare(
-    'SELECT * FROM responses WHERE participant_id = ? AND event_id = ?'
-  ).get(participant.id, event.id);
-
-  if (existing) {
-    db.prepare(`
-      UPDATE responses
-      SET status = ?, comment = ?, attendee_names = ?, change_count = change_count + 1, updated_at = datetime('now')
-      WHERE participant_id = ? AND event_id = ?
-    `).run(
-      status,
-      trimmedComment,
-      serializeNames(status === 'yes' ? normalizedAttendeeNames : []),
-      participant.id,
-      event.id
-    );
-  } else {
-    db.prepare(`
-      INSERT INTO responses (participant_id, event_id, status, comment, attendee_names, change_count)
-      VALUES (?, ?, ?, ?, ?, 1)
-    `).run(
-      participant.id,
-      event.id,
-      status,
-      trimmedComment,
-      serializeNames(status === 'yes' ? normalizedAttendeeNames : [])
-    );
-  }
-
-  const roster = getRoster(event.id);
-  const updated = db.prepare(
-    'SELECT * FROM responses WHERE participant_id = ? AND event_id = ?'
-  ).get(participant.id, event.id);
-
-  return res.json({
-    ok: true,
-    roster,
-    canEdit: true,
-    attendeeNames: getSelectedAttendeeNames(updated, participant)
-  });
 }
 
 function renderPublicEventPage(res, event) {

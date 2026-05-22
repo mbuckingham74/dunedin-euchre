@@ -131,7 +131,7 @@ function sanitizeSelectedAttendees(participant, selectedNames) {
   const partyMembers = getParticipantPartyMembers(participant);
   const allowed = new Set(partyMembers.map(name => name.toLowerCase()));
 
-  return uniqueNames(selectedNames).filter(name => allowed.has(name.toLowerCase()));
+  return parseStoredNames(selectedNames).filter(name => allowed.has(name.toLowerCase()));
 }
 
 function getSelectedAttendeeNames(response, participant) {

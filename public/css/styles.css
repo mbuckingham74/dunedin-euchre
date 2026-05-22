@@ -1188,6 +1188,11 @@ body.modal-open {
   opacity: 0;
   transform: translateY(-6px);
 }
+.flash-msg-error {
+  background: var(--danger-bg);
+  border-color: var(--danger-border);
+  color: var(--danger-text);
+}
 
 /* ── Admin table ─────────────────────────────────────────── */
 .admin-table-wrap { overflow-x: auto; }
@@ -1376,6 +1381,32 @@ input[type="file"].form-input { padding: 0.4rem; }
   color: var(--gray-500);
   display: block;
   margin-top: 0.25rem;
+}
+.participant-response-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  min-width: 220px;
+}
+.participant-response-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.participant-response-detail,
+.participant-response-comment,
+.participant-response-meta,
+.response-editor-note {
+  color: var(--gray-600);
+  font-size: 0.88rem;
+  line-height: 1.45;
+  font-family: system-ui, sans-serif;
+}
+.participant-response-comment {
+  font-style: italic;
+}
+.participant-response-meta {
+  color: var(--gray-500);
 }
 .location-preview-card {
   margin-top: 0.9rem;
@@ -1625,6 +1656,23 @@ input[type="file"].form-input { padding: 0.4rem; }
   max-width: 440px;
   width: 100%;
   box-shadow: 0 8px 40px rgba(0,0,0,0.2);
+}
+.response-modal-box {
+  max-width: 520px;
+}
+.response-attendee-wrap {
+  margin-top: 0.85rem;
+}
+.response-attendee-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.65rem;
+}
+.response-attendee-option {
+  padding: 0.75rem 0.9rem;
+  border: 1px solid var(--gray-200);
+  border-radius: 10px;
+  background: var(--surface-gradient-soft);
 }
 
 /* ── Stats attendance bar ────────────────────────────────── */

@@ -42,6 +42,10 @@ const {
   reserveEventPublicSlug
 } = require('../services/public-slugs');
 const {
+  prepareRsvpResponse,
+  saveRsvpResponseRecord
+} = require('../services/rsvp');
+const {
   applyManagedLocation,
   applyManagedLocations,
   buildLocationMapEmbedUrl,
@@ -128,12 +132,13 @@ function recordLoginSuccess(req) {
 }
 
 // Periodic cleanup every minute
-setInterval(() => {
+const failedLoginAttemptCleanupTimer = setInterval(() => {
   const cutoff = Date.now() - 15 * 60 * 1000;
   for (const [ip, record] of failedLoginAttempts) {
     if (record.lastAttempt < cutoff) failedLoginAttempts.delete(ip);
   }
 }, 60 * 1000);
+failedLoginAttemptCleanupTimer.unref?.();
 
 // ── Helpers ──────────────────────────────────────────────────
 const EVENT_SELECT_FIELDS = `
@@ -672,6 +677,63 @@ function getInviteStatusTone(group) {
   if (group === 'issue') return 'pill-no';
   if (group === 'pending') return 'pill-maybe';
   return 'pill-none';
+}
+
+function getParticipantResponseTone(response) {
+  if (!response || !response.status) return 'pill-none';
+  if (response.status === 'yes') return 'pill-yes';
+  if (response.status === 'no') return 'pill-no';
+  if (response.status === 'maybe') return 'pill-maybe';
+  return 'pill-none';
+}
+
+function getParticipantResponseLabel(response) {
+  if (!response || !response.status) return 'No response';
+  if (response.status === 'yes') return 'Yes';
+  if (response.status === 'no') return 'No';
+  if (response.status === 'maybe') return 'Maybe';
+  return 'No response';
+}
+
+function getParticipantResponseDetail(response) {
+  if (!response || !response.status) {
+    return 'No one has replied yet.';
+  }
+
+  if (response.status === 'yes') {
+    const attending = response.attendeeNames.length > 0
+      ? `Attending: ${response.attendeeNames.join(', ')}.`
+      : 'Attending details unavailable.';
+    const declined = response.declinedNames.length > 0
+      ? ` Not attending: ${response.declinedNames.join(', ')}.`
+      : '';
+    return `${attending}${declined}`;
+  }
+
+  if (response.status === 'maybe') {
+    return `Maybe: ${response.partyMembers.join(', ')}.`;
+  }
+
+  if (response.status === 'no') {
+    return `Not attending: ${response.partyMembers.join(', ')}.`;
+  }
+
+  return 'No one has replied yet.';
+}
+
+function formatResponseUpdatedAt(timestamp) {
+  if (!timestamp) return '';
+
+  const date = new Date(`${timestamp}Z`);
+  if (Number.isNaN(date.getTime())) return '';
+
+  return date.toLocaleString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit'
+  });
 }
 
 function formatInviteSentAt(timestamp) {
@@ -1287,13 +1349,6 @@ router.post('/event/:id/delete', requireAdmin, (req, res) => {
 
 // ── GET /admin/participants ───────────────────────────────────
 router.get('/participants', requireAdmin, (req, res) => {
-  const participants = db.prepare(
-    'SELECT * FROM participants ORDER BY active DESC, name ASC'
-  ).all().map(participant => ({
-    ...participant,
-    partyMembers: getParticipantPartyMembers(participant)
-  }));
-
   const requestedEventId = parseEventId(req.query.eventId);
   const allEvents = getDashboardEventOptions(listProductionEvents());
   const requestedRawEvent = requestedEventId ? getEventById(requestedEventId) : null;
@@ -1308,13 +1363,30 @@ router.get('/participants', requireAdmin, (req, res) => {
     return res.status(404).send('<h1 style="font-family:sans-serif;padding:2rem">Event not found.</h1>');
   }
 
+  const responseByParticipantId = selectedEvent
+    ? new Map(getRosterWithCounts(selectedEvent.id).roster.map(entry => [entry.id, entry]))
+    : new Map();
+  const participants = db.prepare(
+    'SELECT * FROM participants ORDER BY active DESC, name ASC'
+  ).all().map(participant => ({
+    ...participant,
+    partyMembers: getParticipantPartyMembers(participant),
+    currentResponse: selectedEvent && Number(participant.active)
+      ? (responseByParticipantId.get(participant.id) || null)
+      : null
+  }));
+
   res.render('admin/participants', {
     participants,
     selectedEvent,
     allEvents,
     buildRsvpPath,
     buildPublicEventPath,
+    formatResponseUpdatedAt,
     getEventTitle,
+    getParticipantResponseDetail,
+    getParticipantResponseLabel,
+    getParticipantResponseTone,
     isEventPublished,
     baseUrl: BASE_URL,
     flash: req.session.flash || null
@@ -1415,6 +1487,80 @@ router.post('/participants/:id/delete', requireAdmin, (req, res) => {
 
   req.session.flash = 'Participant removed.';
   res.redirect(buildParticipantsRedirect(selectedEventId));
+});
+
+// ── POST /admin/participants/:id/response ───────────────────
+router.post('/participants/:id/response', requireAdmin, (req, res) => {
+  const selectedEventId = parseEventId(req.body.selected_event_id);
+  const redirectBase = buildParticipantsRedirect(selectedEventId);
+  const redirectAnchor = `#participant-${req.params.id}`;
+
+  if (!selectedEventId) {
+    req.session.flash = {
+      type: 'error',
+      message: 'Choose an event before updating a response.'
+    };
+    return res.redirect(redirectBase);
+  }
+
+  const event = getEventById(selectedEventId);
+  if (!event) {
+    req.session.flash = {
+      type: 'error',
+      message: 'Event not found.'
+    };
+    return res.redirect(buildParticipantsRedirect(null));
+  }
+
+  if (isTestEvent(event)) {
+    return res.redirect(buildTestingRedirect(event.id, req.params.id));
+  }
+
+  const participant = getParticipantById(parseParticipantId(req.params.id));
+  if (!participant) {
+    req.session.flash = {
+      type: 'error',
+      message: 'Participant not found.'
+    };
+    return res.redirect(redirectBase);
+  }
+
+  const responseInput = prepareRsvpResponse(participant, req.body, {
+    allowClear: true,
+    invalidStatusMessage: 'Choose No response, Yes, Maybe, or No before saving.',
+    missingAttendeesMessage: 'Choose who is coming before saving this RSVP.'
+  });
+  if (responseInput.error) {
+    req.session.flash = {
+      type: 'error',
+      message: responseInput.error
+    };
+    return res.redirect(`${redirectBase}${redirectAnchor}`);
+  }
+
+  try {
+    const result = saveRsvpResponseRecord(db, participant.id, event.id, responseInput);
+
+    writeAuditLog('override-rsvp', {
+      eventId: event.id,
+      participantId: participant.id,
+      cleared: result.cleared,
+      status: responseInput.status,
+      attendeeNames: responseInput.attendeeNames
+    }, req);
+
+    req.session.flash = result.record
+      ? `RSVP updated for ${participant.name}.`
+      : `RSVP cleared for ${participant.name}.`;
+  } catch (error) {
+    console.error(`Failed to save admin RSVP override for participant ${participant.id} on event ${event.id}:`, error.message);
+    req.session.flash = {
+      type: 'error',
+      message: `Unable to update ${participant.name}'s RSVP right now.`
+    };
+  }
+
+  res.redirect(`${redirectBase}${redirectAnchor}`);
 });
 
 // ── POST /admin/testing/create-event ────────────────────────

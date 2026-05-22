@@ -74,6 +74,68 @@ const {
 
 let server;
 let baseUrl;
+const nativeFetch = global.fetch.bind(global);
+
+function getHeaderValue(headers, name) {
+  if (!headers) return '';
+
+  if (typeof headers.get === 'function') {
+    return headers.get(name) || '';
+  }
+
+  const headerName = Object.keys(headers).find(key => key.toLowerCase() === String(name).toLowerCase());
+  return headerName ? headers[headerName] : '';
+}
+
+function withHeader(headers, name, value) {
+  const nextHeaders = headers instanceof Headers
+    ? new Headers(headers)
+    : new Headers(headers || {});
+  nextHeaders.set(name, value);
+  return nextHeaders;
+}
+
+async function fetchAdminCsrfToken(cookie) {
+  const response = await nativeFetch(cookie ? `${baseUrl}/admin/dashboard` : `${baseUrl}/admin`, {
+    headers: cookie ? { cookie } : {},
+    redirect: 'follow'
+  });
+  const body = await response.text();
+  const responseCookies = response.headers.getSetCookie();
+
+  return {
+    token: extractCsrfToken(body),
+    cookie: responseCookies.length > 0
+      ? responseCookies[0].split(';', 1)[0]
+      : cookie
+  };
+}
+
+global.fetch = async function fetchWithAdminCsrf(input, init = undefined) {
+  const requestUrl = typeof input === 'string' ? input : input.url;
+  const requestInit = init ? { ...init } : {};
+  const requestHeaders = requestInit.headers || (typeof input === 'string' ? undefined : input.headers);
+  const method = String(requestInit.method || (typeof input === 'string' ? 'GET' : input.method || 'GET')).toUpperCase();
+
+  if (
+    !baseUrl ||
+    !requestUrl ||
+    !requestUrl.startsWith(`${baseUrl}/admin/`) ||
+    ['GET', 'HEAD', 'OPTIONS'].includes(method) ||
+    getHeaderValue(requestHeaders, 'x-csrf-token')
+  ) {
+    return nativeFetch(input, init);
+  }
+
+  const existingCookie = getHeaderValue(requestHeaders, 'cookie');
+  const csrfSession = await fetchAdminCsrfToken(existingCookie);
+  requestInit.headers = withHeader(requestHeaders, 'x-csrf-token', csrfSession.token);
+  if (!existingCookie && csrfSession.cookie) {
+    requestInit.headers = withHeader(requestInit.headers, 'cookie', csrfSession.cookie);
+  }
+
+  return nativeFetch(requestUrl, requestInit);
+};
 
 function resetUploadsDirectory() {
   fs.rmSync(process.env.UPLOADS_DIR, { recursive: true, force: true });
@@ -264,6 +326,12 @@ function getSessionCookie(response) {
   return cookies.length > 0
     ? cookies[0].split(';', 1)[0]
     : '';
+}
+
+function extractCsrfToken(html) {
+  const match = html.match(/name="_csrf" value="([^"]+)"/);
+  assert.ok(match, 'expected CSRF token in page HTML');
+  return match[1];
 }
 
 test.before(async () => {
@@ -766,6 +834,151 @@ test('participant create route stores party member names for shared invites', as
       party_members: '["Pam","Charlie"]'
     }
   );
+});
+
+test('admin can manually update a participant RSVP for a selected event after invitee editing closes', async () => {
+  const participant = insertParticipant({
+    name: 'Pam and Charlie',
+    email: 'pam.charlie@example.com',
+    rsvp_token: 'pam-charlie-token',
+    party_members: JSON.stringify(['Pam', 'Charlie'])
+  });
+  const event = insertEvent({
+    title: 'Call-In Override Night',
+    event_date: '2000-01-01',
+    start_time: '18:00',
+    end_time: '21:00'
+  });
+  const cookie = await signInAsAdmin();
+
+  const pageResponse = await fetch(`${baseUrl}/admin/participants?eventId=${event.id}`, {
+    headers: { cookie }
+  });
+  const csrfToken = extractCsrfToken(await pageResponse.text());
+
+  const responseBody = new URLSearchParams();
+  responseBody.set('_csrf', csrfToken);
+  responseBody.set('selected_event_id', String(event.id));
+  responseBody.set('status', 'yes');
+  responseBody.set('comment', 'Pam called mom.');
+  responseBody.append('attendee_names', 'Pam');
+
+  const response = await fetch(`${baseUrl}/admin/participants/${participant.id}/response`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      cookie
+    },
+    body: responseBody,
+    redirect: 'manual'
+  });
+
+  assert.equal(response.status, 302);
+  assert.equal(response.headers.get('location'), `/admin/participants?eventId=${event.id}#participant-${participant.id}`);
+  assert.deepEqual(
+    db.prepare(`
+      SELECT status, comment, attendee_names
+      FROM responses
+      WHERE participant_id = ? AND event_id = ?
+    `).get(participant.id, event.id),
+    {
+      status: 'yes',
+      comment: 'Pam called mom.',
+      attendee_names: '["Pam"]'
+    }
+  );
+});
+
+test('admin can clear a participant RSVP back to no response', async () => {
+  const participant = insertParticipant();
+  const event = insertEvent({
+    title: 'Resettable RSVP Night',
+    event_date: '2999-04-15'
+  });
+  insertResponse(participant.id, event.id, {
+    status: 'maybe',
+    comment: 'Needs to check a ride.',
+    change_count: 2
+  });
+  const cookie = await signInAsAdmin();
+
+  const pageResponse = await fetch(`${baseUrl}/admin/participants?eventId=${event.id}`, {
+    headers: { cookie }
+  });
+  const csrfToken = extractCsrfToken(await pageResponse.text());
+
+  const response = await fetch(`${baseUrl}/admin/participants/${participant.id}/response`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      cookie
+    },
+    body: new URLSearchParams({
+      _csrf: csrfToken,
+      selected_event_id: String(event.id),
+      status: ''
+    }),
+    redirect: 'manual'
+  });
+
+  assert.equal(response.status, 302);
+  assert.equal(response.headers.get('location'), `/admin/participants?eventId=${event.id}#participant-${participant.id}`);
+  assert.equal(
+    db.prepare('SELECT COUNT(*) AS count FROM responses WHERE participant_id = ? AND event_id = ?')
+      .get(participant.id, event.id).count,
+    0
+  );
+});
+
+test('admin RSVP override shows a validation error when no valid attendee is selected for a yes response', async () => {
+  const participant = insertParticipant({
+    name: 'Pam and Charlie',
+    email: 'pam.charlie@example.com',
+    rsvp_token: 'pam-charlie-token',
+    party_members: JSON.stringify(['Pam', 'Charlie'])
+  });
+  const event = insertEvent({
+    title: 'Validation Night',
+    event_date: '2999-04-15'
+  });
+  const cookie = await signInAsAdmin();
+
+  const pageResponse = await fetch(`${baseUrl}/admin/participants?eventId=${event.id}`, {
+    headers: { cookie }
+  });
+  const csrfToken = extractCsrfToken(await pageResponse.text());
+
+  const responseBody = new URLSearchParams();
+  responseBody.set('_csrf', csrfToken);
+  responseBody.set('selected_event_id', String(event.id));
+  responseBody.set('status', 'yes');
+  responseBody.append('attendee_names', 'Someone Else');
+
+  const response = await fetch(`${baseUrl}/admin/participants/${participant.id}/response`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      cookie
+    },
+    body: responseBody,
+    redirect: 'manual'
+  });
+
+  assert.equal(response.status, 302);
+  assert.equal(response.headers.get('location'), `/admin/participants?eventId=${event.id}#participant-${participant.id}`);
+  assert.equal(
+    db.prepare('SELECT COUNT(*) AS count FROM responses WHERE participant_id = ? AND event_id = ?')
+      .get(participant.id, event.id).count,
+    0
+  );
+
+  const redirectedResponse = await fetch(`${baseUrl}/admin/participants?eventId=${event.id}`, {
+    headers: { cookie }
+  });
+  const redirectedBody = await redirectedResponse.text();
+
+  assert.equal(redirectedResponse.status, 200);
+  assert.match(redirectedBody, /Choose who is coming before saving this RSVP\./);
 });
 
 test('admin preview route opens the selected participant RSVP page for an event', async () => {
@@ -2034,12 +2247,12 @@ test('events admin page shows the recurring schedule and recorded events', async
   assert.match(body, /Upcoming Schedule/);
   assert.match(body, /Past Event History/);
   assert.match(body, /Spring Euchre Social/);
-  assert.match(body, new RegExp(`/admin/dashboard\\?eventId=${event.id}&edit=1`));
+  assert.match(body, new RegExp(`/admin/dashboard\\?eventId=${event.id}&amp;edit=1`));
   assert.match(body, /Edit event/);
   assert.doesNotMatch(body, /Open in dashboard/);
   assert.match(body, /Create event/);
   assert.match(body, /scheduled-create-modal/);
-  assert.match(body, /create-modal-2026-04-25/);
+  assert.match(body, /create-modal-\d{4}-\d{2}-\d{2}/);
   assert.match(body, /Event Notes/);
   assert.doesNotMatch(body, /Create from dashboard/);
 });

@@ -14,7 +14,9 @@
   <div class="admin-content">
 
     <% if (flash) { %>
-      <div class="flash-msg"><%= flash %></div>
+      <% const flashMessage = typeof flash === 'string' ? flash : flash.message; %>
+      <% const flashTone = flash && flash.type === 'error' ? ' flash-msg-error' : ''; %>
+      <div class="flash-msg<%= flashTone %>"><%= flashMessage %></div>
     <% } %>
 
     <img src="/images/dunedin-logo-transparent.png" alt="Dunedin Euchre" class="dashboard-logo">
@@ -48,6 +50,9 @@
               Event page:
               <a href="<%= buildPublicEventPath(selectedEvent) %>" target="_blank" rel="noopener noreferrer"><%= baseUrl + buildPublicEventPath(selectedEvent) %></a>
             <% } %>
+          </p>
+          <p class="admin-card-note" style="margin-top:0.75rem;">
+            Manual RSVP editing is enabled for this event, so you can update responses for anyone who calls or needs help.
           </p>
         <% } %>
       <% } else { %>
@@ -109,13 +114,17 @@
               <th>Email</th>
               <th>Invitees</th>
               <th>RSVP Link</th>
+              <th>Current RSVP</th>
               <th>Status</th>
               <th>Actions</th>
             </tr>
           </thead>
           <tbody>
             <% participants.forEach(function(p) { %>
-              <tr class="<%= !p.active ? 'row-inactive' : '' %>">
+              <% const rowClasses = []; %>
+              <% if (!p.active) rowClasses.push('row-inactive'); %>
+              <% if (p.active && p.currentResponse && p.currentResponse.status) rowClasses.push('row-' + p.currentResponse.status); %>
+              <tr id="participant-<%= p.id %>" class="<%= rowClasses.join(' ') %>">
                 <td id="name-cell-<%= p.id %>"><%= p.name %></td>
                 <td id="email-cell-<%= p.id %>"><%= p.email %></td>
                 <td>
@@ -143,6 +152,26 @@
                   <% } %>
                 </td>
                 <td>
+                  <% if (p.active && selectedEvent) { %>
+                    <div class="participant-response-summary">
+                      <span class="status-pill <%= getParticipantResponseTone(p.currentResponse) %>"><%= getParticipantResponseLabel(p.currentResponse) %></span>
+                      <div class="participant-response-copy">
+                        <div class="participant-response-detail"><%= getParticipantResponseDetail(p.currentResponse) %></div>
+                        <% if (p.currentResponse && p.currentResponse.comment) { %>
+                          <div class="participant-response-comment"><%= p.currentResponse.comment %></div>
+                        <% } %>
+                        <% if (p.currentResponse && p.currentResponse.status && p.currentResponse.updated_at) { %>
+                          <div class="participant-response-meta">Updated <%= formatResponseUpdatedAt(p.currentResponse.updated_at) %></div>
+                        <% } %>
+                      </div>
+                    </div>
+                  <% } else if (p.active) { %>
+                    <span style="color:var(--gray-400);">Load an event to edit responses.</span>
+                  <% } else { %>
+                    <span style="color:var(--gray-400);">—</span>
+                  <% } %>
+                </td>
+                <td>
                   <% if (p.active) { %>
                     <span class="status-pill pill-yes">Active</span>
                   <% } else { %>
@@ -151,6 +180,19 @@
                 </td>
                 <td class="actions-cell">
                   <% if (p.active) { %>
+                    <% if (selectedEvent) { %>
+                      <button
+                        type="button"
+                        class="btn-sm btn-secondary edit-response-btn"
+                        data-id="<%= p.id %>"
+                        data-name="<%= p.name %>"
+                        data-event-title="<%= getEventTitle(selectedEvent) %>"
+                        data-response-status="<%= p.currentResponse && p.currentResponse.status ? p.currentResponse.status : '' %>"
+                        data-response-comment="<%= p.currentResponse && p.currentResponse.comment ? p.currentResponse.comment : '' %>"
+                        data-party-members="<%= encodeURIComponent(JSON.stringify(p.partyMembers)) %>"
+                        data-attendee-names="<%= encodeURIComponent(JSON.stringify(p.currentResponse ? p.currentResponse.attendeeNames : [])) %>"
+                      >Edit RSVP</button>
+                    <% } %>
                     <button
                       type="button"
                       class="btn-sm btn-secondary edit-participant-btn"
@@ -217,6 +259,49 @@
   </div>
 </div>
 
+<div id="response-modal" class="modal-overlay" style="display:none;" onclick="closeResponseModal(event)">
+  <div class="modal-box response-modal-box" onclick="event.stopPropagation()">
+    <h3 id="response-modal-title" style="margin-bottom:0.35rem;">Edit RSVP</h3>
+    <p id="response-modal-event" class="response-editor-note"></p>
+    <form id="response-form" method="POST" action="">
+      <input type="hidden" name="_csrf" value="<%= _csrf %>">
+      <input type="hidden" name="selected_event_id" value="<%= selectedEvent ? selectedEvent.id : '' %>">
+      <div class="form-group">
+        <label class="form-label">Response</label>
+        <select id="response-status" name="status" class="form-input">
+          <option value="">No response</option>
+          <option value="yes">Yes</option>
+          <option value="maybe">Maybe</option>
+          <option value="no">No</option>
+        </select>
+      </div>
+      <div id="response-attendee-wrap" class="response-attendee-wrap" hidden>
+        <label class="form-label">Who is attending?</label>
+        <div id="response-attendee-list" class="response-attendee-list"></div>
+        <p class="form-help">Select each invitee who should count as attending.</p>
+      </div>
+      <div class="form-group" style="margin-top:0.85rem;">
+        <label class="form-label">Comment</label>
+        <textarea
+          id="response-comment"
+          name="comment"
+          class="form-input"
+          rows="4"
+          maxlength="400"
+          placeholder="Optional note for mom’s records"
+        ></textarea>
+      </div>
+      <p class="response-editor-note" style="margin-top:0.85rem;">
+        Invitee self-service can close after the event starts, but this manual override remains available for exceptions.
+      </p>
+      <div style="margin-top:1.25rem;display:flex;gap:0.75rem;flex-wrap:wrap;">
+        <button type="submit" class="btn-primary">Save RSVP</button>
+        <button type="button" class="btn-secondary" onclick="closeResponseModal()">Cancel</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <script>
 function closeEditModal(e) {
   if (!e || e.target === document.getElementById('edit-modal')) {
@@ -225,7 +310,13 @@ function closeEditModal(e) {
   }
 }
 
-function decodePartyMemberNames(value) {
+function closeResponseModal(e) {
+  if (!e || e.target === document.getElementById('response-modal')) {
+    document.getElementById('response-modal').style.display = 'none';
+  }
+}
+
+function decodeNameList(value) {
   if (!value) return [];
 
   try {
@@ -360,12 +451,76 @@ document.querySelectorAll('.edit-participant-btn').forEach(function(button) {
     document.getElementById('edit-email').value = button.dataset.email || '';
     renderPartyMemberList(
       document.getElementById('edit-party-member-list'),
-      decodePartyMemberNames(button.dataset.partyMembers)
+      decodeNameList(button.dataset.partyMembers)
     );
     closePartyMemberComposer('edit');
     document.getElementById('edit-selected-event-id').value = button.dataset.selectedEventId || '';
     document.getElementById('edit-modal').style.display = 'flex';
   });
+});
+
+function syncResponseAttendeeVisibility() {
+  const statusInput = document.getElementById('response-status');
+  const attendeeWrap = document.getElementById('response-attendee-wrap');
+  if (!statusInput || !attendeeWrap) return;
+
+  attendeeWrap.hidden = statusInput.value !== 'yes';
+}
+
+function renderResponseAttendeeList(names, selectedNames) {
+  const attendeeList = document.getElementById('response-attendee-list');
+  if (!attendeeList) return;
+
+  attendeeList.innerHTML = '';
+  const normalizedSelected = new Set((Array.isArray(selectedNames) ? selectedNames : []).map(function(name) {
+    return String(name || '').trim().toLowerCase();
+  }));
+  const values = Array.isArray(names) ? names : [];
+
+  values.forEach(function(name, index) {
+    const label = document.createElement('label');
+    label.className = 'form-checkbox response-attendee-option';
+
+    const input = document.createElement('input');
+    input.type = 'checkbox';
+    input.name = 'attendee_names';
+    input.value = name;
+    input.checked = normalizedSelected.has(String(name || '').trim().toLowerCase());
+
+    if (values.length === 1 && normalizedSelected.size === 0) {
+      input.checked = true;
+    }
+
+    label.appendChild(input);
+    label.appendChild(document.createTextNode(name || ('Invitee ' + (index + 1))));
+    attendeeList.appendChild(label);
+  });
+}
+
+document.getElementById('response-status').addEventListener('change', function() {
+  syncResponseAttendeeVisibility();
+});
+
+document.querySelectorAll('.edit-response-btn').forEach(function(button) {
+  button.addEventListener('click', function() {
+    document.getElementById('response-form').action = '/admin/participants/' + button.dataset.id + '/response';
+    document.getElementById('response-modal-title').textContent = 'Edit RSVP for ' + (button.dataset.name || 'participant');
+    document.getElementById('response-modal-event').textContent = 'Updating ' + (button.dataset.eventTitle || 'this event') + '.';
+    document.getElementById('response-status').value = button.dataset.responseStatus || '';
+    document.getElementById('response-comment').value = button.dataset.responseComment || '';
+    renderResponseAttendeeList(
+      decodeNameList(button.dataset.partyMembers),
+      decodeNameList(button.dataset.attendeeNames)
+    );
+    syncResponseAttendeeVisibility();
+    document.getElementById('response-modal').style.display = 'flex';
+  });
+});
+
+document.addEventListener('keydown', function(event) {
+  if (event.key === 'Escape') {
+    closeResponseModal();
+  }
 });
 </script>
 <script src="/js/admin.js"></script>
