@@ -4,8 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Dunedin Euchre – RSVP</title>
-  <link rel="stylesheet" href="/css/styles.css">
-  <link rel="manifest" href="/manifest.json">
+  <link rel="stylesheet" href="<%= assetPath('/css/styles.css') %>">
+  <link rel="manifest" href="<%= assetPath('/manifest.json') %>">
   <meta name="theme-color" content="#0077b6">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -342,10 +342,10 @@
   const INITIAL_ATTENDEE_NAMES = <%- JSON.stringify(selectedAttendeeNames) %>;
   let selectedStatus = '<%= (myResponse && myResponse.status) ? myResponse.status : '' %>';
 </script>
-<script src="/js/rsvp.js?v=20260422c"></script>
+<script src="<%= assetPath('/js/rsvp.js') %>"></script>
 <script>
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('/sw.js').catch(() => {});
+    navigator.serviceWorker.register("<%= assetPath('/sw.js') %>").catch(() => {});
   }
 </script>
 </body>

@@ -544,6 +544,18 @@ function listActiveParticipants() {
   `).all();
 }
 
+function listActiveParticipantsForEvent(eventId) {
+  const responseByParticipantId = eventId
+    ? new Map(getRosterWithCounts(eventId).roster.map(entry => [entry.id, entry]))
+    : new Map();
+
+  return listActiveParticipants().map(participant => ({
+    ...participant,
+    partyMembers: getParticipantPartyMembers(participant),
+    currentResponse: responseByParticipantId.get(participant.id) || null
+  }));
+}
+
 function getInvitePreviewParticipant(participants, participantId) {
   const parsedParticipantId = parseParticipantId(participantId);
   if (!parsedParticipantId) {
@@ -610,8 +622,8 @@ function buildDashboardRedirect(eventId) {
   return eventId ? `/admin/dashboard?eventId=${eventId}` : '/admin/dashboard';
 }
 
-function buildDashboardEditRedirect(eventId) {
-  return `${buildDashboardRedirect(eventId)}&edit=1`;
+function buildEventEditPath(eventId) {
+  return `/admin/event/${eventId}/edit`;
 }
 
 function buildInvitePreviewPath(eventId, participantId = null) {
@@ -907,6 +919,10 @@ router.get('/dashboard', requireAdmin, (req, res) => {
     return res.status(404).send('<h1 style="font-family:sans-serif;padding:2rem">Event not found.</h1>');
   }
 
+  if (event && String(req.query.edit || '') === '1') {
+    return res.redirect(buildEventEditPath(event.id));
+  }
+
   let roster = [];
   let counts = { yes: 0, no: 0, maybe: 0, none: 0 };
   let publicSlugHistory = [];
@@ -952,13 +968,54 @@ router.get('/dashboard', requireAdmin, (req, res) => {
     isEventPublished,
     isPublicRosterVisible,
     buildPublicEventPath,
-    buildDashboardEditRedirect,
+    buildEventEditPath,
     baseUrl: BASE_URL,
-    flash: req.session.flash || null,
-    showEditEventModal: Boolean(req.session.showEditEventModal || String(req.query.edit || '') === '1')
+    flash: req.session.flash || null
   });
   delete req.session.flash;
-  delete req.session.showEditEventModal;
+});
+
+// ── GET /admin/event/:id/edit ───────────────────────────────
+router.get('/event/:id/edit', requireAdmin, (req, res) => {
+  const event = getEventById(req.params.id);
+  if (!event) {
+    return res.status(404).send('<h1 style="font-family:sans-serif;padding:2rem">Event not found.</h1>');
+  }
+  if (isTestEvent(event)) {
+    return res.redirect(buildTestingRedirect(event.id));
+  }
+
+  const locations = listLocationsWithEventCounts();
+  const inviteParticipants = listActiveParticipantsForEvent(event.id);
+  const { counts } = getRosterWithCounts(event.id);
+  const publicSlugHistory = listEventPublicSlugs(event.id);
+  const previousPublicSlugs = publicSlugHistory.filter(entry => !Number(entry.is_current));
+
+  res.render('admin/event-edit', {
+    event,
+    locations,
+    inviteParticipants,
+    counts,
+    publicSlugHistory,
+    previousPublicSlugs,
+    dashboardPath: buildDashboardRedirect(event.id),
+    invitePreviewPath: buildInvitePreviewPath(event.id),
+    inviteStatusPath: buildInviteStatusPath(event.id),
+    participantsPath: buildParticipantsRedirect(event.id),
+    buildPublicEventPath,
+    buildRsvpPath,
+    baseUrl: BASE_URL,
+    formatEventDate,
+    formatResponseUpdatedAt,
+    formatTime,
+    getEventTitle,
+    getParticipantResponseDetail,
+    getParticipantResponseLabel,
+    getParticipantResponseTone,
+    isEventPublished,
+    flash: req.session.flash || null
+  });
+  delete req.session.flash;
 });
 
 // ── GET /admin/testing ───────────────────────────────────────
@@ -1254,15 +1311,13 @@ router.post('/event/:id/update', requireAdmin, (req, res) => {
   const validationError = getEventValidationError(eventInput);
   if (validationError) {
     req.session.flash = validationError;
-    req.session.showEditEventModal = true;
-    return res.redirect(buildDashboardRedirect(existing.id));
+    return res.redirect(buildEventEditPath(existing.id));
   }
 
   const locationDetails = resolveEventLocationDetails(eventInput, existing);
   if (locationDetails.error) {
     req.session.flash = locationDetails.error;
-    req.session.showEditEventModal = true;
-    return res.redirect(buildDashboardRedirect(existing.id));
+    return res.redirect(buildEventEditPath(existing.id));
   }
 
   try {
@@ -1309,8 +1364,7 @@ router.post('/event/:id/update', requireAdmin, (req, res) => {
   } catch (error) {
     if (isPublicSlugConflictError(error) || isPublicSlugUniqueConstraint(error)) {
       req.session.flash = 'That public URL slug is already in use, including any older redirected event links.';
-      req.session.showEditEventModal = true;
-      return res.redirect(buildDashboardRedirect(existing.id));
+      return res.redirect(buildEventEditPath(existing.id));
     }
     throw error;
   }
@@ -1321,7 +1375,7 @@ router.post('/event/:id/update', requireAdmin, (req, res) => {
   }
 
   req.session.flash = 'Event updated.';
-  res.redirect(buildDashboardRedirect(existing.id));
+  res.redirect(buildEventEditPath(existing.id));
 });
 
 // ── POST /admin/event/:id/delete ─────────────────────────────
@@ -1363,9 +1417,12 @@ router.get('/participants', requireAdmin, (req, res) => {
     return res.status(404).send('<h1 style="font-family:sans-serif;padding:2rem">Event not found.</h1>');
   }
 
-  const responseByParticipantId = selectedEvent
-    ? new Map(getRosterWithCounts(selectedEvent.id).roster.map(entry => [entry.id, entry]))
-    : new Map();
+  const activeParticipantsForEvent = selectedEvent
+    ? listActiveParticipantsForEvent(selectedEvent.id)
+    : [];
+  const responseByParticipantId = new Map(
+    activeParticipantsForEvent.map(participant => [participant.id, participant.currentResponse || null])
+  );
   const participants = db.prepare(
     'SELECT * FROM participants ORDER BY active DESC, name ASC'
   ).all().map(participant => ({
@@ -1388,6 +1445,7 @@ router.get('/participants', requireAdmin, (req, res) => {
     getParticipantResponseLabel,
     getParticipantResponseTone,
     isEventPublished,
+    buildEventEditPath,
     baseUrl: BASE_URL,
     flash: req.session.flash || null
   });
@@ -1716,7 +1774,8 @@ router.get('/event/:id/invite-preview', requireAdmin, (req, res) => {
     previewPath: buildRsvpPath(previewParticipant, event),
     inviteStatusPath: buildInviteStatusPath(event.id),
     reminderSchedulePath: buildReminderSchedulePath(event.id),
-    editDashboardPath: buildDashboardEditRedirect(event.id),
+    editEventPath: buildEventEditPath(event.id),
+    participantsPath: buildParticipantsRedirect(event.id),
     reminderSummary: getEventReminderSummary(event.id),
     defaultReminderSchedule: getDefaultReminderSchedule(event),
     getEventTitle,
@@ -1751,7 +1810,9 @@ router.get('/event/:id/invite-status', requireAdmin, async (req, res, next) => {
       event,
       delivery,
       dashboardPath: buildDashboardRedirect(event.id),
+      editEventPath: buildEventEditPath(event.id),
       invitePreviewPath: buildInvitePreviewPath(event.id),
+      participantsPath: buildParticipantsRedirect(event.id),
       reminderSummary: getEventReminderSummary(event.id),
       getEventTitle,
       getInviteStatusTone,
@@ -1940,7 +2001,7 @@ router.get('/events', requireAdmin, (req, res) => {
     formatTime,
     getEventTitle,
     isEventPublished,
-    buildDashboardEditRedirect,
+    buildEventEditPath,
     buildPublicEventPath,
     flash: req.session.flash || null
   });

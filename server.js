@@ -50,6 +50,7 @@ if (process.env.NODE_ENV === 'production') {
 }
 
 const sessionSecret = process.env.SESSION_SECRET;
+const assetVersion = process.env.ASSET_VERSION || Date.now().toString(36);
 
 // Ensure uploads directory exists
 const uploadsDir = getUploadsDir();
@@ -94,15 +95,24 @@ app.use(helmet({
 // ── View engine ──────────────────────────────────────────────
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
+app.locals.assetPath = function buildAssetPath(assetPath) {
+  const separator = assetPath.includes('?') ? '&' : '?';
+  return `${assetPath}${separator}v=${assetVersion}`;
+};
 
 // ── Body parsing ─────────────────────────────────────────────
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// ── Static files (long-lived cache for immutable assets) ─────
+// ── Static files (versioned but mutable asset URLs) ───────────
 app.use(express.static(path.join(__dirname, 'public'), {
-  maxAge: '1y',
-  immutable: true,
+  maxAge: process.env.NODE_ENV === 'production' ? '1h' : 0,
+  setHeaders(res, filePath) {
+    const basename = path.basename(filePath);
+    if (basename === 'sw.js' || basename === 'manifest.json') {
+      res.set('Cache-Control', 'no-cache');
+    }
+  }
 }));
 
 // ── Secure uploaded file serving ─────────────────────────────
@@ -279,6 +289,12 @@ function validateCsrfToken(req, res, next) {
 
 // ── Routes ───────────────────────────────────────────────────
 app.use('/', publicRoutes);
+app.use('/admin', (req, res, next) => {
+  res.set('Cache-Control', 'no-store, private, max-age=0');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
+  next();
+});
 app.use('/admin', csrfMiddleware);
 app.use('/admin', validateCsrfToken);
 app.use('/admin', adminRoutes);

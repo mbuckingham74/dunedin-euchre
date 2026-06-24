@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Dunedin Euchre – Stats</title>
-  <link rel="stylesheet" href="/css/styles.css">
+  <link rel="stylesheet" href="<%= assetPath('/css/styles.css') %>">
 </head>
 <body class="admin-page">
 
@@ -109,6 +109,6 @@ function sortTable(col, dir) {
   rows.forEach(r => tbody.appendChild(r));
 }
 </script>
-<script src="/js/admin.js"></script>
+<script src="<%= assetPath('/js/admin.js') %>"></script>
 </body>
 </html>

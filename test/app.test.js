@@ -752,9 +752,26 @@ test('RSVP and event pages send no-referrer headers and RSVP pages use no-referr
   assert.equal(rsvpResponse.headers.get('referrer-policy'), 'no-referrer');
   assert.equal(rsvpResponse.headers.get('cache-control'), 'private, no-store, max-age=0');
   assert.match(rsvpBody, /referrerpolicy="no-referrer"/);
-  assert.match(rsvpBody, /src="\/js\/rsvp\.js\?v=20260422c"/);
+  assert.match(rsvpBody, /src="\/js\/rsvp\.js\?v=/);
   assert.equal(eventResponse.status, 200);
   assert.equal(eventResponse.headers.get('referrer-policy'), 'no-referrer');
+});
+
+test('admin dashboard disables caching and uses versioned asset URLs', async () => {
+  const event = insertEvent({ event_date: '2999-04-15' });
+  const cookie = await signInAsAdmin();
+
+  const response = await fetch(`${baseUrl}/admin/dashboard?eventId=${event.id}`, {
+    headers: { cookie }
+  });
+  const body = await response.text();
+
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get('cache-control'), 'no-store, private, max-age=0');
+  assert.equal(response.headers.get('pragma'), 'no-cache');
+  assert.equal(response.headers.get('expires'), '0');
+  assert.match(body, /href="\/css\/styles\.css\?v=/);
+  assert.match(body, /src="\/js\/admin\.js\?v=/);
 });
 
 test('requesting a magic link does not invalidate another outstanding token', async () => {
@@ -1057,6 +1074,7 @@ test('invite preview page shows the invitee view with the final send action', as
   assert.match(body, /Invite Delivery/);
   assert.ok(body.includes(`src="${buildRsvpPath(participant, event)}"`));
   assert.match(body, /Back to Edit Event/);
+  assert.match(body, new RegExp(`/admin/event/${event.id}/edit`));
 });
 
 test('admin can queue the default day-before reminder for invite recipients', async () => {
@@ -1115,7 +1133,7 @@ test('admin can queue the default day-before reminder for invite recipients', as
   }]);
 });
 
-test('dashboard and edit modal point to the invite preview workflow', async () => {
+test('dashboard edit links point to the dedicated event editor', async () => {
   insertParticipant({
     name: 'Preview Person',
     email: 'preview@example.com',
@@ -1134,12 +1152,56 @@ test('dashboard and edit modal point to the invite preview workflow', async () =
   assert.equal(response.status, 200);
   const body = await response.text();
   assert.match(body, /Edit event/);
+  assert.match(body, new RegExp(`/admin/event/${event.id}/edit`));
   assert.match(body, /href="\/admin\/event\/\d+\/invite-preview"/);
   assert.match(body, /href="\/admin\/event\/\d+\/invite-status"/);
-  assert.match(body, /name="next_action" value="preview"/);
   assert.match(body, />Invite Preview</);
   assert.match(body, />Invite Delivery</);
   assert.doesNotMatch(body, /Confirm and send RSVP to 1 invitee/);
+});
+
+test('event edit page includes the invitee list and preview workflow actions', async () => {
+  const participant = insertParticipant({
+    name: 'Preview Person',
+    email: 'preview@example.com',
+    rsvp_token: 'preview-token'
+  });
+  const event = insertEvent({
+    title: 'Workflow Event',
+    event_date: '2999-04-15'
+  });
+  const cookie = await signInAsAdmin();
+
+  const response = await fetch(`${baseUrl}/admin/event/${event.id}/edit`, {
+    headers: { cookie }
+  });
+
+  assert.equal(response.status, 200);
+  const body = await response.text();
+  assert.match(body, /Edit Event/);
+  assert.match(body, /People Invited To This Event/);
+  assert.match(body, /Manage Invitees/);
+  assert.match(body, new RegExp(`/admin/participants\\?eventId=${event.id}`));
+  assert.match(body, /name="next_action" value="preview"/);
+  assert.match(body, new RegExp(`/admin/event/${event.id}/invite-preview`));
+  assert.match(body, new RegExp(`/admin/event/${event.id}/invite-status`));
+  assert.match(body, new RegExp(participant.email));
+});
+
+test('legacy dashboard edit query redirects to the dedicated event editor', async () => {
+  const event = insertEvent({
+    title: 'Workflow Event',
+    event_date: '2999-04-15'
+  });
+  const cookie = await signInAsAdmin();
+
+  const response = await fetch(`${baseUrl}/admin/dashboard?eventId=${event.id}&edit=1`, {
+    headers: { cookie },
+    redirect: 'manual'
+  });
+
+  assert.equal(response.status, 302);
+  assert.equal(response.headers.get('location'), `/admin/event/${event.id}/edit`);
 });
 
 test('edit event preview action saves changes and redirects to invite preview', async () => {
@@ -2247,7 +2309,7 @@ test('events admin page shows the recurring schedule and recorded events', async
   assert.match(body, /Upcoming Schedule/);
   assert.match(body, /Past Event History/);
   assert.match(body, /Spring Euchre Social/);
-  assert.match(body, new RegExp(`/admin/dashboard\\?eventId=${event.id}&amp;edit=1`));
+  assert.match(body, new RegExp(`/admin/event/${event.id}/edit`));
   assert.match(body, /Edit event/);
   assert.doesNotMatch(body, /Open in dashboard/);
   assert.match(body, /Create event/);
@@ -2283,8 +2345,8 @@ test('dashboard defaults to the nearest upcoming production event', async () => 
 
 test('dashboard upcoming schedule shows a clickable edit action for draft events', async () => {
   const event = insertEvent({
-    title: 'May Draft Game',
-    event_date: '2026-05-23',
+    title: 'Future Draft Game',
+    event_date: '2026-07-25',
     is_published: 0
   });
   const cookie = await signInAsAdmin();
@@ -2296,7 +2358,7 @@ test('dashboard upcoming schedule shows a clickable edit action for draft events
 
   assert.equal(response.status, 200);
   assert.match(body, /Edit draft/);
-  assert.match(body, new RegExp(`/admin/dashboard\\?eventId=${event.id}&amp;edit=1`));
+  assert.match(body, new RegExp(`/admin/event/${event.id}/edit`));
 });
 
 test('future events are created as drafts even when publish is requested immediately', async () => {

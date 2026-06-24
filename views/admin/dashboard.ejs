@@ -4,9 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Dunedin Euchre – Dashboard</title>
-  <link rel="stylesheet" href="/css/styles.css">
+  <link rel="stylesheet" href="<%= assetPath('/css/styles.css') %>">
 </head>
-<body class="admin-page <%= showEditEventModal ? 'modal-open' : '' %>">
+<body class="admin-page">
 
 <%- include('../partials/admin-nav', { active: 'dashboard' }) %>
 
@@ -123,7 +123,7 @@
             <% } %>
 
             <div class="admin-actions">
-              <button type="button" class="btn-secondary" onclick="openEditEventModal()">Edit event</button>
+              <a href="<%= buildEventEditPath(event.id) %>" class="btn-secondary">Edit event</a>
               <% if (inviteParticipants.length > 0) { %>
                 <a href="/admin/event/<%= event.id %>/invite-preview" class="btn-secondary">Invite Preview</a>
                 <a href="/admin/event/<%= event.id %>/invite-status" class="btn-secondary">Invite Delivery</a>
@@ -282,7 +282,7 @@
                   <% if (isEventPublished(entry.primaryEvent)) { %>
                     <span class="status-pill pill-yes">Published</span>
                   <% } else { %>
-                    <a href="<%= buildDashboardEditRedirect(entry.primaryEvent.id) %>" class="btn-sm btn-secondary">Edit draft</a>
+                    <a href="<%= buildEventEditPath(entry.primaryEvent.id) %>" class="btn-sm btn-secondary">Edit draft</a>
                   <% } %>
                   <a href="/admin/dashboard?eventId=<%= entry.primaryEvent.id %>" class="btn-sm btn-secondary">Open</a>
                 <% } else { %>
@@ -355,39 +355,6 @@
       </form>
     </section>
 
-    <% if (event) { %>
-      <div
-        id="edit-event-modal"
-        class="modal-overlay"
-        style="<%= showEditEventModal ? 'display:flex;' : 'display:none;' %>"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="edit-event-modal-title"
-        onclick="closeEditEventModal(event)"
-      >
-        <div class="modal-box event-edit-modal-box" onclick="event.stopPropagation()">
-          <div class="scheduled-create-modal-header">
-            <div class="admin-card-header-text">
-              <h2 id="edit-event-modal-title" class="card-title">Edit Event</h2>
-              <p class="admin-card-copy">Update the event details, then preview before sending the RSVP invite.</p>
-            </div>
-          </div>
-
-          <form method="POST" action="/admin/event/<%= event.id %>/update">
-            <input type="hidden" name="_csrf" value="<%= _csrf %>">
-            <%- include('../partials/event-form', { event: event, locations: locations }) %>
-            <div class="admin-actions" style="margin-top:1rem;">
-              <button type="submit" class="btn-primary">Save Changes</button>
-              <% if (inviteParticipants.length > 0) { %>
-                <button type="submit" name="next_action" value="preview" class="btn-secondary">Invite Preview</button>
-              <% } %>
-              <button type="button" class="btn-secondary" onclick="closeEditEventModal()">Cancel</button>
-            </div>
-          </form>
-        </div>
-      </div>
-    <% } %>
-
   </div>
 </main>
 
@@ -402,33 +369,7 @@ function toggleForm(id) {
   }
 }
 
-function openEditEventModal() {
-  const modal = document.getElementById('edit-event-modal');
-  if (!modal) return;
-  modal.style.display = 'flex';
-  document.body.classList.add('modal-open');
-
-  const focusTarget = modal.querySelector('input[name="title"]');
-  if (focusTarget) {
-    window.requestAnimationFrame(() => focusTarget.focus());
-  }
-}
-
-function closeEditEventModal(event) {
-  const modal = document.getElementById('edit-event-modal');
-  if (!modal) return;
-  if (!event || event.target === modal) {
-    modal.style.display = 'none';
-    document.body.classList.remove('modal-open');
-  }
-}
-
-document.addEventListener('keydown', function(event) {
-  if (event.key === 'Escape') {
-    closeEditEventModal();
-  }
-});
 </script>
-<script src="/js/admin.js"></script>
+<script src="<%= assetPath('/js/admin.js') %>"></script>
 </body>
 </html>

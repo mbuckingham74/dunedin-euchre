@@ -5,7 +5,7 @@ const CACHE_NAME = 'dunedin-euchre-v2';
 // App shell — static assets that can be served offline
 const APP_SHELL = [
   '/css/styles.css',
-  '/js/admin.js',
+  '/js/rsvp.js',
   '/manifest.json'
 ];
 
@@ -35,6 +35,10 @@ self.addEventListener('fetch', event => {
 
   // Only handle same-origin GET requests
   if (event.request.method !== 'GET' || url.origin !== self.location.origin) return;
+
+  // Admin pages should always come from the network and should not be served
+  // from this public RSVP worker at all.
+  if (url.pathname.startsWith('/admin')) return;
 
   // App shell assets: cache-first
   if (APP_SHELL.includes(url.pathname)) {

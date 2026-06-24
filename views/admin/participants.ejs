@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Dunedin Euchre – Participants</title>
-  <link rel="stylesheet" href="/css/styles.css">
+  <link rel="stylesheet" href="<%= assetPath('/css/styles.css') %>">
 </head>
 <body class="admin-page">
 
@@ -51,6 +51,9 @@
               <a href="<%= buildPublicEventPath(selectedEvent) %>" target="_blank" rel="noopener noreferrer"><%= baseUrl + buildPublicEventPath(selectedEvent) %></a>
             <% } %>
           </p>
+          <div class="admin-actions" style="margin-top:0.85rem;">
+            <a href="<%= buildEventEditPath(selectedEvent.id) %>" class="btn-secondary">Back to Edit Event</a>
+          </div>
           <p class="admin-card-note" style="margin-top:0.75rem;">
             Manual RSVP editing is enabled for this event, so you can update responses for anyone who calls or needs help.
           </p>
@@ -523,6 +526,6 @@ document.addEventListener('keydown', function(event) {
   }
 });
 </script>
-<script src="/js/admin.js"></script>
+<script src="<%= assetPath('/js/admin.js') %>"></script>
 </body>
 </html>

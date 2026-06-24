@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Dunedin Euchre – Invite Preview</title>
-  <link rel="stylesheet" href="/css/styles.css">
+  <link rel="stylesheet" href="<%= assetPath('/css/styles.css') %>">
 </head>
 <body class="admin-page">
 
@@ -42,7 +42,8 @@
       </div>
 
       <div class="invite-preview-toolbar">
-        <a href="<%= editDashboardPath %>" class="btn-secondary">Back to Edit Event</a>
+        <a href="<%= editEventPath %>" class="btn-secondary">Back to Edit Event</a>
+        <a href="<%= participantsPath %>" class="btn-secondary">Invitee List</a>
         <a href="<%= inviteStatusPath %>" class="btn-secondary">Invite Delivery</a>
         <form
           method="POST"
@@ -113,6 +114,6 @@
   </div>
 </main>
 
-<script src="/js/admin.js"></script>
+<script src="<%= assetPath('/js/admin.js') %>"></script>
 </body>
 </html>
