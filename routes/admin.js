@@ -30,6 +30,7 @@ const { buildPublicEventPath, buildRsvpPath } = require('../services/links');
 const {
   buildParticipantDisplayName,
   buildPartyResponseView,
+  formatNameList,
   getIndividualCounts,
   getParticipantPartyMembers,
   getPartyMembersValidationError,
@@ -64,6 +65,7 @@ const TEST_EVENT_PREFIX = '[TEST]';
 const DEFAULT_TESTING_PARTICIPANT_EMAIL = 'mikebuckingham@gmail.com';
 const BULK_INVITE_SENDS_PER_SECOND = parsePositiveInteger(process.env.RESEND_BULK_EMAILS_PER_SECOND, 4);
 const BULK_INVITE_DELAY_MS = Math.ceil(1000 / BULK_INVITE_SENDS_PER_SECOND);
+const QUICK_INVITE_RECIPIENT_LIMIT = 2;
 const uploadsDir = getUploadsDir();
 
 if (!fs.existsSync(uploadsDir)) {
@@ -277,6 +279,11 @@ function parseLocationId(value) {
 function parseParticipantId(value) {
   const parsed = Number(value);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+function parseParticipantIdsInput(value) {
+  const values = Array.isArray(value) ? value : [value];
+  return values.map(parseParticipantId).filter(Boolean);
 }
 
 function normalizeEmail(email) {
@@ -506,6 +513,45 @@ function getParticipantByEmail(email) {
   return db.prepare('SELECT * FROM participants WHERE email = ? COLLATE NOCASE').get(email);
 }
 
+function createOrReactivateParticipantRecord(participantInput) {
+  const existing = getParticipantByEmail(participantInput.email);
+  if (existing) {
+    if (existing.active) {
+      return {
+        participant: existing,
+        status: 'existing-active'
+      };
+    }
+
+    db.prepare(`
+      UPDATE participants
+      SET name = ?, party_members = ?, active = 1
+      WHERE id = ?
+    `).run(participantInput.name, participantInput.partyMembersJson, existing.id);
+
+    return {
+      participant: getParticipantById(existing.id),
+      status: 'reactivated'
+    };
+  }
+
+  const token = uuidv4();
+  const result = db.prepare(`
+    INSERT INTO participants (name, email, rsvp_token, party_members)
+    VALUES (?, ?, ?, ?)
+  `).run(
+    participantInput.name,
+    participantInput.email,
+    token,
+    participantInput.partyMembersJson
+  );
+
+  return {
+    participant: getParticipantById(result.lastInsertRowid),
+    status: 'created'
+  };
+}
+
 function getParticipantById(participantId) {
   return db.prepare(`
     SELECT *
@@ -563,6 +609,44 @@ function getInvitePreviewParticipant(participants, participantId) {
   }
 
   return participants.find(entry => entry.id === parsedParticipantId) || participants[0] || null;
+}
+
+function resolveQuickInviteParticipants(rawParticipantIds, options = {}) {
+  const maxRecipients = Number.isInteger(options.maxRecipients) && options.maxRecipients > 0
+    ? options.maxRecipients
+    : QUICK_INVITE_RECIPIENT_LIMIT;
+  const participantIds = parseParticipantIdsInput(rawParticipantIds);
+
+  if (participantIds.length === 0) {
+    return {
+      participants: [],
+      error: `Choose 1-${maxRecipients} active participant${maxRecipients === 1 ? '' : 's'} to invite.`
+    };
+  }
+
+  if (participantIds.length > maxRecipients) {
+    return {
+      participants: [],
+      error: `Choose no more than ${maxRecipients} active participants at a time.`
+    };
+  }
+
+  if (new Set(participantIds).size !== participantIds.length) {
+    return {
+      participants: [],
+      error: 'Choose different participants before sending invites.'
+    };
+  }
+
+  const participants = participantIds.map(getParticipantById);
+  if (participants.some(participant => !participant)) {
+    return {
+      participants: [],
+      error: 'One or more selected participants are no longer active.'
+    };
+  }
+
+  return { participants, error: null };
 }
 
 function listRecentResponses(roster, options = {}) {
@@ -644,6 +728,10 @@ function buildReminderSchedulePath(eventId) {
 
 function buildParticipantsRedirect(eventId) {
   return eventId ? `/admin/participants?eventId=${eventId}` : '/admin/participants';
+}
+
+function buildQuickInviteRedirect(eventId) {
+  return `${buildEventEditPath(eventId)}#quick-invite`;
 }
 
 function buildEventsRedirect(options = {}) {
@@ -761,6 +849,14 @@ function formatInviteSentAt(timestamp) {
     hour: 'numeric',
     minute: '2-digit'
   });
+}
+
+function buildInviteTargetMessage(participants) {
+  return formatNameList(
+    (Array.isArray(participants) ? participants : [])
+      .map(participant => participant && participant.name)
+      .filter(Boolean)
+  );
 }
 
 function getDateKeyInTimeZone(referenceDate = new Date(), timeZone = process.env.EVENT_TIMEZONE || 'America/New_York') {
@@ -1013,9 +1109,168 @@ router.get('/event/:id/edit', requireAdmin, (req, res) => {
     getParticipantResponseLabel,
     getParticipantResponseTone,
     isEventPublished,
+    quickInviteRecipientLimit: QUICK_INVITE_RECIPIENT_LIMIT,
     flash: req.session.flash || null
   });
   delete req.session.flash;
+});
+
+// ── POST /admin/event/:id/quick-add-participant ────────────
+router.post('/event/:id/quick-add-participant', requireAdmin, async (req, res) => {
+  const event = getEventById(req.params.id);
+  if (!event) {
+    return res.status(404).send('<h1 style="font-family:sans-serif;padding:2rem">Event not found.</h1>');
+  }
+
+  if (isTestEvent(event)) {
+    return res.redirect(buildTestingRedirect(event.id));
+  }
+
+  const redirectPath = buildQuickInviteRedirect(event.id);
+  const participantInput = normalizeParticipantInput(req.body);
+  const validationError = getParticipantValidationError(participantInput);
+  if (validationError) {
+    req.session.flash = {
+      type: 'error',
+      message: validationError
+    };
+    return res.redirect(redirectPath);
+  }
+
+  const creation = createOrReactivateParticipantRecord(participantInput);
+  if (creation.status === 'existing-active') {
+    req.session.flash = {
+      type: 'error',
+      message: `${creation.participant.name} is already on the roster. Use the send form below to invite them to this event.`
+    };
+    return res.redirect(redirectPath);
+  }
+
+  const participant = creation.participant;
+  const inviteAction = String(req.body.quick_invite_action || '').trim();
+  const shouldSendInvite = inviteAction === 'add-and-send';
+  const rosterActionLabel = creation.status === 'reactivated'
+    ? 'reactivated on the roster'
+    : 'added to the roster';
+
+  if (!shouldSendInvite) {
+    writeAuditLog('quick-add-participant', {
+      eventId: event.id,
+      participantId: participant.id,
+      participantEmail: participant.email,
+      participantStatus: creation.status,
+      inviteSent: false
+    }, req);
+
+    req.session.flash = `${participant.name} ${rosterActionLabel}.`;
+    return res.redirect(redirectPath);
+  }
+
+  try {
+    await sendRsvpInvite(participant, event);
+
+    writeAuditLog('quick-add-participant', {
+      eventId: event.id,
+      participantId: participant.id,
+      participantEmail: participant.email,
+      participantStatus: creation.status,
+      inviteSent: true
+    }, req);
+
+    req.session.flash = `${participant.name} ${rosterActionLabel}, and the invite was sent.`;
+  } catch (error) {
+    console.error(`Failed to send quick invite to ${participant.email}:`, error.message);
+
+    writeAuditLog('quick-add-participant', {
+      eventId: event.id,
+      participantId: participant.id,
+      participantEmail: participant.email,
+      participantStatus: creation.status,
+      inviteSent: false,
+      inviteError: error.message
+    }, req);
+
+    req.session.flash = {
+      type: 'error',
+      message: `${participant.name} ${rosterActionLabel}, but the invite could not be sent right now.`
+    };
+  }
+
+  return res.redirect(redirectPath);
+});
+
+// ── POST /admin/event/:id/send-selected-invites ────────────
+router.post('/event/:id/send-selected-invites', requireAdmin, async (req, res) => {
+  const event = getEventById(req.params.id);
+  if (!event) {
+    return res.status(404).send('<h1 style="font-family:sans-serif;padding:2rem">Event not found.</h1>');
+  }
+
+  if (isTestEvent(event)) {
+    return res.redirect(buildTestingRedirect(event.id));
+  }
+
+  const redirectPath = buildQuickInviteRedirect(event.id);
+  const { participants, error } = resolveQuickInviteParticipants(req.body.participant_ids, {
+    maxRecipients: QUICK_INVITE_RECIPIENT_LIMIT
+  });
+  if (error) {
+    req.session.flash = {
+      type: 'error',
+      message: error
+    };
+    return res.redirect(redirectPath);
+  }
+
+  const sentParticipants = [];
+  const failedParticipants = [];
+
+  for (const [index, participant] of participants.entries()) {
+    if (index > 0) {
+      await wait(BULK_INVITE_DELAY_MS);
+    }
+
+    try {
+      await sendRsvpInvite(participant, event);
+      sentParticipants.push(participant);
+    } catch (sendError) {
+      console.error(`Failed to send quick invite to ${participant.email}:`, sendError.message);
+      failedParticipants.push(participant);
+    }
+  }
+
+  writeAuditLog('quick-send-invites', {
+    eventId: event.id,
+    participantIds: participants.map(participant => participant.id),
+    sentParticipantIds: sentParticipants.map(participant => participant.id),
+    failedParticipantIds: failedParticipants.map(participant => participant.id)
+  }, req);
+
+  if (failedParticipants.length === 0) {
+    const targetNames = buildInviteTargetMessage(sentParticipants);
+    req.session.flash = sentParticipants.length === 1
+      ? `Invite sent to ${targetNames}.`
+      : `Invites sent to ${targetNames}.`;
+    return res.redirect(redirectPath);
+  }
+
+  const failedNames = buildInviteTargetMessage(failedParticipants);
+  if (sentParticipants.length === 0) {
+    req.session.flash = {
+      type: 'error',
+      message: failedParticipants.length === 1
+        ? `Unable to send the invite to ${failedNames}.`
+        : `Unable to send invites to ${failedNames}.`
+    };
+    return res.redirect(redirectPath);
+  }
+
+  const sentNames = buildInviteTargetMessage(sentParticipants);
+  req.session.flash = {
+    type: 'error',
+    message: `Invites sent to ${sentNames}. Unable to send to ${failedNames}.`
+  };
+  return res.redirect(redirectPath);
 });
 
 // ── GET /admin/testing ───────────────────────────────────────
@@ -1463,35 +1718,15 @@ router.post('/participants', requireAdmin, (req, res) => {
     return res.redirect(buildParticipantsRedirect(selectedEventId));
   }
 
-  const existing = getParticipantByEmail(participantInput.email);
-  if (existing) {
-    if (existing.active) {
-      req.session.flash = `${existing.name} already exists with that email.`;
-      return res.redirect(buildParticipantsRedirect(selectedEventId));
-    }
-
-    db.prepare(`
-      UPDATE participants
-      SET name = ?, party_members = ?, active = 1
-      WHERE id = ?
-    `).run(participantInput.name, participantInput.partyMembersJson, existing.id);
-
-    req.session.flash = `${participantInput.name} reactivated.`;
+  const creation = createOrReactivateParticipantRecord(participantInput);
+  if (creation.status === 'existing-active') {
+    req.session.flash = `${creation.participant.name} already exists with that email.`;
     return res.redirect(buildParticipantsRedirect(selectedEventId));
   }
 
-  const token = uuidv4();
-  db.prepare(`
-    INSERT INTO participants (name, email, rsvp_token, party_members)
-    VALUES (?, ?, ?, ?)
-  `).run(
-    participantInput.name,
-    participantInput.email,
-    token,
-    participantInput.partyMembersJson
-  );
-
-  req.session.flash = `${participantInput.name} added.`;
+  req.session.flash = creation.status === 'reactivated'
+    ? `${participantInput.name} reactivated.`
+    : `${participantInput.name} added.`;
   res.redirect(buildParticipantsRedirect(selectedEventId));
 });
 

@@ -36,6 +36,7 @@
       <div class="invite-preview-toolbar">
         <a href="<%= dashboardPath %>" class="btn-secondary">Back to Dashboard</a>
         <a href="<%= participantsPath %>" class="btn-secondary">Manage Invitees</a>
+        <a href="#quick-invite" class="btn-secondary">Quick Invite</a>
         <% if (inviteParticipants.length > 0) { %>
           <a href="<%= invitePreviewPath %>" class="btn-secondary">Invite Preview</a>
           <a href="<%= inviteStatusPath %>" class="btn-secondary">Invite Delivery</a>
@@ -149,6 +150,101 @@
         </form>
       </section>
     </div>
+
+    <section id="quick-invite" class="card admin-card admin-anchor-section" style="margin-top:1.5rem;">
+      <div class="card-header">
+        <div class="admin-card-header-text">
+          <h3 class="card-title">Quick Invite</h3>
+          <p class="admin-card-copy">Add someone new to the roster or send this event’s invite to one or two existing people without leaving this page.</p>
+        </div>
+      </div>
+
+      <div class="dashboard-note" style="margin-bottom:1rem;">
+        <span class="notes-label">Roster note</span>
+        <p class="notes-text">
+          Adding someone here also adds them to the global roster for future events. Use the send form if the person already exists.
+        </p>
+      </div>
+
+      <div class="dashboard-detail-grid">
+        <article class="dashboard-detail-card">
+          <p class="dashboard-detail-label">Add Someone New</p>
+          <p class="dashboard-detail-value">Create a roster entry for this event</p>
+          <p class="dashboard-detail-meta">Use one email for one household invite. Add the second name only when two people share that invite.</p>
+
+          <form method="POST" action="/admin/event/<%= event.id %>/quick-add-participant" style="margin-top:0.35rem;">
+            <input type="hidden" name="_csrf" value="<%= _csrf %>">
+
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">Email</label>
+                <input type="email" name="email" class="form-input" required placeholder="email@example.com">
+              </div>
+            </div>
+
+            <div class="form-row" style="margin-top:0.85rem;">
+              <div class="form-group">
+                <label class="form-label">Person 1</label>
+                <input type="text" name="party_member_names" class="form-input" required placeholder="Person name">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Person 2</label>
+                <input type="text" name="party_member_names" class="form-input" placeholder="Optional second person">
+              </div>
+            </div>
+
+            <p class="form-help">Leave Person 2 blank for a one-person invite.</p>
+
+            <div class="admin-actions" style="margin-top:1rem;">
+              <button type="submit" name="quick_invite_action" value="add-only" class="btn-secondary">Add To Roster</button>
+              <button type="submit" name="quick_invite_action" value="add-and-send" class="btn-primary">Add And Send Invite</button>
+            </div>
+          </form>
+        </article>
+
+        <article class="dashboard-detail-card">
+          <p class="dashboard-detail-label">Send Existing Invite</p>
+          <p class="dashboard-detail-value">Invite up to <%= quickInviteRecipientLimit %> people now</p>
+          <p class="dashboard-detail-meta">This sends the live RSVP email for <%= getEventTitle(event) %> only.</p>
+
+          <% if (inviteParticipants.length > 0) { %>
+            <form method="POST" action="/admin/event/<%= event.id %>/send-selected-invites" style="margin-top:0.35rem;">
+              <input type="hidden" name="_csrf" value="<%= _csrf %>">
+
+              <div class="form-row">
+                <div class="form-group">
+                  <label class="form-label">Invitee 1</label>
+                  <select name="participant_ids" class="form-input" required>
+                    <option value="">Choose one</option>
+                    <% inviteParticipants.forEach(function(participant) { %>
+                      <option value="<%= participant.id %>"><%= participant.name %> · <%= participant.email %></option>
+                    <% }); %>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Invitee 2</label>
+                  <select name="participant_ids" class="form-input">
+                    <option value="">Optional second invitee</option>
+                    <% inviteParticipants.forEach(function(participant) { %>
+                      <option value="<%= participant.id %>"><%= participant.name %> · <%= participant.email %></option>
+                    <% }); %>
+                  </select>
+                </div>
+              </div>
+
+              <p class="form-help">Choose one or two different active participants.</p>
+
+              <div class="admin-actions" style="margin-top:1rem;">
+                <button type="submit" class="btn-primary">Send To 1-2 People</button>
+                <a href="<%= inviteStatusPath %>" class="btn-secondary">Open Full Delivery View</a>
+              </div>
+            </form>
+          <% } else { %>
+            <p class="dashboard-detail-meta" style="margin-top:0.35rem;">No active participants yet. Add someone in the form on the left first.</p>
+          <% } %>
+        </article>
+      </div>
+    </section>
 
     <section class="card admin-card" style="margin-top:1.5rem;">
       <div class="card-header">

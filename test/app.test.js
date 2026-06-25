@@ -21,12 +21,13 @@ delete require.cache[emailServicePath];
 const emailService = require(emailServicePath);
 emailService.sendMagicLink = async () => {};
 const sentRsvpInvites = [];
-emailService.sendRsvpInvite = async (participant, event) => {
+async function recordRsvpInviteSend(participant, event) {
   sentRsvpInvites.push({
     participant: { ...participant },
     event: { ...event }
   });
-};
+}
+emailService.sendRsvpInvite = recordRsvpInviteSend;
 require.cache[emailServicePath].exports = emailService;
 
 const inviteStatusServicePath = require.resolve('../services/invite-status');
@@ -344,6 +345,7 @@ test.beforeEach(() => {
   resetDatabase();
   resetUploadsDirectory();
   sentRsvpInvites.length = 0;
+  emailService.sendRsvpInvite = recordRsvpInviteSend;
   mockInviteDeliveryStatus = null;
 });
 
@@ -1181,11 +1183,239 @@ test('event edit page includes the invitee list and preview workflow actions', a
   assert.match(body, /Edit Event/);
   assert.match(body, /People Invited To This Event/);
   assert.match(body, /Manage Invitees/);
+  assert.match(body, /Quick Invite/);
+  assert.match(body, /Add And Send Invite/);
+  assert.match(body, /Send To 1-2 People/);
   assert.match(body, new RegExp(`/admin/participants\\?eventId=${event.id}`));
+  assert.match(body, new RegExp(`/admin/event/${event.id}/quick-add-participant`));
+  assert.match(body, new RegExp(`/admin/event/${event.id}/send-selected-invites`));
   assert.match(body, /name="next_action" value="preview"/);
   assert.match(body, new RegExp(`/admin/event/${event.id}/invite-preview`));
   assert.match(body, new RegExp(`/admin/event/${event.id}/invite-status`));
   assert.match(body, new RegExp(participant.email));
+});
+
+test('admin can add a participant from the event edit page and immediately send the invite', async () => {
+  const event = insertEvent({
+    title: 'Quick Invite Event',
+    event_date: '2999-04-15'
+  });
+  const cookie = await signInAsAdmin();
+
+  const pageResponse = await fetch(`${baseUrl}/admin/event/${event.id}/edit`, {
+    headers: { cookie }
+  });
+  const csrfToken = extractCsrfToken(await pageResponse.text());
+
+  const body = new URLSearchParams();
+  body.set('_csrf', csrfToken);
+  body.set('email', 'pam.charlie@example.com');
+  body.append('party_member_names', 'Pam');
+  body.append('party_member_names', 'Charlie');
+  body.set('quick_invite_action', 'add-and-send');
+
+  const response = await fetch(`${baseUrl}/admin/event/${event.id}/quick-add-participant`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      cookie
+    },
+    body,
+    redirect: 'manual'
+  });
+
+  assert.equal(response.status, 302);
+  assert.equal(response.headers.get('location'), `/admin/event/${event.id}/edit#quick-invite`);
+  assert.deepEqual(
+    db.prepare('SELECT name, email, party_members, active FROM participants WHERE email = ?')
+      .get('pam.charlie@example.com'),
+    {
+      name: 'Pam and Charlie',
+      email: 'pam.charlie@example.com',
+      party_members: '["Pam","Charlie"]',
+      active: 1
+    }
+  );
+  assert.equal(sentRsvpInvites.length, 1);
+  assert.deepEqual(
+    {
+      name: sentRsvpInvites[0].participant.name,
+      email: sentRsvpInvites[0].participant.email,
+      party_members: sentRsvpInvites[0].participant.party_members,
+      eventId: sentRsvpInvites[0].event.id
+    },
+    {
+      name: 'Pam and Charlie',
+      email: 'pam.charlie@example.com',
+      party_members: '["Pam","Charlie"]',
+      eventId: event.id
+    }
+  );
+});
+
+test('admin can add a participant from the event edit page without sending an invite', async () => {
+  const event = insertEvent({
+    title: 'Quick Invite Event',
+    event_date: '2999-04-15'
+  });
+  const cookie = await signInAsAdmin();
+
+  const pageResponse = await fetch(`${baseUrl}/admin/event/${event.id}/edit`, {
+    headers: { cookie }
+  });
+  const csrfToken = extractCsrfToken(await pageResponse.text());
+
+  const body = new URLSearchParams();
+  body.set('_csrf', csrfToken);
+  body.set('email', 'new.invitee@example.com');
+  body.append('party_member_names', 'New Invitee');
+  body.set('quick_invite_action', 'add-only');
+
+  const response = await fetch(`${baseUrl}/admin/event/${event.id}/quick-add-participant`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      cookie
+    },
+    body,
+    redirect: 'manual'
+  });
+
+  assert.equal(response.status, 302);
+  assert.equal(response.headers.get('location'), `/admin/event/${event.id}/edit#quick-invite`);
+  assert.deepEqual(
+    db.prepare('SELECT name, email, party_members, active FROM participants WHERE email = ?')
+      .get('new.invitee@example.com'),
+    {
+      name: 'New Invitee',
+      email: 'new.invitee@example.com',
+      party_members: '["New Invitee"]',
+      active: 1
+    }
+  );
+  assert.equal(sentRsvpInvites.length, 0);
+});
+
+test('admin can send an existing event invite to two selected participants from the event edit page', async () => {
+  const firstParticipant = insertParticipant({
+    name: 'First Invitee',
+    email: 'first.invitee@example.com',
+    rsvp_token: 'first-invitee-token'
+  });
+  const secondParticipant = insertParticipant({
+    name: 'Second Invitee',
+    email: 'second.invitee@example.com',
+    rsvp_token: 'second-invitee-token'
+  });
+  insertParticipant({
+    name: 'Third Invitee',
+    email: 'third.invitee@example.com',
+    rsvp_token: 'third-invitee-token'
+  });
+  const event = insertEvent({
+    title: 'Quick Send Event',
+    event_date: '2999-04-15'
+  });
+  const cookie = await signInAsAdmin();
+
+  const pageResponse = await fetch(`${baseUrl}/admin/event/${event.id}/edit`, {
+    headers: { cookie }
+  });
+  const csrfToken = extractCsrfToken(await pageResponse.text());
+
+  const body = new URLSearchParams();
+  body.set('_csrf', csrfToken);
+  body.append('participant_ids', String(firstParticipant.id));
+  body.append('participant_ids', String(secondParticipant.id));
+
+  const response = await fetch(`${baseUrl}/admin/event/${event.id}/send-selected-invites`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      cookie
+    },
+    body,
+    redirect: 'manual'
+  });
+
+  assert.equal(response.status, 302);
+  assert.equal(response.headers.get('location'), `/admin/event/${event.id}/edit#quick-invite`);
+  assert.equal(sentRsvpInvites.length, 2);
+  assert.deepEqual(
+    sentRsvpInvites.map(entry => ({
+      participantId: entry.participant.id,
+      email: entry.participant.email,
+      eventId: entry.event.id
+    })),
+    [
+      {
+        participantId: firstParticipant.id,
+        email: 'first.invitee@example.com',
+        eventId: event.id
+      },
+      {
+        participantId: secondParticipant.id,
+        email: 'second.invitee@example.com',
+        eventId: event.id
+      }
+    ]
+  );
+});
+
+test('event edit quick invite rejects more than two selected participants', async () => {
+  const firstParticipant = insertParticipant({
+    name: 'First Invitee',
+    email: 'first.invitee@example.com',
+    rsvp_token: 'first-invitee-token'
+  });
+  const secondParticipant = insertParticipant({
+    name: 'Second Invitee',
+    email: 'second.invitee@example.com',
+    rsvp_token: 'second-invitee-token'
+  });
+  const thirdParticipant = insertParticipant({
+    name: 'Third Invitee',
+    email: 'third.invitee@example.com',
+    rsvp_token: 'third-invitee-token'
+  });
+  const event = insertEvent({
+    title: 'Quick Send Event',
+    event_date: '2999-04-15'
+  });
+  const cookie = await signInAsAdmin();
+
+  const pageResponse = await fetch(`${baseUrl}/admin/event/${event.id}/edit`, {
+    headers: { cookie }
+  });
+  const csrfToken = extractCsrfToken(await pageResponse.text());
+
+  const body = new URLSearchParams();
+  body.set('_csrf', csrfToken);
+  body.append('participant_ids', String(firstParticipant.id));
+  body.append('participant_ids', String(secondParticipant.id));
+  body.append('participant_ids', String(thirdParticipant.id));
+
+  const response = await fetch(`${baseUrl}/admin/event/${event.id}/send-selected-invites`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      cookie
+    },
+    body,
+    redirect: 'manual'
+  });
+
+  assert.equal(response.status, 302);
+  assert.equal(response.headers.get('location'), `/admin/event/${event.id}/edit#quick-invite`);
+  assert.equal(sentRsvpInvites.length, 0);
+
+  const redirectedResponse = await fetch(`${baseUrl}/admin/event/${event.id}/edit`, {
+    headers: { cookie }
+  });
+  const redirectedBody = await redirectedResponse.text();
+
+  assert.equal(redirectedResponse.status, 200);
+  assert.match(redirectedBody, /Choose no more than 2 active participants at a time\./);
 });
 
 test('legacy dashboard edit query redirects to the dedicated event editor', async () => {
