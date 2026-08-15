@@ -1,73 +1,70 @@
 #!/usr/bin/env bash
-# deploy.sh — Deploy dunedin-euchre to forkstech.com VPS
-# Usage: ./deploy.sh (from scripts/) or bash scripts/deploy.sh (from repo root)
-# Requires: SSH key access to michael@100.120.233.4 via Tailscale
+# Deploy Dunedin Euchre from committed Mac source by rsync. ForksTech is a
+# generated deployment target and never performs Git operations.
 
 set -euo pipefail
 
-REMOTE_HOST="michael@100.120.233.4"
-REMOTE_DIR="~/apps/dunedin-euchre"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+REMOTE_HOST="${REMOTE_HOST:-michael@100.120.233.4}"
+REMOTE_DIR="${REMOTE_DIR:-/home/michael/deployments/dunedin-euchre}"
+SERVICE_NAME="dunedin-euchre"
 
-echo "→ Deploying to ${REMOTE_HOST}:${REMOTE_DIR}"
+for command_name in git ssh rsync curl; do
+  command -v "$command_name" >/dev/null 2>&1 || {
+    echo "ERROR: Missing required command: $command_name" >&2
+    exit 1
+  }
+done
 
-ssh "${REMOTE_HOST}" bash <<'EOF'
-  set -euo pipefail
+if [[ "$(git -C "$REPO_ROOT" branch --show-current)" != "main" ]]; then
+  echo "ERROR: Deploys must run from main." >&2
+  exit 1
+fi
+if [[ -n "$(git -C "$REPO_ROOT" status --porcelain)" ]]; then
+  echo "ERROR: Working tree is dirty. Commit changes before deploying." >&2
+  exit 1
+fi
 
-  SERVICE_NAME="dunedin-euchre"
-  HEALTH_TIMEOUT_SECONDS=120
-  HEALTH_POLL_SECONDS=5
+git -C "$REPO_ROOT" push origin main
+ssh "$REMOTE_HOST" "install -d -m 700 '$REMOTE_DIR'"
+rsync -az --delete -e ssh \
+  --exclude='.git/' \
+  --exclude='.env' \
+  --exclude='.deployment.json' \
+  --exclude='.DS_Store' \
+  --exclude='.claude/' \
+  --exclude='node_modules/' \
+  --exclude='data/' \
+  --exclude='uploads/' \
+  --exclude='logs/' \
+  --exclude='*.db' \
+  --exclude='*.db-shm' \
+  --exclude='*.db-wal' \
+  "$REPO_ROOT/" "$REMOTE_HOST:$REMOTE_DIR/"
 
-  cd ~/apps/dunedin-euchre
+ssh "$REMOTE_HOST" "REMOTE_DIR='$REMOTE_DIR' SERVICE_NAME='$SERVICE_NAME' bash -s" <<'REMOTE_EOF'
+set -euo pipefail
+cd "$REMOTE_DIR"
+docker compose config --quiet
+docker compose build "$SERVICE_NAME"
+docker compose up -d --no-deps "$SERVICE_NAME"
 
-  echo "  → Pulling latest from GitHub..."
-  git pull --ff-only origin main
-
-  echo "  → Building updated image..."
-  docker compose build --pull "${SERVICE_NAME}"
-
-  echo "  → Starting updated container..."
-  docker compose up -d --no-deps "${SERVICE_NAME}"
-
-  container_id="$(docker compose ps -q "${SERVICE_NAME}")"
-  if [[ -z "${container_id}" ]]; then
-    echo "  ✗ Could not determine container ID for ${SERVICE_NAME}."
+deadline=$((SECONDS + 120))
+while true; do
+  container_id="$(docker compose ps -q "$SERVICE_NAME")"
+  health="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$container_id")"
+  [[ "$health" == healthy ]] && break
+  if [[ "$health" == unhealthy || "$health" == exited || "$health" == dead || SECONDS -ge deadline ]]; then
+    docker compose logs --tail=100 "$SERVICE_NAME" >&2 || true
     exit 1
   fi
+  sleep 5
+done
 
-  echo "  → Waiting for health check..."
-  deadline=$((SECONDS + HEALTH_TIMEOUT_SECONDS))
-  while true; do
-    health_status="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "${container_id}")"
+docker exec "$container_id" node -e \
+  'fetch("http://127.0.0.1:3456/healthz").then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))'
+REMOTE_EOF
 
-    case "${health_status}" in
-      healthy)
-        echo "  ✓ Container is healthy."
-        break
-        ;;
-      starting|running|created|restarting)
-        if (( SECONDS >= deadline )); then
-          echo "  ✗ Timed out waiting for ${SERVICE_NAME} to become healthy."
-          docker compose logs --tail=100 "${SERVICE_NAME}"
-          exit 1
-        fi
-
-        sleep "${HEALTH_POLL_SECONDS}"
-        ;;
-      *)
-        echo "  ✗ ${SERVICE_NAME} reported health status: ${health_status}"
-        docker compose logs --tail=100 "${SERVICE_NAME}"
-        exit 1
-        ;;
-    esac
-  done
-
-  echo "  → Pruning stale Docker layers..."
-  docker image prune -f >/dev/null
-  docker builder prune -af --filter 'until=24h' >/dev/null
-
-  echo "  → Status:"
-  docker compose ps
-EOF
-
-echo ""
-echo "✓ Deploy complete. App running at https://dunedin-euchre.com"
+curl -fsS --max-time 15 https://dunedin-euchre.com/healthz >/dev/null
+echo "Dunedin Euchre deployment completed successfully."

@@ -2,6 +2,9 @@ services:
   dunedin-euchre:
     build: .
     container_name: dunedin-euchre
+    mem_limit: 384m
+    cpus: 1.5
+    cpu_shares: 512
     restart: unless-stopped
     env_file: .env
     volumes:
