@@ -1732,7 +1732,12 @@ test('notifications page explains every email schedule and saves editable copy',
   assert.match(pageBody, /summary@example\.com/);
   assert.match(pageBody, /\{\{eventTitle\}\}/);
   assert.equal((pageBody.match(/data-notification-edit-toggle/g) || []).length, 4);
-  assert.equal((pageBody.match(/Send Test to Admins/g) || []).length, 4);
+  assert.equal((pageBody.match(/data-notification-test-action/g) || []).length, 4);
+  assert.equal((pageBody.match(/Send Test Message/g) || []).length, 4);
+  assert.ok(
+    pageBody.indexOf('data-notification-test-action') < pageBody.indexOf('id="notification-editor-sign-in"'),
+    'the test action should be visible outside the collapsed editor'
+  );
 
   const customCopy = {
     notification_type: 'invite',

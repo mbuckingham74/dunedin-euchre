@@ -68,6 +68,32 @@
               </div>
             </dl>
 
+            <div class="notification-test-box">
+              <div>
+                <p class="notification-test-title">Send a test message</p>
+                <p class="form-help">
+                  Sends only when you press the button, and only to
+                  <%= adminRecipientCount === 1 ? 'the configured admin address' : `the ${adminRecipientCount} configured admin addresses` %>.
+                  <%= notification.testHelp %>
+                </p>
+              </div>
+              <form
+                method="POST"
+                action="/admin/notifications/<%= notification.type %>/test"
+                data-notification-test-action
+                onsubmit="return confirm('Send this test email to the configured admin addresses only?')"
+              >
+                <input type="hidden" name="_csrf" value="<%= _csrf %>">
+                <button
+                  type="submit"
+                  class="btn-secondary"
+                  <%= notification.testAvailable && adminRecipientCount > 0 ? '' : 'disabled' %>
+                >
+                  Send Test Message
+                </button>
+              </form>
+            </div>
+
             <div
               id="notification-editor-<%= notification.type %>"
               class="notification-editor"
@@ -108,31 +134,6 @@
                   <input type="hidden" name="_csrf" value="<%= _csrf %>">
                   <input type="hidden" name="notification_type" value="<%= notification.type %>">
                   <button type="submit" class="btn-secondary">Restore Original</button>
-                </form>
-              </div>
-
-              <div class="notification-test-box">
-                <div>
-                  <p class="notification-test-title">Send a test to admins only</p>
-                  <p class="form-help">
-                    This is sent only when you press the button, and only to
-                    <%= adminRecipientCount === 1 ? 'the configured admin address' : `the ${adminRecipientCount} configured admin addresses` %>.
-                    <%= notification.testHelp %>
-                  </p>
-                </div>
-                <form
-                  method="POST"
-                  action="/admin/notifications/<%= notification.type %>/test"
-                  onsubmit="return confirm('Send this test email to the configured admin addresses only?')"
-                >
-                  <input type="hidden" name="_csrf" value="<%= _csrf %>">
-                  <button
-                    type="submit"
-                    class="btn-secondary"
-                    <%= notification.testAvailable && adminRecipientCount > 0 ? '' : 'disabled' %>
-                  >
-                    Send Test to Admins
-                  </button>
                 </form>
               </div>
             </div>
