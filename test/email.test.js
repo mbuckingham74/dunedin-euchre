@@ -188,4 +188,5 @@ test('roster emails use the no-reply sender and place the no-reply notice first'
     assert.match(email.html, new RegExp(ROSTER_EMAIL_NOTICE.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
     assert.ok(email.html.indexOf(ROSTER_EMAIL_NOTICE) < email.html.indexOf('<h2'));
   }
+  assert.doesNotMatch(ROSTER_EMAIL_NOTICE, /555-1212/);
 });
