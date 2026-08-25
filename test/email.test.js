@@ -187,6 +187,12 @@ test('roster emails use the no-reply sender and place the no-reply notice first'
   for (const email of [invite, reminder]) {
     assert.match(email.html, new RegExp(ROSTER_EMAIL_NOTICE.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
     assert.ok(email.html.indexOf(ROSTER_EMAIL_NOTICE) < email.html.indexOf('<h2'));
+    const noticeIndex = email.html.indexOf(ROSTER_EMAIL_NOTICE);
+    const noticeStart = email.html.lastIndexOf('<p ', noticeIndex);
+    const noticeEnd = email.html.indexOf('</p>', noticeIndex);
+    const noticeMarkup = email.html.slice(noticeStart, noticeEnd);
+    assert.match(noticeMarkup, /color: #dc2626/);
+    assert.doesNotMatch(noticeMarkup, /font-weight|<strong>/);
   }
   assert.doesNotMatch(ROSTER_EMAIL_NOTICE, /555-1212/);
 });

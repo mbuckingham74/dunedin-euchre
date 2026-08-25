@@ -115,7 +115,7 @@ function buildRsvpInviteEmail(participant, event) {
   const subject = `Dunedin Euchre – RSVP for ${eventTitle}`;
   const html = `
     <div style="font-family: Georgia, serif; max-width: 520px; margin: 0 auto; padding: 32px; color: #1e293b;">
-      <p style="font-family: Arial, sans-serif; font-size: 13px; line-height: 1.5; color: #64748b; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 12px 14px; margin: 0 0 24px;">
+      <p style="font-family: Arial, sans-serif; font-size: 13px; line-height: 1.5; color: #dc2626; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 12px 14px; margin: 0 0 24px;">
         ${ROSTER_EMAIL_NOTICE}
       </p>
       <h2 style="margin: 0 0 8px; font-size: 24px;">Dunedin Euchre</h2>
@@ -184,7 +184,7 @@ function buildRsvpReminderEmail(participant, event, options = {}) {
       <p style="font-family: Arial, sans-serif; font-size: 16px; font-weight: 700; line-height: 1.5; color: #dc2626; margin: 0 0 20px;">
         <strong>${REMINDER_DEADLINE_NOTICE}</strong>
       </p>
-      <p style="font-family: Arial, sans-serif; font-size: 13px; line-height: 1.5; color: #64748b; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 12px 14px; margin: 0 0 24px;">
+      <p style="font-family: Arial, sans-serif; font-size: 13px; line-height: 1.5; color: #dc2626; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 12px 14px; margin: 0 0 24px;">
         ${ROSTER_EMAIL_NOTICE}
       </p>
       <h2 style="margin: 0 0 8px; font-size: 24px;">Dunedin Euchre</h2>
