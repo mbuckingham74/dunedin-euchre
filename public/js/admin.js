@@ -128,6 +128,18 @@ function dismissFlashMessage(flash) {
   }, 400);
 }
 
+function setNotificationEditorOpen(button, isOpen) {
+  const editorId = button.getAttribute('aria-controls');
+  const editor = editorId ? document.getElementById(editorId) : null;
+  const card = button.closest('.notification-card');
+  if (!editor || !card) return;
+
+  editor.hidden = !isOpen;
+  button.setAttribute('aria-expanded', String(isOpen));
+  button.textContent = isOpen ? 'Close' : 'Edit';
+  card.classList.toggle('notification-card-editing', isOpen);
+}
+
 // Copy-to-clipboard for RSVP links
 document.querySelectorAll('.btn-copy').forEach(btn => {
   btn.addEventListener('click', async () => {
@@ -178,6 +190,26 @@ document.querySelectorAll('[data-location-form-toggle]').forEach(button => {
   button.setAttribute('aria-expanded', String(!formCard.hidden));
   button.addEventListener('click', () => revealLocationCreateForm(button));
 });
+
+const notificationEditButtons = [...document.querySelectorAll('[data-notification-edit-toggle]')];
+notificationEditButtons.forEach(button => {
+  button.addEventListener('click', () => {
+    const shouldOpen = button.getAttribute('aria-expanded') !== 'true';
+    notificationEditButtons.forEach(otherButton => {
+      setNotificationEditorOpen(otherButton, shouldOpen && otherButton === button);
+    });
+  });
+});
+
+if (window.location.hash.startsWith('#notification-')) {
+  const selectedNotification = document.getElementById(window.location.hash.slice(1));
+  const selectedButton = selectedNotification
+    ? selectedNotification.querySelector('[data-notification-edit-toggle]')
+    : null;
+  if (selectedButton) {
+    setNotificationEditorOpen(selectedButton, true);
+  }
+}
 
 document.querySelectorAll('.flash-msg').forEach(flash => {
   window.setTimeout(() => dismissFlashMessage(flash), 15000);

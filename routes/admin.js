@@ -43,6 +43,10 @@ const {
   updateNotificationCopy
 } = require('../services/notification-settings');
 const {
+  TEST_NOTIFICATION_NAMES,
+  sendNotificationTest
+} = require('../services/notification-tests');
+const {
   buildMonthlyEventHistory,
   getArrivalNotes,
   getEventTitle,
@@ -209,42 +213,81 @@ function getTimeZoneLabel(timeZone) {
   return timeZone === 'America/New_York' ? 'Eastern Time' : timeZone;
 }
 
-function getEmailNotificationDefinitions() {
+const NOTIFICATION_COPY_KEYS = Object.freeze({
+  'sign-in': ['magic_link_message'],
+  invite: ['no_reply_notice', 'invite_message'],
+  reminder: ['reminder_deadline_notice', 'no_reply_notice', 'reminder_message'],
+  summary: ['summary_message']
+});
+
+function getNotificationCopyFields(type) {
+  const keys = new Set(NOTIFICATION_COPY_KEYS[type] || []);
+  return NOTIFICATION_COPY_FIELDS.filter(field => keys.has(field.key));
+}
+
+function getEmailNotificationDefinitions(options = {}) {
   const reminderTimeZoneLabel = getTimeZoneLabel(REMINDER_TIME_ZONE);
   const summaryTimeZoneLabel = getTimeZoneLabel(SUMMARY_TIME_ZONE);
+  const event = options.event || null;
+  const participant = options.participant || null;
+  const eventLabel = event ? `${getEventTitle(event)} on ${formatEventDate(event.event_date)}` : '';
+  const inviteTestAvailable = Boolean(event && participant);
+  const summaryTestAvailable = Boolean(event);
 
   return [
     {
+      type: 'sign-in',
       name: 'Admin sign-in link',
       mode: 'On demand',
       from: FROM,
       recipients: 'The approved admin requesting access',
       frequency: 'Whenever an admin requests a sign-in link',
-      timing: 'Immediately'
+      timing: 'Immediately',
+      copyFields: getNotificationCopyFields('sign-in'),
+      testAvailable: true,
+      testHelp: 'The button in the test email opens the normal admin sign-in page.'
     },
     {
+      type: 'invite',
       name: 'RSVP invitation',
       mode: 'Manual',
       from: ROSTER_FROM,
       recipients: 'Selected active invitees',
       frequency: 'Sent manually for each event',
-      timing: 'Immediately after an admin confirms the send'
+      timing: 'Immediately after an admin confirms the send',
+      copyFields: getNotificationCopyFields('invite'),
+      testAvailable: inviteTestAvailable,
+      testHelp: inviteTestAvailable
+        ? `Uses ${eventLabel} and previews the email as ${participant.name}.`
+        : 'Create an event and add an active invitee before sending this test.'
     },
     {
+      type: 'reminder',
       name: 'RSVP reminder',
       mode: 'Scheduled',
       from: ROSTER_FROM,
       recipients: 'Invitees who received the original invitation',
       frequency: 'Once per event when queued from Invite Preview',
-      timing: `${formatHourLabel(REMINDER_SEND_HOUR)} ${reminderTimeZoneLabel}, the day before the event`
+      timing: `${formatHourLabel(REMINDER_SEND_HOUR)} ${reminderTimeZoneLabel}, the day before the event`,
+      copyFields: getNotificationCopyFields('reminder'),
+      testAvailable: inviteTestAvailable,
+      testHelp: inviteTestAvailable
+        ? `Uses ${eventLabel} and previews the email as ${participant.name}.`
+        : 'Create an event and add an active invitee before sending this test.'
     },
     {
+      type: 'summary',
       name: 'Event-day RSVP summary',
       mode: 'Automatic',
       from: FROM,
       recipients: SUMMARY_RECIPIENT_EMAIL || 'Not configured',
       frequency: 'Once for every published event',
-      timing: `${formatHourLabel(SUMMARY_SEND_HOUR)} ${summaryTimeZoneLabel}, on the event day`
+      timing: `${formatHourLabel(SUMMARY_SEND_HOUR)} ${summaryTimeZoneLabel}, on the event day`,
+      copyFields: getNotificationCopyFields('summary'),
+      testAvailable: summaryTestAvailable,
+      testHelp: summaryTestAvailable
+        ? `Uses the current RSVP list for ${eventLabel}.`
+        : 'Create an event before sending this test.'
     }
   ];
 }
@@ -1155,11 +1198,14 @@ router.get('/dashboard', requireAdmin, (req, res) => {
 
 // ── GET /admin/notifications ────────────────────────────────
 router.get('/notifications', requireAdmin, (req, res) => {
+  const event = getDefaultProductionEvent(listProductionEvents());
+  const participant = listActiveParticipants()[0] || null;
+
   res.render('admin/notifications', {
-    notifications: getEmailNotificationDefinitions(),
+    notifications: getEmailNotificationDefinitions({ event, participant }),
     copy: getNotificationCopy(),
-    copyFields: NOTIFICATION_COPY_FIELDS,
     maxCopyLength: MAX_NOTIFICATION_COPY_LENGTH,
+    adminRecipientCount: ADMIN_EMAILS.length,
     flash: req.session.flash || null
   });
   delete req.session.flash;
@@ -1167,26 +1213,81 @@ router.get('/notifications', requireAdmin, (req, res) => {
 
 // ── POST /admin/notifications/copy ──────────────────────────
 router.post('/notifications/copy', requireAdmin, (req, res) => {
-  const validationError = getNotificationCopyValidationError(req.body);
-  if (validationError) {
-    req.session.flash = validationError;
-    return res.redirect('/admin/notifications#email-copy');
+  const type = String(req.body.notification_type || '').trim();
+  const copyKeys = NOTIFICATION_COPY_KEYS[type];
+  if (!copyKeys) {
+    req.session.flash = 'That email notification was not found.';
+    return res.redirect('/admin/notifications');
   }
 
-  updateNotificationCopy(req.body);
+  const copyInput = Object.fromEntries(
+    copyKeys
+      .filter(key => Object.prototype.hasOwnProperty.call(req.body, key))
+      .map(key => [key, req.body[key]])
+  );
+  const validationError = getNotificationCopyValidationError(copyInput);
+  if (validationError) {
+    req.session.flash = validationError;
+    return res.redirect(`/admin/notifications#notification-${type}`);
+  }
+
+  updateNotificationCopy(copyInput);
   writeAuditLog('update-notification-copy', {
-    fields: NOTIFICATION_COPY_FIELDS.map(field => field.key)
+    notificationType: type,
+    fields: Object.keys(copyInput)
   }, req);
-  req.session.flash = 'Email wording updated. Future emails will use the new copy.';
-  res.redirect('/admin/notifications#email-copy');
+  req.session.flash = `${TEST_NOTIFICATION_NAMES[type]} wording updated. Future emails will use the new copy.`;
+  res.redirect(`/admin/notifications#notification-${type}`);
 });
 
 // ── POST /admin/notifications/reset-copy ────────────────────
 router.post('/notifications/reset-copy', requireAdmin, (req, res) => {
-  resetNotificationCopy();
-  writeAuditLog('reset-notification-copy', {}, req);
-  req.session.flash = 'Email wording restored to the defaults.';
-  res.redirect('/admin/notifications#email-copy');
+  const type = String(req.body.notification_type || '').trim();
+  const copyKeys = NOTIFICATION_COPY_KEYS[type];
+  if (!copyKeys) {
+    req.session.flash = 'That email notification was not found.';
+    return res.redirect('/admin/notifications');
+  }
+
+  resetNotificationCopy(copyKeys);
+  writeAuditLog('reset-notification-copy', { notificationType: type }, req);
+  req.session.flash = `${TEST_NOTIFICATION_NAMES[type]} wording restored to the defaults.`;
+  res.redirect(`/admin/notifications#notification-${type}`);
+});
+
+// ── POST /admin/notifications/:type/test ────────────────────
+router.post('/notifications/:type/test', requireAdmin, async (req, res) => {
+  const type = String(req.params.type || '').trim();
+  if (!NOTIFICATION_COPY_KEYS[type]) {
+    return res.status(404).send('<h1 style="font-family:sans-serif;padding:2rem">Email notification not found.</h1>');
+  }
+
+  const event = getDefaultProductionEvent(listProductionEvents());
+  const participant = listActiveParticipants()[0] || null;
+  const roster = event ? getRosterWithCounts(event.id).roster : [];
+
+  try {
+    const result = await sendNotificationTest(type, ADMIN_EMAILS, {
+      event,
+      participant,
+      roster,
+      copy: getNotificationCopy()
+    });
+    const recipientLabel = result.recipients.length === 1
+      ? 'the configured admin address'
+      : `all ${result.recipients.length} configured admin addresses`;
+    req.session.flash = `Test ${result.name} sent to ${recipientLabel}.`;
+    writeAuditLog('send-notification-test', {
+      notificationType: type,
+      recipientCount: result.recipients.length,
+      eventId: event ? event.id : null
+    }, req);
+  } catch (error) {
+    console.error(`Failed to send ${type} notification test.`, error.message);
+    req.session.flash = `Unable to send the test email: ${error.message}`;
+  }
+
+  res.redirect(`/admin/notifications#notification-${type}`);
 });
 
 // ── GET /admin/event/:id/edit ───────────────────────────────

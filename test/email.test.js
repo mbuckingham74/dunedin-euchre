@@ -6,6 +6,7 @@ const test = require('node:test');
 process.env.RESEND_API_KEY = process.env.RESEND_API_KEY || 're_test_key';
 
 const {
+  buildMagicLinkEmail,
   buildRsvpInviteEmail,
   buildRsvpReminderEmail,
   buildRsvpSummaryEmail,
@@ -260,6 +261,7 @@ test('email builders apply editable copy tokens and escape custom wording', () =
     end_time: '20:30'
   };
   const copy = {
+    magic_link_message: 'Use the safe sign-in button <below>.',
     no_reply_notice: 'Call Pam & Charlie.',
     invite_message: 'Please join {{eventTitle}} <today>.',
     reminder_deadline_notice: 'Reply by noon.',
@@ -267,16 +269,18 @@ test('email builders apply editable copy tokens and escape custom wording', () =
     summary_message: 'Final list for {{eventTitle}}.'
   };
 
+  const magicLink = buildMagicLinkEmail('test-token', { copy });
   const invite = buildRsvpInviteEmail(participant, event, { copy });
   const reminder = buildRsvpReminderEmail(participant, event, { copy });
   const summary = buildRsvpSummaryEmail(event, [], { copy });
 
+  assert.match(magicLink.html, /Use the safe sign-in button &lt;below&gt;\./);
   assert.match(invite.html, /Call Pam &amp; Charlie\./);
   assert.match(invite.html, /Please join Saturday Euchre &lt;today&gt;\./);
   assert.match(reminder.html, /Reply by noon\./);
   assert.match(reminder.html, /Last call for Saturday Euchre\./);
   assert.match(summary.html, /Final list for Saturday Euchre\./);
-  for (const email of [invite, reminder, summary]) {
+  for (const email of [magicLink, invite, reminder, summary]) {
     assert.doesNotMatch(email.html, /<today>/);
   }
 });

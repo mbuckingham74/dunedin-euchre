@@ -32,10 +32,21 @@
 
       <div class="notification-list">
         <% notifications.forEach(function(notification) { %>
-          <article class="notification-card">
+          <article id="notification-<%= notification.type %>" class="notification-card admin-anchor-section">
             <div class="notification-card-header">
               <h2 class="notification-card-title"><%= notification.name %></h2>
-              <span class="status-pill pill-none"><%= notification.mode %></span>
+              <div class="notification-card-header-actions">
+                <button
+                  type="button"
+                  class="btn-secondary btn-sm"
+                  aria-controls="notification-editor-<%= notification.type %>"
+                  aria-expanded="false"
+                  data-notification-edit-toggle
+                >
+                  Edit
+                </button>
+                <span class="status-pill pill-none"><%= notification.mode %></span>
+              </div>
             </div>
 
             <dl class="notification-details">
@@ -56,54 +67,78 @@
                 <dd><strong><%= notification.timing %></strong></dd>
               </div>
             </dl>
+
+            <div
+              id="notification-editor-<%= notification.type %>"
+              class="notification-editor"
+              data-notification-editor
+              hidden
+            >
+              <div class="notification-copy-note">
+                Edit this email below. Text is safely escaped; use <code>{{eventTitle}}</code> for the current event name.
+              </div>
+
+              <form method="POST" action="/admin/notifications/copy" class="notification-copy-form">
+                <input type="hidden" name="_csrf" value="<%= _csrf %>">
+                <input type="hidden" name="notification_type" value="<%= notification.type %>">
+
+                <% notification.copyFields.forEach(function(field) { %>
+                  <div class="form-group notification-copy-field">
+                    <label class="form-label" for="notification-copy-<%= notification.type %>-<%= field.key %>"><%= field.label %></label>
+                    <textarea
+                      id="notification-copy-<%= notification.type %>-<%= field.key %>"
+                      name="<%= field.key %>"
+                      class="form-input"
+                      rows="<%= field.key === 'no_reply_notice' || field.key === 'reminder_message' ? 4 : 3 %>"
+                      maxlength="<%= maxCopyLength %>"
+                    ><%= copy[field.key] %></textarea>
+                    <p class="form-help"><%= field.description %> Maximum <%= maxCopyLength %> characters.</p>
+                  </div>
+                <% }); %>
+
+                <button type="submit" class="btn-primary">Save Wording</button>
+              </form>
+
+              <div class="notification-editor-secondary-actions">
+                <form
+                  method="POST"
+                  action="/admin/notifications/reset-copy"
+                  onsubmit="return confirm('Restore the original wording for this email?')"
+                >
+                  <input type="hidden" name="_csrf" value="<%= _csrf %>">
+                  <input type="hidden" name="notification_type" value="<%= notification.type %>">
+                  <button type="submit" class="btn-secondary">Restore Original</button>
+                </form>
+              </div>
+
+              <div class="notification-test-box">
+                <div>
+                  <p class="notification-test-title">Send a test to admins only</p>
+                  <p class="form-help">
+                    This is sent only when you press the button, and only to
+                    <%= adminRecipientCount === 1 ? 'the configured admin address' : `the ${adminRecipientCount} configured admin addresses` %>.
+                    <%= notification.testHelp %>
+                  </p>
+                </div>
+                <form
+                  method="POST"
+                  action="/admin/notifications/<%= notification.type %>/test"
+                  onsubmit="return confirm('Send this test email to the configured admin addresses only?')"
+                >
+                  <input type="hidden" name="_csrf" value="<%= _csrf %>">
+                  <button
+                    type="submit"
+                    class="btn-secondary"
+                    <%= notification.testAvailable && adminRecipientCount > 0 ? '' : 'disabled' %>
+                  >
+                    Send Test to Admins
+                  </button>
+                </form>
+              </div>
+            </div>
           </article>
         <% }); %>
       </div>
-    </section>
-
-    <section id="email-copy" class="card admin-card admin-anchor-section">
-      <div class="card-header">
-        <div class="admin-card-header-text">
-          <h2 class="card-title">Email Wording</h2>
-          <p class="admin-card-copy">Update the plain-text wording used in future invitations, reminders, and event-day summaries. The layout, buttons, event details, and RSVP tables stay unchanged.</p>
-        </div>
-      </div>
-
-      <div class="notification-copy-note">
-        Text is safely escaped before it is added to an email. Use <code>{{eventTitle}}</code> where you want the current event name to appear.
-      </div>
-
-      <form method="POST" action="/admin/notifications/copy" class="notification-copy-form">
-        <input type="hidden" name="_csrf" value="<%= _csrf %>">
-
-        <% copyFields.forEach(function(field) { %>
-          <div class="form-group notification-copy-field">
-            <label class="form-label" for="notification-copy-<%= field.key %>"><%= field.label %></label>
-            <textarea
-              id="notification-copy-<%= field.key %>"
-              name="<%= field.key %>"
-              class="form-input"
-              rows="<%= field.key === 'no_reply_notice' || field.key === 'reminder_message' ? 4 : 3 %>"
-              maxlength="<%= maxCopyLength %>"
-            ><%= copy[field.key] %></textarea>
-            <p class="form-help"><%= field.description %> Maximum <%= maxCopyLength %> characters.</p>
-          </div>
-        <% }); %>
-
-        <div class="admin-actions notification-copy-actions">
-          <button type="submit" class="btn-primary">Save Email Wording</button>
-        </div>
-      </form>
-
-      <form
-        method="POST"
-        action="/admin/notifications/reset-copy"
-        class="notification-reset-form"
-        onsubmit="return confirm('Restore all email wording to the original defaults?')"
-      >
-        <input type="hidden" name="_csrf" value="<%= _csrf %>">
-        <button type="submit" class="btn-secondary">Restore Original Wording</button>
-      </form>
     </section>
   </div>
 </main>

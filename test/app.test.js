@@ -13,7 +13,7 @@ process.env.DB_PATH = path.join(tempDir, 'test.db');
 process.env.UPLOADS_DIR = path.join(tempDir, 'uploads');
 process.env.NODE_ENV = 'test';
 process.env.SESSION_SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
-process.env.ADMIN_EMAIL = 'admin@example.com';
+process.env.ADMIN_EMAIL = 'admin@example.com,second-admin@example.com';
 process.env.FROM_EMAIL = 'admin@dunedin-euchre.com';
 process.env.ROSTER_FROM_EMAIL = 'Do_Not_Reply@dunedin-euchre.com';
 process.env.EVENT_RSVP_SUMMARY_EMAIL = 'summary@example.com';
@@ -27,6 +27,7 @@ delete require.cache[emailServicePath];
 const emailService = require(emailServicePath);
 emailService.sendMagicLink = async () => {};
 const sentRsvpInvites = [];
+const sentNotificationEmails = [];
 async function recordRsvpInviteSend(participant, event) {
   sentRsvpInvites.push({
     participant: { ...participant },
@@ -34,6 +35,10 @@ async function recordRsvpInviteSend(participant, event) {
   });
 }
 emailService.sendRsvpInvite = recordRsvpInviteSend;
+emailService.sendEmail = async payload => {
+  sentNotificationEmails.push({ ...payload });
+  return { id: `notification-test-${sentNotificationEmails.length}` };
+};
 require.cache[emailServicePath].exports = emailService;
 
 const inviteStatusServicePath = require.resolve('../services/invite-status');
@@ -387,6 +392,7 @@ test.beforeEach(() => {
   resetDatabase();
   resetUploadsDirectory();
   sentRsvpInvites.length = 0;
+  sentNotificationEmails.length = 0;
   emailService.sendRsvpInvite = recordRsvpInviteSend;
   mockInviteDeliveryStatus = null;
 });
@@ -1725,13 +1731,13 @@ test('notifications page explains every email schedule and saves editable copy',
   assert.match(pageBody, /4:00 PM Eastern Time, on the event day/);
   assert.match(pageBody, /summary@example\.com/);
   assert.match(pageBody, /\{\{eventTitle\}\}/);
+  assert.equal((pageBody.match(/data-notification-edit-toggle/g) || []).length, 4);
+  assert.equal((pageBody.match(/Send Test to Admins/g) || []).length, 4);
 
   const customCopy = {
+    notification_type: 'invite',
     no_reply_notice: 'Please call Pam with any questions.',
-    invite_message: 'Please join us for {{eventTitle}} & bring your smile.',
-    reminder_deadline_notice: 'Please reply by noon today.',
-    reminder_message: 'Last call for {{eventTitle}}.',
-    summary_message: 'Here is the final list for {{eventTitle}}.'
+    invite_message: 'Please join us for {{eventTitle}} & bring your smile.'
   };
   const saveResponse = await request(`${baseUrl}/admin/notifications/copy`, {
     method: 'POST',
@@ -1744,13 +1750,13 @@ test('notifications page explains every email schedule and saves editable copy',
   });
 
   assert.equal(saveResponse.status, 302);
-  assert.equal(saveResponse.headers.get('location'), '/admin/notifications#email-copy');
+  assert.equal(saveResponse.headers.get('location'), '/admin/notifications#notification-invite');
 
   const savedResponse = await request(`${baseUrl}/admin/notifications`, {
     headers: { cookie }
   });
   const savedBody = await savedResponse.text();
-  assert.match(savedBody, /Email wording updated/);
+  assert.match(savedBody, /RSVP invitation wording updated/);
   assert.match(savedBody, /Please call Pam with any questions\./);
   assert.match(savedBody, /Please join us for \{\{eventTitle\}\} &amp; bring your smile\./);
 
@@ -1759,10 +1765,10 @@ test('notifications page explains every email schedule and saves editable copy',
     FROM notification_settings
     ORDER BY key ASC
   `).all();
-  assert.equal(savedSettings.length, 5);
+  assert.equal(savedSettings.length, 2);
   assert.equal(
-    savedSettings.find(row => row.key === 'summary_message').value,
-    customCopy.summary_message
+    savedSettings.find(row => row.key === 'invite_message').value,
+    customCopy.invite_message
   );
 
   const resetResponse = await request(`${baseUrl}/admin/notifications/reset-copy`, {
@@ -1771,11 +1777,52 @@ test('notifications page explains every email schedule and saves editable copy',
       cookie,
       'Content-Type': 'application/x-www-form-urlencoded'
     },
-    body: new URLSearchParams(),
+    body: new URLSearchParams({ notification_type: 'invite' }),
     redirect: 'manual'
   });
   assert.equal(resetResponse.status, 302);
   assert.equal(db.prepare('SELECT COUNT(*) AS count FROM notification_settings').get().count, 0);
+});
+
+test('notification tests are sent on demand to configured admins only', async () => {
+  const participant = insertParticipant({
+    name: 'Alice Invitee',
+    email: 'alice@example.com',
+    rsvp_token: 'alice-notification-test-token'
+  });
+  const event = insertEvent({
+    title: 'Notification Test Event',
+    event_date: '2999-04-25',
+    is_published: 1
+  });
+  insertResponse(participant.id, event.id, {
+    status: 'yes',
+    attendee_names: JSON.stringify(['Alice Invitee'])
+  });
+  const cookie = await signInAsAdmin();
+
+  assert.equal(sentNotificationEmails.length, 0);
+  const response = await request(`${baseUrl}/admin/notifications/invite/test`, {
+    method: 'POST',
+    headers: {
+      cookie,
+      'Content-Type': 'application/x-www-form-urlencoded'
+    },
+    body: new URLSearchParams(),
+    redirect: 'manual'
+  });
+
+  assert.equal(response.status, 302);
+  assert.equal(response.headers.get('location'), '/admin/notifications#notification-invite');
+  assert.equal(sentNotificationEmails.length, 1);
+  assert.deepEqual(sentNotificationEmails[0].to, [
+    'admin@example.com',
+    'second-admin@example.com'
+  ]);
+  assert.equal(sentNotificationEmails[0].from, 'Do_Not_Reply@dunedin-euchre.com');
+  assert.match(sentNotificationEmails[0].subject, /^\[TEST\] Dunedin Euchre/);
+  assert.match(sentNotificationEmails[0].html, /TEST MESSAGE/);
+  assert.doesNotMatch(JSON.stringify(sentNotificationEmails[0].to), /alice@example\.com/);
 });
 
 test('dashboard can delete an event and return to the empty state', async () => {

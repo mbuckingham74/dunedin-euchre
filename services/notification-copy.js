@@ -3,6 +3,7 @@
 const MAX_NOTIFICATION_COPY_LENGTH = 800;
 
 const DEFAULT_NOTIFICATION_COPY = Object.freeze({
+  magic_link_message: 'Click the button below to sign in. This link expires in 15 minutes and can only be used once.',
   no_reply_notice: 'Please do not reply to this message. Replies to this message are routed to an unmonitored mailbox. If you have questions please call Pam at 937-701-3301.',
   invite_message: "It's time to RSVP for next month's game!",
   reminder_deadline_notice: 'Please make your RSVP decision by noon today. If you are having issues, please contact Pam at 937-701-3301.',
@@ -11,6 +12,11 @@ const DEFAULT_NOTIFICATION_COPY = Object.freeze({
 });
 
 const NOTIFICATION_COPY_FIELDS = Object.freeze([
+  {
+    key: 'magic_link_message',
+    label: 'Admin sign-in message',
+    description: 'Shown above the Sign In to Dashboard button.'
+  },
   {
     key: 'no_reply_notice',
     label: 'No-reply notice',

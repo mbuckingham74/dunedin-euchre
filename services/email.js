@@ -85,29 +85,38 @@ async function sendEmail(payload, options = {}) {
   }
 }
 
-async function sendMagicLink(toEmail, token) {
-  const link = `${BASE_URL}/admin/auth/${token}`;
-  await sendEmail({
-    from: FROM,
-    to: toEmail,
-    subject: 'Your Dunedin Euchre admin sign-in link',
-    html: `
+function buildMagicLinkEmail(token, options = {}) {
+  const link = options.link || `${BASE_URL}/admin/auth/${token}`;
+  const copy = getEmailCopy(options);
+  const subject = (options.subject || '').trim() || 'Your Dunedin Euchre admin sign-in link';
+  const html = `
       <div style="font-family: Georgia, serif; max-width: 480px; margin: 0 auto; padding: 32px; color: #1e293b;">
         <h2 style="margin: 0 0 24px; font-size: 22px;">Dunedin Euchre &mdash; Admin Sign In</h2>
         <p style="font-size: 17px; line-height: 1.6; margin: 0 0 28px;">
-          Click the button below to sign in. This link expires in <strong>15 minutes</strong> and can only be used once.
+          ${formatCopyHtml(copy.magic_link_message)}
         </p>
-        <a href="${link}" style="display:inline-block; background:#2563eb; color:#fff; font-size:17px; font-weight:600; padding:14px 28px; border-radius:6px; text-decoration:none;">
+        <a href="${escapeHtml(link)}" style="display:inline-block; background:#2563eb; color:#fff; font-size:17px; font-weight:600; padding:14px 28px; border-radius:6px; text-decoration:none;">
           Sign In to Dashboard
         </a>
         <p style="font-size: 14px; color: #64748b; margin: 28px 0 0;">
           If you didn't request this link, you can safely ignore this email.
         </p>
         <p style="font-size: 13px; color: #94a3b8; margin: 8px 0 0;">
-          ${link}
+          ${escapeHtml(link)}
         </p>
       </div>
-    `
+    `;
+
+  return { subject, html };
+}
+
+async function sendMagicLink(toEmail, token) {
+  const email = buildMagicLinkEmail(token, { copy: getSavedNotificationCopy() });
+  return sendEmail({
+    from: FROM,
+    to: toEmail,
+    subject: email.subject,
+    html: email.html
   });
 }
 
@@ -419,6 +428,7 @@ function formatTime(t) {
 }
 
 module.exports = {
+  buildMagicLinkEmail,
   buildRsvpSummaryEmail,
   buildRsvpReminderEmail,
   buildRsvpInviteEmail,

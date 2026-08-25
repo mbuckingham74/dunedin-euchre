@@ -1199,12 +1199,21 @@ body.modal-open {
   border-radius: 10px;
   background: var(--surface-gradient-soft);
 }
+.notification-card-editing {
+  grid-column: 1 / -1;
+}
 .notification-card-header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 0.75rem;
   margin-bottom: 0.9rem;
+}
+.notification-card-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
 }
 .notification-card-title {
   color: var(--gray-900);
@@ -1240,9 +1249,9 @@ body.modal-open {
   font-size: 0.9em;
 }
 .notification-copy-form {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
 }
 .notification-copy-field {
   min-width: 0;
@@ -1251,15 +1260,42 @@ body.modal-open {
   border-radius: 10px;
   background: var(--surface-gradient-soft);
 }
-.notification-copy-field:first-of-type,
-.notification-copy-field:nth-of-type(4) {
-  grid-column: 1 / -1;
+.notification-editor {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--gray-200);
 }
-.notification-copy-actions {
-  grid-column: 1 / -1;
+.notification-editor[hidden] {
+  display: none;
 }
-.notification-reset-form {
+.notification-editor-secondary-actions {
   margin-top: 0.75rem;
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+.notification-test-box {
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--gray-200);
+  border-radius: 10px;
+  background: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  font-family: system-ui, sans-serif;
+}
+.notification-test-title {
+  margin: 0 0 0.2rem;
+  color: var(--gray-900);
+  font-weight: 700;
+}
+.notification-test-box .form-help {
+  margin-top: 0;
+}
+.notification-test-box form {
+  flex-shrink: 0;
 }
 
 /* ── Flash message ───────────────────────────────────────── */
@@ -2222,14 +2258,15 @@ input[type="file"].form-input { padding: 0.4rem; }
   .invite-preview-shell {
     grid-template-columns: 1fr;
   }
-  .notification-list,
-  .notification-copy-form {
+  .notification-list {
     grid-template-columns: 1fr;
   }
-  .notification-copy-field:first-of-type,
-  .notification-copy-field:nth-of-type(4),
-  .notification-copy-actions {
-    grid-column: auto;
+  .notification-card-editing {
+    grid-column: 1;
+  }
+  .notification-test-box {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }
 
