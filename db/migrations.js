@@ -13,10 +13,29 @@ function getTableColumns(db, tableName) {
   );
 }
 
-function addColumnIfMissing(db, tableName, columnName, definition) {
+const ADD_COLUMN_STATEMENTS = new Map([
+  ['events:title', "ALTER TABLE events ADD COLUMN title TEXT NOT NULL DEFAULT 'Dunedin Euchre Night'"],
+  ['events:location_address', 'ALTER TABLE events ADD COLUMN location_address TEXT'],
+  ['events:map_image', 'ALTER TABLE events ADD COLUMN map_image TEXT'],
+  ['events:arrival_notes', 'ALTER TABLE events ADD COLUMN arrival_notes TEXT'],
+  ['events:is_published', 'ALTER TABLE events ADD COLUMN is_published INTEGER NOT NULL DEFAULT 0 CHECK(is_published IN (0, 1))'],
+  ['events:public_slug', 'ALTER TABLE events ADD COLUMN public_slug TEXT'],
+  ['events:show_public_roster', 'ALTER TABLE events ADD COLUMN show_public_roster INTEGER NOT NULL DEFAULT 0 CHECK(show_public_roster IN (0, 1))'],
+  ['events:location_id', 'ALTER TABLE events ADD COLUMN location_id INTEGER REFERENCES locations(id) ON DELETE SET NULL'],
+  ['events:map_embed_url', 'ALTER TABLE events ADD COLUMN map_embed_url TEXT'],
+  ['events:map_link_url', 'ALTER TABLE events ADD COLUMN map_link_url TEXT'],
+  ['participants:party_members', 'ALTER TABLE participants ADD COLUMN party_members TEXT'],
+  ['responses:attendee_names', 'ALTER TABLE responses ADD COLUMN attendee_names TEXT']
+]);
+
+function addColumnIfMissing(db, tableName, columnName) {
   const columns = getTableColumns(db, tableName);
   if (!columns.has(columnName)) {
-    db.exec(`ALTER TABLE ${tableName} ADD COLUMN ${definition}`);
+    const statement = ADD_COLUMN_STATEMENTS.get(`${tableName}:${columnName}`);
+    if (!statement) {
+      throw new Error(`Unsupported migration column: ${tableName}.${columnName}`);
+    }
+    db.exec(statement);
   }
 }
 
@@ -173,16 +192,11 @@ const migrations = [
   {
     id: '002_event_public_fields',
     up(db) {
-      addColumnIfMissing(db, 'events', 'title', "title TEXT NOT NULL DEFAULT 'Dunedin Euchre Night'");
-      addColumnIfMissing(db, 'events', 'location_address', 'location_address TEXT');
-      addColumnIfMissing(db, 'events', 'map_image', 'map_image TEXT');
-      addColumnIfMissing(db, 'events', 'arrival_notes', 'arrival_notes TEXT');
-      addColumnIfMissing(
-        db,
-        'events',
-        'is_published',
-        'is_published INTEGER NOT NULL DEFAULT 0 CHECK(is_published IN (0, 1))'
-      );
+      addColumnIfMissing(db, 'events', 'title');
+      addColumnIfMissing(db, 'events', 'location_address');
+      addColumnIfMissing(db, 'events', 'map_image');
+      addColumnIfMissing(db, 'events', 'arrival_notes');
+      addColumnIfMissing(db, 'events', 'is_published');
 
       db.exec(`
         UPDATE events
@@ -205,13 +219,8 @@ const migrations = [
   {
     id: '004_event_public_slug_and_roster_visibility',
     up(db) {
-      addColumnIfMissing(db, 'events', 'public_slug', 'public_slug TEXT');
-      addColumnIfMissing(
-        db,
-        'events',
-        'show_public_roster',
-        'show_public_roster INTEGER NOT NULL DEFAULT 0 CHECK(show_public_roster IN (0, 1))'
-      );
+      addColumnIfMissing(db, 'events', 'public_slug');
+      addColumnIfMissing(db, 'events', 'show_public_roster');
 
       db.exec(`
         CREATE UNIQUE INDEX IF NOT EXISTS events_public_slug_unique
@@ -267,14 +276,9 @@ const migrations = [
         ON locations(name COLLATE NOCASE, address COLLATE NOCASE);
       `);
 
-      addColumnIfMissing(
-        db,
-        'events',
-        'location_id',
-        'location_id INTEGER REFERENCES locations(id) ON DELETE SET NULL'
-      );
-      addColumnIfMissing(db, 'events', 'map_embed_url', 'map_embed_url TEXT');
-      addColumnIfMissing(db, 'events', 'map_link_url', 'map_link_url TEXT');
+      addColumnIfMissing(db, 'events', 'location_id');
+      addColumnIfMissing(db, 'events', 'map_embed_url');
+      addColumnIfMissing(db, 'events', 'map_link_url');
 
       backfillManagedLocations(db);
     }
@@ -282,8 +286,8 @@ const migrations = [
   {
     id: '007_party_member_rsvps',
     up(db) {
-      addColumnIfMissing(db, 'participants', 'party_members', 'party_members TEXT');
-      addColumnIfMissing(db, 'responses', 'attendee_names', 'attendee_names TEXT');
+      addColumnIfMissing(db, 'participants', 'party_members');
+      addColumnIfMissing(db, 'responses', 'attendee_names');
 
       const participants = db.prepare(`
         SELECT id, name

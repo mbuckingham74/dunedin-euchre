@@ -1,6 +1,7 @@
 'use strict';
 
 const CACHE_NAME = 'dunedin-euchre-v2';
+const sameOriginFetch = self.fetch.bind(self);
 
 // App shell — static assets that can be served offline
 const APP_SHELL = [
@@ -43,13 +44,13 @@ self.addEventListener('fetch', event => {
   // App shell assets: cache-first
   if (APP_SHELL.includes(url.pathname)) {
     event.respondWith(
-      caches.match(event.request).then(cached => cached || fetch(event.request))
+      caches.match(event.request).then(cached => cached || sameOriginFetch(event.request))
     );
     return;
   }
 
   // HTML pages and API: network-first, no offline fallback (data must be fresh)
   event.respondWith(
-    fetch(event.request).catch(() => caches.match(event.request))
+    sameOriginFetch(event.request).catch(() => caches.match(event.request))
   );
 });

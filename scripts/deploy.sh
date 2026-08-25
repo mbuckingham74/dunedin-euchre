@@ -26,6 +26,16 @@ if [[ -n "$(git -C "$REPO_ROOT" status --porcelain)" ]]; then
   exit 1
 fi
 
+# Mandatory Foxguard pre-deployment gate. Runs locally against the committed
+# repository; nothing on the remote host is touched until Foxguard passes.
+# A scan violation, or Foxguard itself failing to run (missing tool, network,
+# malformed baseline), aborts deployment before any remote mutation. There is
+# no bypass.
+if ! npx foxguard --baseline foxguard-baseline.json .; then
+  echo "Foxguard pre-deployment gate FAILED. Deployment aborted; no remote changes were made." >&2
+  exit 1
+fi
+
 git -C "$REPO_ROOT" push origin main
 ssh "$REMOTE_HOST" "install -d -m 700 '$REMOTE_DIR'"
 rsync -az --delete -e ssh \

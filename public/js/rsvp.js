@@ -20,6 +20,7 @@ const isPairInvite = PARTY_MEMBERS.length === 2;
 const COMMENT_SAVE_DELAY_MS = 700;
 const CONFIRMATION_MODAL_DELAY_MS = 1600;
 const CONFIRMATION_THEMES = ['theme-yes', 'theme-no', 'theme-maybe'];
+const sameOriginFetch = window.fetch.bind(window);
 
 let canEdit = CAN_EDIT;
 let pendingMode = getModeFromState(selectedStatus, INITIAL_ATTENDEE_NAMES);
@@ -175,7 +176,12 @@ async function requestSave(options) {
   );
 
   try {
-    const resp = await fetch(RSVP_POST_PATH, {
+    const rsvpPostUrl = new URL(RSVP_POST_PATH, window.location.origin);
+    if (rsvpPostUrl.origin !== window.location.origin) {
+      throw new Error('Refusing to submit RSVP to another origin.');
+    }
+
+    const resp = await sameOriginFetch(rsvpPostUrl.pathname + rsvpPostUrl.search, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -534,38 +540,71 @@ function renderRoster(roster, myPid) {
     counts.none += (entry.pendingNames || []).length;
 
     const isMine = entry.id === myPid;
-    const statusHtml = entry.status === 'yes'
-      ? '<span class="status-pill pill-yes">✓ Yes</span>'
-      : entry.status === 'no'
-        ? '<span class="status-pill pill-no">✕ No</span>'
-        : entry.status === 'maybe'
-          ? '<span class="status-pill pill-maybe">? Maybe</span>'
-          : '<span class="status-pill pill-none">—</span>';
+    const status = ['yes', 'no', 'maybe'].includes(entry.status) ? entry.status : 'none';
+    const statusLabels = {
+      yes: ['pill-yes', '✓ Yes'],
+      no: ['pill-no', '✕ No'],
+      maybe: ['pill-maybe', '? Maybe'],
+      none: ['pill-none', '—']
+    };
 
-    const detailHtml = getRosterDetail(entry)
-      ? `<span class="roster-detail">${escHtml(getRosterDetail(entry))}</span>`
-      : '';
-    const commentHtml = entry.comment
-      ? `<span class="roster-comment">"${escHtml(entry.comment)}"</span>`
-      : '';
-    const youBadge = isMine ? '<span class="you-badge">You</span>' : '';
+    const item = document.createElement('li');
+    item.className = `roster-item roster-${status}${isMine ? ' roster-mine' : ''}`;
+    item.dataset.pid = String(entry.id);
 
-    return `<li class="roster-item roster-${entry.status || 'none'}${isMine ? ' roster-mine' : ''}" data-pid="${entry.id}">
-      <span class="roster-name">${escHtml(entry.name)}${youBadge}</span>
-      <span class="roster-status">${statusHtml}</span>
-      ${detailHtml}
-      ${commentHtml}
-    </li>`;
+    const name = document.createElement('span');
+    name.className = 'roster-name';
+    name.textContent = entry.name || '';
+    if (isMine) {
+      const youBadge = document.createElement('span');
+      youBadge.className = 'you-badge';
+      youBadge.textContent = 'You';
+      name.append(youBadge);
+    }
+    item.append(name);
+
+    const statusWrapper = document.createElement('span');
+    statusWrapper.className = 'roster-status';
+    const statusPill = document.createElement('span');
+    statusPill.className = `status-pill ${statusLabels[status][0]}`;
+    statusPill.textContent = statusLabels[status][1];
+    statusWrapper.append(statusPill);
+    item.append(statusWrapper);
+
+    const detail = getRosterDetail(entry);
+    if (detail) {
+      const detailEl = document.createElement('span');
+      detailEl.className = 'roster-detail';
+      detailEl.textContent = detail;
+      item.append(detailEl);
+    }
+
+    if (entry.comment) {
+      const comment = document.createElement('span');
+      comment.className = 'roster-comment';
+      comment.textContent = `"${entry.comment}"`;
+      item.append(comment);
+    }
+
+    return item;
   });
 
-  rosterList.innerHTML = items.join('');
+  rosterList.replaceChildren(...items);
 
   if (rosterCounts) {
-    rosterCounts.innerHTML =
-      `<span class="count-badge count-yes" title="Yes">${counts.yes} Yes</span>` +
-      `<span class="count-badge count-maybe" title="Maybe">${counts.maybe} Maybe</span>` +
-      `<span class="count-badge count-no" title="No">${counts.no} No</span>` +
-      `<span class="count-badge count-none" title="Not yet responded">${counts.none} Pending</span>`;
+    const countBadges = [
+      ['yes', 'Yes', 'Yes'],
+      ['maybe', 'Maybe', 'Maybe'],
+      ['no', 'No', 'No'],
+      ['none', 'Pending', 'Not yet responded']
+    ].map(([key, label, title]) => {
+      const badge = document.createElement('span');
+      badge.className = `count-badge count-${key}`;
+      badge.title = title;
+      badge.textContent = `${counts[key]} ${label}`;
+      return badge;
+    });
+    rosterCounts.replaceChildren(...countBadges);
   }
 }
 
@@ -603,13 +642,4 @@ function formatNameList(names) {
   if (normalized.length === 1) return normalized[0];
   if (normalized.length === 2) return `${normalized[0]} and ${normalized[1]}`;
   return `${normalized.slice(0, -1).join(', ')}, and ${normalized[normalized.length - 1]}`;
-}
-
-function escHtml(str) {
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
 }

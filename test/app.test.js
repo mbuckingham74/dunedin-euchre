@@ -1,6 +1,7 @@
 'use strict';
 
 const assert = require('node:assert/strict');
+const crypto = require('node:crypto');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -11,10 +12,10 @@ const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dunedin-euchre-'));
 process.env.DB_PATH = path.join(tempDir, 'test.db');
 process.env.UPLOADS_DIR = path.join(tempDir, 'uploads');
 process.env.NODE_ENV = 'test';
-process.env.SESSION_SECRET = 'test-session-secret';
+process.env.SESSION_SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
 process.env.ADMIN_EMAIL = 'admin@example.com';
 process.env.BASE_URL = 'http://127.0.0.1';
-process.env.RESEND_API_KEY = 're_test_key';
+process.env.RESEND_API_KEY = process.env.RESEND_API_KEY || `re_${crypto.randomBytes(24).toString('hex')}`;
 
 const emailServicePath = require.resolve('../services/email');
 delete require.cache[emailServicePath];
@@ -68,6 +69,7 @@ const {
   buildLocationMapEmbedUrl,
   buildLocationMapLinkUrl
 } = require('../services/locations');
+const { getFourthSaturdayDateKey } = require('../services/events');
 const {
   buildParticipantDisplayName,
   getParticipantPartyMembers
@@ -97,7 +99,7 @@ function withHeader(headers, name, value) {
 }
 
 async function fetchAdminCsrfToken(cookie) {
-  const response = await nativeFetch(cookie ? `${baseUrl}/admin/dashboard` : `${baseUrl}/admin`, {
+  const response = await nativeFetch(getSafeTestUrl(cookie ? '/admin/dashboard' : '/admin'), {
     headers: cookie ? { cookie } : {},
     redirect: 'follow'
   });
@@ -112,8 +114,39 @@ async function fetchAdminCsrfToken(cookie) {
   };
 }
 
-global.fetch = async function fetchWithAdminCsrf(input, init = undefined) {
+function getSafeTestUrl(input) {
   const requestUrl = typeof input === 'string' ? input : input.url;
+  if (!baseUrl || !requestUrl) {
+    throw new Error('Test requests require a configured local server URL.');
+  }
+
+  const parsedUrl = new URL(requestUrl, baseUrl);
+  const expectedOrigin = new URL(baseUrl);
+  if (parsedUrl.origin !== expectedOrigin.origin || parsedUrl.hostname !== '127.0.0.1') {
+    throw new Error(`Refusing test request outside the local server: ${parsedUrl.origin}`);
+  }
+  return parsedUrl.href;
+}
+
+function getNextScheduledDateKey() {
+  const today = new Date();
+  const todayKey = [
+    today.getFullYear(),
+    String(today.getMonth() + 1).padStart(2, '0'),
+    String(today.getDate()).padStart(2, '0')
+  ].join('-');
+
+  for (let monthOffset = 0; monthOffset < 12; monthOffset += 1) {
+    const month = new Date(today.getFullYear(), today.getMonth() + monthOffset, 1);
+    const dateKey = getFourthSaturdayDateKey(month.getFullYear(), month.getMonth());
+    if (dateKey >= todayKey) return dateKey;
+  }
+
+  throw new Error('Could not determine an upcoming scheduled date for the test.');
+}
+
+async function request(input, init = undefined) {
+  const requestUrl = getSafeTestUrl(input);
   const requestInit = init ? { ...init } : {};
   const requestHeaders = requestInit.headers || (typeof input === 'string' ? undefined : input.headers);
   const method = String(requestInit.method || (typeof input === 'string' ? 'GET' : input.method || 'GET')).toUpperCase();
@@ -125,7 +158,7 @@ global.fetch = async function fetchWithAdminCsrf(input, init = undefined) {
     ['GET', 'HEAD', 'OPTIONS'].includes(method) ||
     getHeaderValue(requestHeaders, 'x-csrf-token')
   ) {
-    return nativeFetch(input, init);
+    return nativeFetch(requestUrl, init);
   }
 
   const existingCookie = getHeaderValue(requestHeaders, 'cookie');
@@ -136,7 +169,9 @@ global.fetch = async function fetchWithAdminCsrf(input, init = undefined) {
   }
 
   return nativeFetch(requestUrl, requestInit);
-};
+}
+
+global.fetch = request;
 
 function resetUploadsDirectory() {
   fs.rmSync(process.env.UPLOADS_DIR, { recursive: true, force: true });
@@ -308,11 +343,11 @@ function insertResponse(participantId, eventId, overrides = {}) {
 }
 
 async function signInAsAdmin() {
-  const token = `admin-token-${Date.now()}`;
+  const adminCredential = crypto.randomBytes(16).toString('hex');
   const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
-  db.prepare('INSERT INTO admin_tokens (token, expires_at, used) VALUES (?, ?, 0)').run(token, expiresAt);
+  db.prepare('INSERT INTO admin_tokens (token, expires_at, used) VALUES (?, ?, 0)').run(adminCredential, expiresAt);
 
-  const response = await fetch(`${baseUrl}/admin/auth/${token}`, {
+  const response = await request(`${baseUrl}/admin/auth/${adminCredential}`, {
     redirect: 'manual'
   });
 
@@ -350,7 +385,7 @@ test.beforeEach(() => {
 });
 
 test('root shows the landing page instead of redirecting to admin', async () => {
-  const response = await fetch(`${baseUrl}/`, {
+  const response = await request(`${baseUrl}/`, {
     redirect: 'manual'
   });
   const body = await response.text();
@@ -368,7 +403,7 @@ test.after(async () => {
 });
 
 test('health endpoint returns ok', async () => {
-  const response = await fetch(`${baseUrl}/healthz`);
+  const response = await request(`${baseUrl}/healthz`);
 
   assert.equal(response.status, 200);
   assert.deepEqual(await response.json(), { ok: true });
@@ -379,7 +414,7 @@ test('event-scoped RSVP submissions write to the invited event', async () => {
   const olderEvent = insertEvent({ event_date: '2999-04-15' });
   insertEvent({ event_date: '2999-05-15' });
 
-  const response = await fetch(`${baseUrl}${buildRsvpPath(participant, olderEvent)}`, {
+  const response = await request(`${baseUrl}${buildRsvpPath(participant, olderEvent)}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ status: 'yes', comment: 'See you there' })
@@ -403,7 +438,7 @@ test('rsvp page explains auto-save and renders the confirmation modal shell', as
   const participant = insertParticipant();
   const event = insertEvent({ event_date: '2999-04-15' });
 
-  const response = await fetch(`${baseUrl}${buildRsvpPath(participant, event)}`);
+  const response = await request(`${baseUrl}${buildRsvpPath(participant, event)}`);
   const body = await response.text();
 
   assert.equal(response.status, 200);
@@ -427,7 +462,7 @@ test('party invite responses can confirm one attendee or both attendees for the 
     show_public_roster: 1
   });
 
-  const invitePageResponse = await fetch(`${baseUrl}${buildRsvpPath(participant, event)}`);
+  const invitePageResponse = await request(`${baseUrl}${buildRsvpPath(participant, event)}`);
   const invitePageHtml = await invitePageResponse.text();
 
   assert.equal(invitePageResponse.status, 200);
@@ -436,7 +471,7 @@ test('party invite responses can confirm one attendee or both attendees for the 
   assert.match(invitePageHtml, /Charlie will attend/);
   assert.match(invitePageHtml, /None of us can attend/);
 
-  const firstResponse = await fetch(`${baseUrl}${buildRsvpPath(participant, event)}`, {
+  const firstResponse = await request(`${baseUrl}${buildRsvpPath(participant, event)}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -460,9 +495,9 @@ test('party invite responses can confirm one attendee or both attendees for the 
     }
   );
 
-  const firstInviteResponse = await fetch(`${baseUrl}${buildRsvpPath(participant, event)}`);
+  const firstInviteResponse = await request(`${baseUrl}${buildRsvpPath(participant, event)}`);
   const inviteCookie = getSessionCookie(firstInviteResponse);
-  const firstEventResponse = await fetch(`${baseUrl}/e/${event.public_slug}`, {
+  const firstEventResponse = await request(`${baseUrl}/e/${event.public_slug}`, {
     headers: { cookie: inviteCookie }
   });
   const firstBody = await firstEventResponse.text();
@@ -476,7 +511,7 @@ test('party invite responses can confirm one attendee or both attendees for the 
   assert.match(firstBody, /Charlie/);
   assert.match(firstBody, /Coming: Pam\. Not attending: Charlie\./);
 
-  const secondResponse = await fetch(`${baseUrl}${buildRsvpPath(participant, event)}`, {
+  const secondResponse = await request(`${baseUrl}${buildRsvpPath(participant, event)}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -500,7 +535,7 @@ test('party invite responses can confirm one attendee or both attendees for the 
     }
   );
 
-  const eventResponse = await fetch(`${baseUrl}/e/${event.public_slug}`, {
+  const eventResponse = await request(`${baseUrl}/e/${event.public_slug}`, {
     headers: { cookie: inviteCookie }
   });
   const body = await eventResponse.text();
@@ -539,7 +574,7 @@ test('RSVP updates are blocked after the event start time', async () => {
     end_time: '21:00'
   });
 
-  const response = await fetch(`${baseUrl}${buildRsvpPath(participant, event)}`, {
+  const response = await request(`${baseUrl}${buildRsvpPath(participant, event)}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ status: 'yes', attendeeNames: ['Alice Example'] })
@@ -597,14 +632,14 @@ test('published event pages require invite access and /event/:id stays as a gate
   insertResponse(yesParticipant.id, event.id, { status: 'yes', comment: 'I can bring snacks.' });
   insertResponse(noParticipant.id, event.id, { status: 'no', comment: 'Out of town.' });
 
-  const anonymousResponse = await fetch(`${baseUrl}/e/${event.public_slug}`);
-  const rsvpResponse = await fetch(`${baseUrl}${buildRsvpPath(yesParticipant, event)}`);
+  const anonymousResponse = await request(`${baseUrl}/e/${event.public_slug}`);
+  const rsvpResponse = await request(`${baseUrl}${buildRsvpPath(yesParticipant, event)}`);
   const inviteCookie = getSessionCookie(rsvpResponse);
-  const response = await fetch(`${baseUrl}/e/${event.public_slug}`, {
+  const response = await request(`${baseUrl}/e/${event.public_slug}`, {
     headers: { cookie: inviteCookie }
   });
   const body = await response.text();
-  const fallbackResponse = await fetch(`${baseUrl}/event/${event.id}`, {
+  const fallbackResponse = await request(`${baseUrl}/event/${event.id}`, {
     headers: { cookie: inviteCookie }
   });
 
@@ -632,7 +667,7 @@ test('published event pages require invite access and /event/:id stays as a gate
 test('unpublished events are not publicly accessible', async () => {
   const event = insertEvent({ is_published: 0 });
 
-  const response = await fetch(`${baseUrl}/event/${event.id}`);
+  const response = await request(`${baseUrl}/event/${event.id}`);
 
   assert.equal(response.status, 404);
 });
@@ -650,9 +685,9 @@ test('invite-only event page does not expose freeform RSVP comments', async () =
     comment: 'Please save me the quiet corner table.'
   });
 
-  const inviteResponse = await fetch(`${baseUrl}${buildRsvpPath(participant, event)}`);
+  const inviteResponse = await request(`${baseUrl}${buildRsvpPath(participant, event)}`);
   const inviteCookie = getSessionCookie(inviteResponse);
-  const response = await fetch(`${baseUrl}/event/${event.id}`, {
+  const response = await request(`${baseUrl}/event/${event.id}`, {
     headers: { cookie: inviteCookie }
   });
   const body = await response.text();
@@ -685,9 +720,9 @@ test('invite-only event page can hide attendee names while still showing RSVP su
     comment: 'I need to confirm with my ride.'
   });
 
-  const inviteResponse = await fetch(`${baseUrl}${buildRsvpPath(yesParticipant, event)}`);
+  const inviteResponse = await request(`${baseUrl}${buildRsvpPath(yesParticipant, event)}`);
   const inviteCookie = getSessionCookie(inviteResponse);
-  const response = await fetch(`${baseUrl}/e/${event.public_slug}`, {
+  const response = await request(`${baseUrl}/e/${event.public_slug}`, {
     headers: { cookie: inviteCookie }
   });
   const body = await response.text();
@@ -709,7 +744,7 @@ test('legacy participant-wide RSVP links are rejected', async () => {
   insertEvent({ event_date: '2026-04-15' });
   insertEvent({ event_date: '2026-05-15' });
 
-  const response = await fetch(`${baseUrl}/rsvp/${participant.rsvp_token}`, {
+  const response = await request(`${baseUrl}/rsvp/${participant.rsvp_token}`, {
     redirect: 'manual'
   });
 
@@ -722,7 +757,7 @@ test('legacy participant-wide RSVP links cannot open an event directly anymore',
   const participant = insertParticipant();
   const event = insertEvent({ event_date: '2026-04-15' });
 
-  const response = await fetch(`${baseUrl}/rsvp/${participant.rsvp_token}/${event.id}`, {
+  const response = await request(`${baseUrl}/rsvp/${participant.rsvp_token}/${event.id}`, {
     redirect: 'manual'
   });
   const body = await response.text();
@@ -743,10 +778,10 @@ test('RSVP and event pages send no-referrer headers and RSVP pages use no-referr
     is_published: 1
   });
 
-  const rsvpResponse = await fetch(`${baseUrl}${buildRsvpPath(participant, event)}`);
+  const rsvpResponse = await request(`${baseUrl}${buildRsvpPath(participant, event)}`);
   const rsvpBody = await rsvpResponse.text();
   const inviteCookie = getSessionCookie(rsvpResponse);
-  const eventResponse = await fetch(`${baseUrl}/e/${event.public_slug}`, {
+  const eventResponse = await request(`${baseUrl}/e/${event.public_slug}`, {
     headers: { cookie: inviteCookie }
   });
 
@@ -763,7 +798,7 @@ test('admin dashboard disables caching and uses versioned asset URLs', async () 
   const event = insertEvent({ event_date: '2999-04-15' });
   const cookie = await signInAsAdmin();
 
-  const response = await fetch(`${baseUrl}/admin/dashboard?eventId=${event.id}`, {
+  const response = await request(`${baseUrl}/admin/dashboard?eventId=${event.id}`, {
     headers: { cookie }
   });
   const body = await response.text();
@@ -782,7 +817,7 @@ test('requesting a magic link does not invalidate another outstanding token', as
   db.prepare('INSERT INTO admin_tokens (token, expires_at, used) VALUES (?, ?, 0)')
     .run(existingToken, expiresAt);
 
-  const response = await fetch(`${baseUrl}/admin/request-link`, {
+  const response = await request(`${baseUrl}/admin/request-link`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({ email: 'admin@example.com' })
@@ -799,7 +834,7 @@ test('participant create route reactivates instead of duplicating an existing em
   insertParticipant({ name: 'Old Name', active: 0 });
   const cookie = await signInAsAdmin();
 
-  const response = await fetch(`${baseUrl}/admin/participants`, {
+  const response = await request(`${baseUrl}/admin/participants`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
@@ -833,7 +868,7 @@ test('participant create route stores party member names for shared invites', as
   body.append('party_member_names', 'Pam');
   body.append('party_member_names', 'Charlie');
 
-  const response = await fetch(`${baseUrl}/admin/participants`, {
+  const response = await request(`${baseUrl}/admin/participants`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
@@ -870,7 +905,7 @@ test('admin can manually update a participant RSVP for a selected event after in
   });
   const cookie = await signInAsAdmin();
 
-  const pageResponse = await fetch(`${baseUrl}/admin/participants?eventId=${event.id}`, {
+  const pageResponse = await request(`${baseUrl}/admin/participants?eventId=${event.id}`, {
     headers: { cookie }
   });
   const csrfToken = extractCsrfToken(await pageResponse.text());
@@ -882,7 +917,7 @@ test('admin can manually update a participant RSVP for a selected event after in
   responseBody.set('comment', 'Pam called mom.');
   responseBody.append('attendee_names', 'Pam');
 
-  const response = await fetch(`${baseUrl}/admin/participants/${participant.id}/response`, {
+  const response = await request(`${baseUrl}/admin/participants/${participant.id}/response`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
@@ -921,12 +956,12 @@ test('admin can clear a participant RSVP back to no response', async () => {
   });
   const cookie = await signInAsAdmin();
 
-  const pageResponse = await fetch(`${baseUrl}/admin/participants?eventId=${event.id}`, {
+  const pageResponse = await request(`${baseUrl}/admin/participants?eventId=${event.id}`, {
     headers: { cookie }
   });
   const csrfToken = extractCsrfToken(await pageResponse.text());
 
-  const response = await fetch(`${baseUrl}/admin/participants/${participant.id}/response`, {
+  const response = await request(`${baseUrl}/admin/participants/${participant.id}/response`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
@@ -962,7 +997,7 @@ test('admin RSVP override shows a validation error when no valid attendee is sel
   });
   const cookie = await signInAsAdmin();
 
-  const pageResponse = await fetch(`${baseUrl}/admin/participants?eventId=${event.id}`, {
+  const pageResponse = await request(`${baseUrl}/admin/participants?eventId=${event.id}`, {
     headers: { cookie }
   });
   const csrfToken = extractCsrfToken(await pageResponse.text());
@@ -973,7 +1008,7 @@ test('admin RSVP override shows a validation error when no valid attendee is sel
   responseBody.set('status', 'yes');
   responseBody.append('attendee_names', 'Someone Else');
 
-  const response = await fetch(`${baseUrl}/admin/participants/${participant.id}/response`, {
+  const response = await request(`${baseUrl}/admin/participants/${participant.id}/response`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
@@ -991,7 +1026,7 @@ test('admin RSVP override shows a validation error when no valid attendee is sel
     0
   );
 
-  const redirectedResponse = await fetch(`${baseUrl}/admin/participants?eventId=${event.id}`, {
+  const redirectedResponse = await request(`${baseUrl}/admin/participants?eventId=${event.id}`, {
     headers: { cookie }
   });
   const redirectedBody = await redirectedResponse.text();
@@ -1012,7 +1047,7 @@ test('admin preview route opens the selected participant RSVP page for an event'
   });
   const cookie = await signInAsAdmin();
 
-  const response = await fetch(`${baseUrl}/admin/event/${event.id}/preview?participantId=${participant.id}`, {
+  const response = await request(`${baseUrl}/admin/event/${event.id}/preview?participantId=${participant.id}`, {
     headers: { cookie },
     redirect: 'manual'
   });
@@ -1038,7 +1073,7 @@ test('admin preview route defaults to the first active participant when none is 
   });
   const cookie = await signInAsAdmin();
 
-  const response = await fetch(`${baseUrl}/admin/event/${event.id}/preview`, {
+  const response = await request(`${baseUrl}/admin/event/${event.id}/preview`, {
     headers: { cookie }
   });
 
@@ -1063,7 +1098,7 @@ test('invite preview page shows the invitee view with the final send action', as
   });
   const cookie = await signInAsAdmin();
 
-  const response = await fetch(`${baseUrl}/admin/event/${event.id}/invite-preview?participantId=${participant.id}`, {
+  const response = await request(`${baseUrl}/admin/event/${event.id}/invite-preview?participantId=${participant.id}`, {
     headers: { cookie }
   });
 
@@ -1110,7 +1145,7 @@ test('admin can queue the default day-before reminder for invite recipients', as
   });
   const cookie = await signInAsAdmin();
 
-  const response = await fetch(`${baseUrl}/admin/event/${event.id}/schedule-reminder`, {
+  const response = await request(`${baseUrl}/admin/event/${event.id}/schedule-reminder`, {
     method: 'POST',
     headers: { cookie },
     redirect: 'manual'
@@ -1147,7 +1182,7 @@ test('dashboard edit links point to the dedicated event editor', async () => {
   });
   const cookie = await signInAsAdmin();
 
-  const response = await fetch(`${baseUrl}/admin/dashboard?eventId=${event.id}`, {
+  const response = await request(`${baseUrl}/admin/dashboard?eventId=${event.id}`, {
     headers: { cookie }
   });
 
@@ -1174,7 +1209,7 @@ test('event edit page includes the invitee list and preview workflow actions', a
   });
   const cookie = await signInAsAdmin();
 
-  const response = await fetch(`${baseUrl}/admin/event/${event.id}/edit`, {
+  const response = await request(`${baseUrl}/admin/event/${event.id}/edit`, {
     headers: { cookie }
   });
 
@@ -1202,7 +1237,7 @@ test('admin can add a participant from the event edit page and immediately send 
   });
   const cookie = await signInAsAdmin();
 
-  const pageResponse = await fetch(`${baseUrl}/admin/event/${event.id}/edit`, {
+  const pageResponse = await request(`${baseUrl}/admin/event/${event.id}/edit`, {
     headers: { cookie }
   });
   const csrfToken = extractCsrfToken(await pageResponse.text());
@@ -1214,7 +1249,7 @@ test('admin can add a participant from the event edit page and immediately send 
   body.append('party_member_names', 'Charlie');
   body.set('quick_invite_action', 'add-and-send');
 
-  const response = await fetch(`${baseUrl}/admin/event/${event.id}/quick-add-participant`, {
+  const response = await request(`${baseUrl}/admin/event/${event.id}/quick-add-participant`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
@@ -1260,7 +1295,7 @@ test('admin can add a participant from the event edit page without sending an in
   });
   const cookie = await signInAsAdmin();
 
-  const pageResponse = await fetch(`${baseUrl}/admin/event/${event.id}/edit`, {
+  const pageResponse = await request(`${baseUrl}/admin/event/${event.id}/edit`, {
     headers: { cookie }
   });
   const csrfToken = extractCsrfToken(await pageResponse.text());
@@ -1271,7 +1306,7 @@ test('admin can add a participant from the event edit page without sending an in
   body.append('party_member_names', 'New Invitee');
   body.set('quick_invite_action', 'add-only');
 
-  const response = await fetch(`${baseUrl}/admin/event/${event.id}/quick-add-participant`, {
+  const response = await request(`${baseUrl}/admin/event/${event.id}/quick-add-participant`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
@@ -1318,7 +1353,7 @@ test('admin can send an existing event invite to two selected participants from 
   });
   const cookie = await signInAsAdmin();
 
-  const pageResponse = await fetch(`${baseUrl}/admin/event/${event.id}/edit`, {
+  const pageResponse = await request(`${baseUrl}/admin/event/${event.id}/edit`, {
     headers: { cookie }
   });
   const csrfToken = extractCsrfToken(await pageResponse.text());
@@ -1328,7 +1363,7 @@ test('admin can send an existing event invite to two selected participants from 
   body.append('participant_ids', String(firstParticipant.id));
   body.append('participant_ids', String(secondParticipant.id));
 
-  const response = await fetch(`${baseUrl}/admin/event/${event.id}/send-selected-invites`, {
+  const response = await request(`${baseUrl}/admin/event/${event.id}/send-selected-invites`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
@@ -1384,7 +1419,7 @@ test('event edit quick invite rejects more than two selected participants', asyn
   });
   const cookie = await signInAsAdmin();
 
-  const pageResponse = await fetch(`${baseUrl}/admin/event/${event.id}/edit`, {
+  const pageResponse = await request(`${baseUrl}/admin/event/${event.id}/edit`, {
     headers: { cookie }
   });
   const csrfToken = extractCsrfToken(await pageResponse.text());
@@ -1395,7 +1430,7 @@ test('event edit quick invite rejects more than two selected participants', asyn
   body.append('participant_ids', String(secondParticipant.id));
   body.append('participant_ids', String(thirdParticipant.id));
 
-  const response = await fetch(`${baseUrl}/admin/event/${event.id}/send-selected-invites`, {
+  const response = await request(`${baseUrl}/admin/event/${event.id}/send-selected-invites`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
@@ -1409,7 +1444,7 @@ test('event edit quick invite rejects more than two selected participants', asyn
   assert.equal(response.headers.get('location'), `/admin/event/${event.id}/edit#quick-invite`);
   assert.equal(sentRsvpInvites.length, 0);
 
-  const redirectedResponse = await fetch(`${baseUrl}/admin/event/${event.id}/edit`, {
+  const redirectedResponse = await request(`${baseUrl}/admin/event/${event.id}/edit`, {
     headers: { cookie }
   });
   const redirectedBody = await redirectedResponse.text();
@@ -1425,7 +1460,7 @@ test('legacy dashboard edit query redirects to the dedicated event editor', asyn
   });
   const cookie = await signInAsAdmin();
 
-  const response = await fetch(`${baseUrl}/admin/dashboard?eventId=${event.id}&edit=1`, {
+  const response = await request(`${baseUrl}/admin/dashboard?eventId=${event.id}&edit=1`, {
     headers: { cookie },
     redirect: 'manual'
   });
@@ -1447,7 +1482,7 @@ test('edit event preview action saves changes and redirects to invite preview', 
   });
   const cookie = await signInAsAdmin();
 
-  const response = await fetch(`${baseUrl}/admin/event/${event.id}/update`, {
+  const response = await request(`${baseUrl}/admin/event/${event.id}/update`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
@@ -1490,7 +1525,7 @@ test('admin can send a single test invite without notifying the full roster', as
   });
   const cookie = await signInAsAdmin();
 
-  const response = await fetch(`${baseUrl}/admin/event/${event.id}/test-invite`, {
+  const response = await request(`${baseUrl}/admin/event/${event.id}/test-invite`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
@@ -1558,7 +1593,7 @@ test('invite delivery page shows live status for each participant', async () => 
   });
   const cookie = await signInAsAdmin();
 
-  const response = await fetch(`${baseUrl}/admin/event/${event.id}/invite-status`, {
+  const response = await request(`${baseUrl}/admin/event/${event.id}/invite-status`, {
     headers: { cookie }
   });
 
@@ -1585,7 +1620,7 @@ test('admin can send a single live invite from the invite delivery page', async 
   });
   const cookie = await signInAsAdmin();
 
-  const response = await fetch(`${baseUrl}/admin/event/${event.id}/send-invite`, {
+  const response = await request(`${baseUrl}/admin/event/${event.id}/send-invite`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
@@ -1635,7 +1670,7 @@ test('dashboard shows the full roster even when no event is selected', async () 
   });
   const cookie = await signInAsAdmin();
 
-  const response = await fetch(`${baseUrl}/admin/dashboard`, {
+  const response = await request(`${baseUrl}/admin/dashboard`, {
     headers: { cookie }
   });
 
@@ -1680,7 +1715,7 @@ test('dashboard can delete an event and return to the empty state', async () => 
   });
   const cookie = await signInAsAdmin();
 
-  const response = await fetch(`${baseUrl}/admin/event/${event.id}/delete`, {
+  const response = await request(`${baseUrl}/admin/event/${event.id}/delete`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
@@ -1704,7 +1739,7 @@ test('dashboard can delete an event and return to the empty state', async () => 
   assert.equal(fs.existsSync(venueImagePath), false);
   assert.equal(fs.existsSync(mapImagePath), false);
 
-  const dashboardResponse = await fetch(`${baseUrl}/admin/dashboard`, {
+  const dashboardResponse = await request(`${baseUrl}/admin/dashboard`, {
     headers: { cookie }
   });
   const body = await dashboardResponse.text();
@@ -1733,7 +1768,7 @@ test('roster page shows the global invite list from the database', async () => {
   });
   const cookie = await signInAsAdmin();
 
-  const response = await fetch(`${baseUrl}/admin/roster`, {
+  const response = await request(`${baseUrl}/admin/roster`, {
     headers: { cookie }
   });
 
@@ -1756,7 +1791,7 @@ test('roster page shows the global invite list from the database', async () => {
 test('participants page exposes the add-member anchor for roster shortcuts', async () => {
   const cookie = await signInAsAdmin();
 
-  const response = await fetch(`${baseUrl}/admin/participants`, {
+  const response = await request(`${baseUrl}/admin/participants`, {
     headers: { cookie }
   });
 
@@ -1791,7 +1826,7 @@ test('testing workspace is available from admin and shows the end-to-end tools',
   });
   const cookie = await signInAsAdmin();
 
-  const response = await fetch(`${baseUrl}/admin/testing?eventId=${event.id}&participantId=${participant.id}`, {
+  const response = await request(`${baseUrl}/admin/testing?eventId=${event.id}&participantId=${participant.id}`, {
     headers: { cookie }
   });
 
@@ -1828,7 +1863,7 @@ test('testing workspace defaults to Mike Buckingham when he is on the active ros
   });
   const cookie = await signInAsAdmin();
 
-  const response = await fetch(`${baseUrl}/admin/testing?eventId=${event.id}`, {
+  const response = await request(`${baseUrl}/admin/testing?eventId=${event.id}`, {
     headers: { cookie }
   });
 
@@ -1853,7 +1888,7 @@ test('testing workspace can create a standalone test event without any real even
   });
   const cookie = await signInAsAdmin();
 
-  const pageResponse = await fetch(`${baseUrl}/admin/testing`, {
+  const pageResponse = await request(`${baseUrl}/admin/testing`, {
     headers: { cookie }
   });
   const pageBody = await pageResponse.text();
@@ -1863,7 +1898,7 @@ test('testing workspace can create a standalone test event without any real even
   assert.match(pageBody, /This does <strong>not<\/strong> create a live event\./);
   assert.doesNotMatch(pageBody, /Create a regular event first/);
 
-  const response = await fetch(`${baseUrl}/admin/testing/create-event`, {
+  const response = await request(`${baseUrl}/admin/testing/create-event`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
@@ -1916,7 +1951,7 @@ test('testing workspace can clone an event into a fresh test copy', async () => 
   });
   const cookie = await signInAsAdmin();
 
-  const response = await fetch(`${baseUrl}/admin/testing/create-event`, {
+  const response = await request(`${baseUrl}/admin/testing/create-event`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
@@ -1985,7 +2020,7 @@ test('testing workspace can reset responses for a test event only', async () => 
   });
   const cookie = await signInAsAdmin();
 
-  const response = await fetch(`${baseUrl}/admin/testing/reset-event`, {
+  const response = await request(`${baseUrl}/admin/testing/reset-event`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
@@ -2013,7 +2048,7 @@ test('dashboard redirects test events back to the testing workspace', async () =
   });
   const cookie = await signInAsAdmin();
 
-  const response = await fetch(`${baseUrl}/admin/dashboard?eventId=${event.id}`, {
+  const response = await request(`${baseUrl}/admin/dashboard?eventId=${event.id}`, {
     headers: { cookie },
     redirect: 'manual'
   });
@@ -2033,7 +2068,7 @@ test('events schedule hides test events from the normal admin workflow', async (
   });
   const cookie = await signInAsAdmin();
 
-  const response = await fetch(`${baseUrl}/admin/events`, {
+  const response = await request(`${baseUrl}/admin/events`, {
     headers: { cookie }
   });
   const body = await response.text();
@@ -2046,7 +2081,7 @@ test('events schedule hides test events from the normal admin workflow', async (
 test('admin event create and update routes persist slug settings and keep old slug links working after removal', async () => {
   const cookie = await signInAsAdmin();
 
-  const createResponse = await fetch(`${baseUrl}/admin/event`, {
+  const createResponse = await request(`${baseUrl}/admin/event`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
@@ -2080,7 +2115,7 @@ test('admin event create and update routes persist slug settings and keep old sl
   });
 
   const eventId = db.prepare('SELECT id FROM events WHERE title = ?').get('Summer Social').id;
-  const updateResponse = await fetch(`${baseUrl}/admin/event/${eventId}/update`, {
+  const updateResponse = await request(`${baseUrl}/admin/event/${eventId}/update`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
@@ -2112,11 +2147,11 @@ test('admin event create and update routes persist slug settings and keep old sl
     show_public_roster: 0
   });
 
-  const oldSlugResponse = await fetch(`${baseUrl}/e/summer-social-2026`, {
+  const oldSlugResponse = await request(`${baseUrl}/e/summer-social-2026`, {
     headers: { cookie },
     redirect: 'manual'
   });
-  const dashboardResponse = await fetch(`${baseUrl}/admin/dashboard?eventId=${eventId}`, {
+  const dashboardResponse = await request(`${baseUrl}/admin/dashboard?eventId=${eventId}`, {
     headers: { cookie }
   });
   const dashboardBody = await dashboardResponse.text();
@@ -2138,7 +2173,7 @@ test('changing a slug keeps older public slug links working via redirect', async
     show_public_roster: 1
   });
 
-  const updateResponse = await fetch(`${baseUrl}/admin/event/${event.id}/update`, {
+  const updateResponse = await request(`${baseUrl}/admin/event/${event.id}/update`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
@@ -2161,14 +2196,14 @@ test('changing a slug keeps older public slug links working via redirect', async
 
   assert.equal(updateResponse.status, 302);
 
-  const oldSlugResponse = await fetch(`${baseUrl}/e/spring-social`, {
+  const oldSlugResponse = await request(`${baseUrl}/e/spring-social`, {
     headers: { cookie },
     redirect: 'manual'
   });
-  const currentSlugResponse = await fetch(`${baseUrl}/e/summer-social`, {
+  const currentSlugResponse = await request(`${baseUrl}/e/summer-social`, {
     headers: { cookie }
   });
-  const dashboardResponse = await fetch(`${baseUrl}/admin/dashboard?eventId=${event.id}`, {
+  const dashboardResponse = await request(`${baseUrl}/admin/dashboard?eventId=${event.id}`, {
     headers: { cookie }
   });
   const dashboardBody = await dashboardResponse.text();
@@ -2193,7 +2228,7 @@ test('admin event routes reject duplicate public slugs, including older redirect
   `).run(existing.id, 'spring-social');
   const cookie = await signInAsAdmin();
 
-  const response = await fetch(`${baseUrl}/admin/event`, {
+  const response = await request(`${baseUrl}/admin/event`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
@@ -2218,7 +2253,7 @@ test('admin event routes reject duplicate public slugs, including older redirect
 test('admin event slug handling transliterates unicode and rejects reserved route slugs', async () => {
   const cookie = await signInAsAdmin();
 
-  const transliteratedResponse = await fetch(`${baseUrl}/admin/event`, {
+  const transliteratedResponse = await request(`${baseUrl}/admin/event`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
@@ -2245,7 +2280,7 @@ test('admin event slug handling transliterates unicode and rejects reserved rout
     public_slug: 'cafe-social-2026'
   });
 
-  const reservedResponse = await fetch(`${baseUrl}/admin/event`, {
+  const reservedResponse = await request(`${baseUrl}/admin/event`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
@@ -2273,7 +2308,7 @@ test('admin event slug handling transliterates unicode and rejects reserved rout
 
 test('location manager saves reusable venues and gated event pages render the embedded map', async () => {
   const cookie = await signInAsAdmin();
-  const createLocationResponse = await fetch(`${baseUrl}/admin/locations`, {
+  const createLocationResponse = await request(`${baseUrl}/admin/locations`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
@@ -2297,7 +2332,7 @@ test('location manager saves reusable venues and gated event pages render the em
   assert.match(location.map_embed_url, /google\.com\/maps\?output=embed/);
   assert.match(location.map_link_url, /google\.com\/maps\/search/);
 
-  const createEventResponse = await fetch(`${baseUrl}/admin/event`, {
+  const createEventResponse = await request(`${baseUrl}/admin/event`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
@@ -2330,7 +2365,7 @@ test('location manager saves reusable venues and gated event pages render the em
     map_link_url: location.map_link_url
   });
 
-  const eventPageResponse = await fetch(`${baseUrl}/event/${event.id}`, {
+  const eventPageResponse = await request(`${baseUrl}/event/${event.id}`, {
     headers: { cookie }
   });
   const body = await eventPageResponse.text();
@@ -2349,7 +2384,7 @@ test('location manager page lists saved locations before the create form and kee
     name: 'Harbor Hall'
   });
 
-  const response = await fetch(`${baseUrl}/admin/locations`, {
+  const response = await request(`${baseUrl}/admin/locations`, {
     headers: { cookie }
   });
   const body = await response.text();
@@ -2370,7 +2405,7 @@ test('location manager update can remove an existing venue photo and delete the 
 
   fs.writeFileSync(locationPath, 'old location image');
 
-  const response = await fetch(`${baseUrl}/admin/locations/${location.id}/update`, {
+  const response = await request(`${baseUrl}/admin/locations/${location.id}/update`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
@@ -2410,7 +2445,7 @@ test('location manager update deletes replaced venue photos after a new upload s
   form.set('address', location.address);
   form.set('location_image', new Blob(['new location image'], { type: 'image/png' }), 'new-location.png');
 
-  const response = await fetch(`${baseUrl}/admin/locations/${location.id}/update`, {
+  const response = await request(`${baseUrl}/admin/locations/${location.id}/update`, {
     method: 'POST',
     headers: { cookie },
     body: form,
@@ -2439,7 +2474,7 @@ test('location manager delete removes an unused saved location and its photo fil
   const locationPath = path.join(process.env.UPLOADS_DIR, location.location_image);
   fs.writeFileSync(locationPath, 'old hall image');
 
-  const response = await fetch(`${baseUrl}/admin/locations/${location.id}/delete`, {
+  const response = await request(`${baseUrl}/admin/locations/${location.id}/delete`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
@@ -2474,7 +2509,7 @@ test('location manager delete preserves event venue snapshots for locations alre
     map_link_url: location.map_link_url
   });
 
-  const response = await fetch(`${baseUrl}/admin/locations/${location.id}/delete`, {
+  const response = await request(`${baseUrl}/admin/locations/${location.id}/delete`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
@@ -2508,7 +2543,7 @@ test('stats page shows a placeholder instead of 1.0 for participants with no res
   insertEvent();
   const cookie = await signInAsAdmin();
 
-  const response = await fetch(`${baseUrl}/admin/stats`, {
+  const response = await request(`${baseUrl}/admin/stats`, {
     headers: { cookie }
   });
 
@@ -2528,7 +2563,7 @@ test('events admin page shows the recurring schedule and recorded events', async
   insertLocation({ name: 'Harbor Hall' });
   const cookie = await signInAsAdmin();
 
-  const response = await fetch(`${baseUrl}/admin/events`, {
+  const response = await request(`${baseUrl}/admin/events`, {
     headers: { cookie }
   });
 
@@ -2562,7 +2597,7 @@ test('dashboard defaults to the nearest upcoming production event', async () => 
   });
   const cookie = await signInAsAdmin();
 
-  const response = await fetch(`${baseUrl}/admin/dashboard`, {
+  const response = await request(`${baseUrl}/admin/dashboard`, {
     headers: { cookie }
   });
   const body = await response.text();
@@ -2576,12 +2611,12 @@ test('dashboard defaults to the nearest upcoming production event', async () => 
 test('dashboard upcoming schedule shows a clickable edit action for draft events', async () => {
   const event = insertEvent({
     title: 'Future Draft Game',
-    event_date: '2026-07-25',
+    event_date: getNextScheduledDateKey(),
     is_published: 0
   });
   const cookie = await signInAsAdmin();
 
-  const response = await fetch(`${baseUrl}/admin/dashboard`, {
+  const response = await request(`${baseUrl}/admin/dashboard`, {
     headers: { cookie }
   });
   const body = await response.text();
@@ -2595,7 +2630,7 @@ test('future events are created as drafts even when publish is requested immedia
   const cookie = await signInAsAdmin();
   const location = insertLocation({ name: 'Harbor Hall' });
 
-  const response = await fetch(`${baseUrl}/admin/event`, {
+  const response = await request(`${baseUrl}/admin/event`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
@@ -2633,7 +2668,7 @@ test('quick-create from the events schedule returns to the scheduled entry inste
   const cookie = await signInAsAdmin();
   const location = insertLocation({ name: 'Harbor Hall' });
 
-  const response = await fetch(`${baseUrl}/admin/event`, {
+  const response = await request(`${baseUrl}/admin/event`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',

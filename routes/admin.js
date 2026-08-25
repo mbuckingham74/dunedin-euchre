@@ -143,13 +143,30 @@ const failedLoginAttemptCleanupTimer = setInterval(() => {
 failedLoginAttemptCleanupTimer.unref?.();
 
 // ── Helpers ──────────────────────────────────────────────────
-const EVENT_SELECT_FIELDS = `
-  e.*,
-  l.name AS managed_location_name,
-  l.address AS managed_location_address,
-  l.location_image AS managed_location_image,
-  l.map_embed_url AS managed_map_embed_url,
-  l.map_link_url AS managed_map_link_url
+const EVENT_SELECT_QUERY = `
+  SELECT
+    e.*,
+    l.name AS managed_location_name,
+    l.address AS managed_location_address,
+    l.location_image AS managed_location_image,
+    l.map_embed_url AS managed_map_embed_url,
+    l.map_link_url AS managed_map_link_url
+  FROM events e
+  LEFT JOIN locations l ON l.id = e.location_id
+  WHERE e.id = ?
+`;
+
+const EVENT_LIST_QUERY = `
+  SELECT
+    e.*,
+    l.name AS managed_location_name,
+    l.address AS managed_location_address,
+    l.location_image AS managed_location_image,
+    l.map_embed_url AS managed_map_embed_url,
+    l.map_link_url AS managed_map_link_url
+  FROM events e
+  LEFT JOIN locations l ON l.id = e.location_id
+  ORDER BY e.event_date DESC, e.id DESC
 `;
 
 function parsePositiveInteger(value, fallback) {
@@ -195,21 +212,11 @@ function getDefaultProductionEvent(allEvents, options = {}) {
 }
 
 function getEventById(eventId) {
-  return applyManagedLocation(db.prepare(`
-    SELECT ${EVENT_SELECT_FIELDS}
-    FROM events e
-    LEFT JOIN locations l ON l.id = e.location_id
-    WHERE e.id = ?
-  `).get(eventId));
+  return applyManagedLocation(db.prepare(EVENT_SELECT_QUERY).get(eventId));
 }
 
 function listEvents() {
-  return applyManagedLocations(db.prepare(`
-    SELECT ${EVENT_SELECT_FIELDS}
-    FROM events e
-    LEFT JOIN locations l ON l.id = e.location_id
-    ORDER BY e.event_date DESC, e.id DESC
-  `).all());
+  return applyManagedLocations(db.prepare(EVENT_LIST_QUERY).all());
 }
 
 function listProductionEvents() {
@@ -1846,7 +1853,7 @@ router.post('/participants/:id/response', requireAdmin, (req, res) => {
       ? `RSVP updated for ${participant.name}.`
       : `RSVP cleared for ${participant.name}.`;
   } catch (error) {
-    console.error(`Failed to save admin RSVP override for participant ${participant.id} on event ${event.id}:`, error.message);
+    console.error('Failed to save admin RSVP override.', error.message);
     req.session.flash = {
       type: 'error',
       message: `Unable to update ${participant.name}'s RSVP right now.`
@@ -2115,7 +2122,7 @@ router.post('/event/:id/schedule-reminder', requireAdmin, async (req, res) => {
     });
     req.session.flash = `Reminder queued for ${result.recipients.length} invitee${result.recipients.length === 1 ? '' : 's'} on ${formatReminderTimestamp(result.schedule.scheduledAt)}.`;
   } catch (error) {
-    console.error(`Failed to schedule reminder for event ${event.id}:`, error.message);
+    console.error('Failed to schedule reminder.', error.message);
     req.session.flash = `Unable to queue the reminder: ${error.message}`;
   }
 
@@ -2141,7 +2148,7 @@ router.post('/event/:id/send-invite', requireAdmin, async (req, res) => {
 
     writeAuditLog('send-invite', { eventId: event.id, participantId: participant.id, email: participant.email }, req);
   } catch (error) {
-    console.error(`Failed to send invite to ${participant.email}:`, error.message);
+    console.error('Failed to send invite.', error.message);
     req.session.flash = `Unable to send invite to ${participant.email}.`;
   }
 
@@ -2180,7 +2187,7 @@ router.post('/event/:id/test-invite', requireAdmin, async (req, res) => {
 
     writeAuditLog('send-test-invite', { eventId: event.id, participantId: participant.id, testEmail }, req);
   } catch (error) {
-    console.error(`Failed to send test invite to ${testEmail}:`, error.message);
+    console.error('Failed to send test invite.', error.message);
     req.session.flash = `Unable to send test invite to ${testEmail}.`;
   }
 
