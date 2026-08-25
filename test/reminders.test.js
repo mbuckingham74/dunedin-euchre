@@ -10,22 +10,22 @@ const {
   getDefaultReminderSchedule
 } = require('../services/reminders');
 
-test('getDefaultReminderSchedule targets 9am Pacific on the day before a spring event', () => {
+test('getDefaultReminderSchedule targets 9am Eastern on the day before a spring event', () => {
   const schedule = getDefaultReminderSchedule({
     event_date: '2026-04-25'
   });
 
   assert.equal(schedule.reminderDateKey, '2026-04-24');
-  assert.equal(schedule.scheduledAt, '2026-04-24T16:00:00.000Z');
+  assert.equal(schedule.scheduledAt, '2026-04-24T13:00:00.000Z');
 });
 
-test('getDefaultReminderSchedule targets 9am Pacific on the day before a winter event', () => {
+test('getDefaultReminderSchedule targets 9am Eastern on the day before a winter event', () => {
   const schedule = getDefaultReminderSchedule({
     event_date: '2026-12-26'
   });
 
   assert.equal(schedule.reminderDateKey, '2026-12-25');
-  assert.equal(schedule.scheduledAt, '2026-12-25T17:00:00.000Z');
+  assert.equal(schedule.scheduledAt, '2026-12-25T14:00:00.000Z');
 });
 
 test('buildReminderSubject falls back to the event title', () => {

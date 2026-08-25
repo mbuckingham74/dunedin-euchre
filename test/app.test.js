@@ -1072,7 +1072,7 @@ test('invite preview page shows the invitee view with the final send action', as
   assert.match(body, /Invite Preview/);
   assert.match(body, /Confirm and send RSVP to 2 invitees/);
   assert.match(body, /Queue Day-Before Reminder/);
-  assert.match(body, /9:00 AM PDT/);
+  assert.match(body, /9:00 AM EDT/);
   assert.match(body, /Invite Delivery/);
   assert.ok(body.includes(`src="${buildRsvpPath(participant, event)}"`));
   assert.match(body, /Back to Edit Event/);
@@ -1129,7 +1129,7 @@ test('admin can queue the default day-before reminder for invite recipients', as
     event_id: event.id,
     participant_id: participant.id,
     kind: 'day_before_9am_pacific',
-    send_at: '2026-04-24T16:00:00.000Z',
+    send_at: '2026-04-24T13:00:00.000Z',
     subject: 'Reminder and Last Call for Workflow Event',
     status: 'pending'
   }]);

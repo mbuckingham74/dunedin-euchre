@@ -10,7 +10,7 @@ const {
 const { applyManagedLocation } = require('./locations');
 
 const REMINDER_KIND = 'day_before_9am_pacific';
-const REMINDER_TIME_ZONE = process.env.EVENT_REMINDER_TIMEZONE || 'America/Los_Angeles';
+const REMINDER_TIME_ZONE = process.env.EVENT_REMINDER_TIMEZONE || 'America/New_York';
 const REMINDER_SEND_HOUR = parsePositiveInteger(process.env.EVENT_REMINDER_HOUR, 9);
 const DEFAULT_BASE_URL = process.env.BASE_URL || 'https://dunedin-euchre.com';
 const WORKER_POLL_MS = parsePositiveInteger(process.env.EVENT_REMINDER_POLL_MS, 60 * 1000);
