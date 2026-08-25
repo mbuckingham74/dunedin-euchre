@@ -1,4 +1,6 @@
-FROM node:22.22-bookworm-slim AS deps
+ARG NODE_IMAGE="node:22.23.2-bookworm-slim@sha256:83f487e0a63425e5b4d146fb5e5be574bcbe1b7b843d3ebafdd95eaf7767a7e5"
+
+FROM ${NODE_IMAGE} AS deps
 
 # better-sqlite3 compiles a native addon during install.
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -10,7 +12,7 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci --omit=dev --no-audit --no-fund
 
-FROM node:22.22-bookworm-slim AS runner
+FROM ${NODE_IMAGE} AS runner
 
 # Create unprivileged app user
 RUN apt-get update && apt-get install -y --no-install-recommends gosu \
@@ -28,7 +30,9 @@ COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 
 RUN mkdir -p data uploads logs \
   && chown -R appuser:appgroup /app \
-  && chmod +x /usr/local/bin/docker-entrypoint.sh
+  && chmod +x /usr/local/bin/docker-entrypoint.sh \
+  && rm -rf /usr/local/lib/node_modules/npm \
+  && rm -f /usr/local/bin/npm /usr/local/bin/npx
 
 EXPOSE 3456
 

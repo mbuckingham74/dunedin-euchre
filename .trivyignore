@@ -1,0 +1,4 @@
+# The entrypoint starts as root only to repair bind-mounted directory ownership,
+# then execs the application as appuser via gosu. Revisit if deployment storage
+# can be provisioned with the correct ownership before container startup.
+AVD-DS-0002 exp:2027-02-25
