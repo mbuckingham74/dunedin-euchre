@@ -386,6 +386,18 @@ const migrations = [
         ON scheduled_rsvp_summaries(status, send_at);
       `);
     }
+  },
+  {
+    id: '010_notification_copy_settings',
+    up(db) {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS notification_settings (
+          key         TEXT PRIMARY KEY,
+          value       TEXT NOT NULL,
+          updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+      `);
+    }
   }
 ];
 

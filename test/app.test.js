@@ -14,6 +14,11 @@ process.env.UPLOADS_DIR = path.join(tempDir, 'uploads');
 process.env.NODE_ENV = 'test';
 process.env.SESSION_SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
 process.env.ADMIN_EMAIL = 'admin@example.com';
+process.env.FROM_EMAIL = 'admin@dunedin-euchre.com';
+process.env.ROSTER_FROM_EMAIL = 'Do_Not_Reply@dunedin-euchre.com';
+process.env.EVENT_RSVP_SUMMARY_EMAIL = 'summary@example.com';
+process.env.EVENT_RSVP_SUMMARY_TIMEZONE = 'America/New_York';
+process.env.EVENT_RSVP_SUMMARY_HOUR = '16';
 process.env.BASE_URL = 'http://127.0.0.1';
 process.env.RESEND_API_KEY = process.env.RESEND_API_KEY || `re_${crypto.randomBytes(24).toString('hex')}`;
 
@@ -180,6 +185,7 @@ function resetUploadsDirectory() {
 
 function resetDatabase() {
   db.exec(`
+    DELETE FROM notification_settings;
     DELETE FROM scheduled_rsvp_summaries;
     DELETE FROM scheduled_reminders;
     DELETE FROM responses;
@@ -1684,6 +1690,8 @@ test('dashboard shows the full roster even when no event is selected', async () 
   assert.match(body, /Locations/);
   assert.match(body, /Upcoming Schedule/);
   assert.match(body, /href="\/admin\/testing"/);
+  assert.match(body, /href="\/admin\/notifications"/);
+  assert.match(body, /Email Notifications/);
   assert.match(body, /Open Testing/);
   assert.match(body, /Everyone currently signed up to receive RSVP invitations\./);
   assert.match(body, /Manage Roster/);
@@ -1696,6 +1704,78 @@ test('dashboard shows the full roster even when no event is selected', async () 
   assert.match(body, /bob\.invitee@example\.com/);
   assert.doesNotMatch(body, /Inactive Invitee/);
   assert.doesNotMatch(body, /inactive\.invitee@example\.com/);
+});
+
+test('notifications page explains every email schedule and saves editable copy', async () => {
+  const cookie = await signInAsAdmin();
+  const pageResponse = await request(`${baseUrl}/admin/notifications`, {
+    headers: { cookie }
+  });
+  const pageBody = await pageResponse.text();
+
+  assert.equal(pageResponse.status, 200);
+  assert.match(pageBody, /Email Notifications/);
+  assert.match(pageBody, /Admin sign-in link/);
+  assert.match(pageBody, /RSVP invitation/);
+  assert.match(pageBody, /RSVP reminder/);
+  assert.match(pageBody, /Event-day RSVP summary/);
+  assert.match(pageBody, /admin@dunedin-euchre\.com/);
+  assert.match(pageBody, /Do_Not_Reply@dunedin-euchre\.com/);
+  assert.match(pageBody, /9:00 AM Eastern Time, the day before the event/);
+  assert.match(pageBody, /4:00 PM Eastern Time, on the event day/);
+  assert.match(pageBody, /summary@example\.com/);
+  assert.match(pageBody, /\{\{eventTitle\}\}/);
+
+  const customCopy = {
+    no_reply_notice: 'Please call Pam with any questions.',
+    invite_message: 'Please join us for {{eventTitle}} & bring your smile.',
+    reminder_deadline_notice: 'Please reply by noon today.',
+    reminder_message: 'Last call for {{eventTitle}}.',
+    summary_message: 'Here is the final list for {{eventTitle}}.'
+  };
+  const saveResponse = await request(`${baseUrl}/admin/notifications/copy`, {
+    method: 'POST',
+    headers: {
+      cookie,
+      'Content-Type': 'application/x-www-form-urlencoded'
+    },
+    body: new URLSearchParams(customCopy),
+    redirect: 'manual'
+  });
+
+  assert.equal(saveResponse.status, 302);
+  assert.equal(saveResponse.headers.get('location'), '/admin/notifications#email-copy');
+
+  const savedResponse = await request(`${baseUrl}/admin/notifications`, {
+    headers: { cookie }
+  });
+  const savedBody = await savedResponse.text();
+  assert.match(savedBody, /Email wording updated/);
+  assert.match(savedBody, /Please call Pam with any questions\./);
+  assert.match(savedBody, /Please join us for \{\{eventTitle\}\} &amp; bring your smile\./);
+
+  const savedSettings = db.prepare(`
+    SELECT key, value
+    FROM notification_settings
+    ORDER BY key ASC
+  `).all();
+  assert.equal(savedSettings.length, 5);
+  assert.equal(
+    savedSettings.find(row => row.key === 'summary_message').value,
+    customCopy.summary_message
+  );
+
+  const resetResponse = await request(`${baseUrl}/admin/notifications/reset-copy`, {
+    method: 'POST',
+    headers: {
+      cookie,
+      'Content-Type': 'application/x-www-form-urlencoded'
+    },
+    body: new URLSearchParams(),
+    redirect: 'manual'
+  });
+  assert.equal(resetResponse.status, 302);
+  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM notification_settings').get().count, 0);
 });
 
 test('dashboard can delete an event and return to the empty state', async () => {

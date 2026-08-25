@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dunedin Euchre – Email Notifications</title>
+  <link rel="stylesheet" href="<%= assetPath('/css/styles.css') %>">
+</head>
+<body class="admin-page">
+
+<%- include('../partials/admin-nav', { active: 'notifications' }) %>
+
+<main class="admin-main">
+  <div class="admin-content">
+    <% if (flash) { %>
+      <div class="flash-msg"><%= flash %></div>
+    <% } %>
+
+    <img src="/images/dunedin-logo-transparent.png" alt="Dunedin Euchre" class="dashboard-logo">
+
+    <section class="card admin-card" style="margin-bottom:1.5rem;">
+      <div class="card-header">
+        <div class="admin-card-header-text">
+          <h1 class="card-title">Email Notifications</h1>
+          <p class="admin-card-copy">A plain-language guide to every email the site sends, including its sender, audience, frequency, and local delivery time.</p>
+        </div>
+      </div>
+
+      <div class="notification-time-note">
+        <strong>Florida local time:</strong> scheduled event emails use Eastern Time and automatically follow daylight-saving time.
+      </div>
+
+      <div class="notification-list">
+        <% notifications.forEach(function(notification) { %>
+          <article class="notification-card">
+            <div class="notification-card-header">
+              <h2 class="notification-card-title"><%= notification.name %></h2>
+              <span class="status-pill pill-none"><%= notification.mode %></span>
+            </div>
+
+            <dl class="notification-details">
+              <div class="notification-detail">
+                <dt>From address</dt>
+                <dd><code><%= notification.from %></code></dd>
+              </div>
+              <div class="notification-detail">
+                <dt>Sent to</dt>
+                <dd><%= notification.recipients %></dd>
+              </div>
+              <div class="notification-detail">
+                <dt>Frequency</dt>
+                <dd><%= notification.frequency %></dd>
+              </div>
+              <div class="notification-detail">
+                <dt>Local delivery time</dt>
+                <dd><strong><%= notification.timing %></strong></dd>
+              </div>
+            </dl>
+          </article>
+        <% }); %>
+      </div>
+    </section>
+
+    <section id="email-copy" class="card admin-card admin-anchor-section">
+      <div class="card-header">
+        <div class="admin-card-header-text">
+          <h2 class="card-title">Email Wording</h2>
+          <p class="admin-card-copy">Update the plain-text wording used in future invitations, reminders, and event-day summaries. The layout, buttons, event details, and RSVP tables stay unchanged.</p>
+        </div>
+      </div>
+
+      <div class="notification-copy-note">
+        Text is safely escaped before it is added to an email. Use <code>{{eventTitle}}</code> where you want the current event name to appear.
+      </div>
+
+      <form method="POST" action="/admin/notifications/copy" class="notification-copy-form">
+        <input type="hidden" name="_csrf" value="<%= _csrf %>">
+
+        <% copyFields.forEach(function(field) { %>
+          <div class="form-group notification-copy-field">
+            <label class="form-label" for="notification-copy-<%= field.key %>"><%= field.label %></label>
+            <textarea
+              id="notification-copy-<%= field.key %>"
+              name="<%= field.key %>"
+              class="form-input"
+              rows="<%= field.key === 'no_reply_notice' || field.key === 'reminder_message' ? 4 : 3 %>"
+              maxlength="<%= maxCopyLength %>"
+            ><%= copy[field.key] %></textarea>
+            <p class="form-help"><%= field.description %> Maximum <%= maxCopyLength %> characters.</p>
+          </div>
+        <% }); %>
+
+        <div class="admin-actions notification-copy-actions">
+          <button type="submit" class="btn-primary">Save Email Wording</button>
+        </div>
+      </form>
+
+      <form
+        method="POST"
+        action="/admin/notifications/reset-copy"
+        class="notification-reset-form"
+        onsubmit="return confirm('Restore all email wording to the original defaults?')"
+      >
+        <input type="hidden" name="_csrf" value="<%= _csrf %>">
+        <button type="submit" class="btn-secondary">Restore Original Wording</button>
+      </form>
+    </section>
+  </div>
+</main>
+
+<script src="<%= assetPath('/js/admin.js') %>"></script>
+</body>
+</html>

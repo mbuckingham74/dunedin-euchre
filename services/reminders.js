@@ -412,6 +412,7 @@ function stopReminderWorker() {
 
 module.exports = {
   REMINDER_KIND,
+  REMINDER_SEND_HOUR,
   REMINDER_TIME_ZONE,
   buildReminderSubject,
   formatReminderTimestamp,

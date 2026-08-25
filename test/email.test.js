@@ -244,3 +244,39 @@ test('buildRsvpSummaryEmail renders readable coming and declined tables', () => 
   assert.match(summary.html, /<strong>1<\/strong> with no response/);
   assert.equal(FROM, process.env.FROM_EMAIL || 'admin@dunedin-euchre.com');
 });
+
+test('email builders apply editable copy tokens and escape custom wording', () => {
+  const participant = {
+    id: 47,
+    name: 'Mike Buckingham',
+    email: 'mike@example.com'
+  };
+  const event = {
+    id: 4,
+    title: 'Saturday Euchre',
+    event_date: '2026-04-25',
+    location_name: 'Community Center',
+    start_time: '18:00',
+    end_time: '20:30'
+  };
+  const copy = {
+    no_reply_notice: 'Call Pam & Charlie.',
+    invite_message: 'Please join {{eventTitle}} <today>.',
+    reminder_deadline_notice: 'Reply by noon.',
+    reminder_message: 'Last call for {{eventTitle}}.',
+    summary_message: 'Final list for {{eventTitle}}.'
+  };
+
+  const invite = buildRsvpInviteEmail(participant, event, { copy });
+  const reminder = buildRsvpReminderEmail(participant, event, { copy });
+  const summary = buildRsvpSummaryEmail(event, [], { copy });
+
+  assert.match(invite.html, /Call Pam &amp; Charlie\./);
+  assert.match(invite.html, /Please join Saturday Euchre &lt;today&gt;\./);
+  assert.match(reminder.html, /Reply by noon\./);
+  assert.match(reminder.html, /Last call for Saturday Euchre\./);
+  assert.match(summary.html, /Final list for Saturday Euchre\./);
+  for (const email of [invite, reminder, summary]) {
+    assert.doesNotMatch(email.html, /<today>/);
+  }
+});

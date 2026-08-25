@@ -9,15 +9,39 @@ const { v4: uuidv4 } = require('uuid');
 
 const db = require('../db/database');
 const { requireAdmin } = require('../middleware/auth');
-const { sendMagicLink, sendRsvpInvite, formatEventDate, formatTime } = require('../services/email');
+const {
+  FROM,
+  ROSTER_FROM,
+  sendMagicLink,
+  sendRsvpInvite,
+  formatEventDate,
+  formatTime
+} = require('../services/email');
 const { getEventInviteDeliveryStatus } = require('../services/invite-status');
 const {
+  REMINDER_SEND_HOUR,
+  REMINDER_TIME_ZONE,
   formatReminderTimestamp,
   getDefaultReminderSchedule,
   getEventReminderSummary,
   getReminderStatusLabel,
   scheduleEventReminder
 } = require('../services/reminders');
+const {
+  SUMMARY_RECIPIENT_EMAIL,
+  SUMMARY_SEND_HOUR,
+  SUMMARY_TIME_ZONE
+} = require('../services/rsvp-summary');
+const {
+  MAX_NOTIFICATION_COPY_LENGTH,
+  NOTIFICATION_COPY_FIELDS
+} = require('../services/notification-copy');
+const {
+  getNotificationCopy,
+  getNotificationCopyValidationError,
+  resetNotificationCopy,
+  updateNotificationCopy
+} = require('../services/notification-settings');
 const {
   buildMonthlyEventHistory,
   getArrivalNotes,
@@ -172,6 +196,57 @@ const EVENT_LIST_QUERY = `
 function parsePositiveInteger(value, fallback) {
   const parsed = Number.parseInt(value, 10);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function formatHourLabel(hour) {
+  const normalizedHour = Number(hour);
+  const suffix = normalizedHour >= 12 ? 'PM' : 'AM';
+  const displayHour = normalizedHour % 12 || 12;
+  return `${displayHour}:00 ${suffix}`;
+}
+
+function getTimeZoneLabel(timeZone) {
+  return timeZone === 'America/New_York' ? 'Eastern Time' : timeZone;
+}
+
+function getEmailNotificationDefinitions() {
+  const reminderTimeZoneLabel = getTimeZoneLabel(REMINDER_TIME_ZONE);
+  const summaryTimeZoneLabel = getTimeZoneLabel(SUMMARY_TIME_ZONE);
+
+  return [
+    {
+      name: 'Admin sign-in link',
+      mode: 'On demand',
+      from: FROM,
+      recipients: 'The approved admin requesting access',
+      frequency: 'Whenever an admin requests a sign-in link',
+      timing: 'Immediately'
+    },
+    {
+      name: 'RSVP invitation',
+      mode: 'Manual',
+      from: ROSTER_FROM,
+      recipients: 'Selected active invitees',
+      frequency: 'Sent manually for each event',
+      timing: 'Immediately after an admin confirms the send'
+    },
+    {
+      name: 'RSVP reminder',
+      mode: 'Scheduled',
+      from: ROSTER_FROM,
+      recipients: 'Invitees who received the original invitation',
+      frequency: 'Once per event when queued from Invite Preview',
+      timing: `${formatHourLabel(REMINDER_SEND_HOUR)} ${reminderTimeZoneLabel}, the day before the event`
+    },
+    {
+      name: 'Event-day RSVP summary',
+      mode: 'Automatic',
+      from: FROM,
+      recipients: SUMMARY_RECIPIENT_EMAIL || 'Not configured',
+      frequency: 'Once for every published event',
+      timing: `${formatHourLabel(SUMMARY_SEND_HOUR)} ${summaryTimeZoneLabel}, on the event day`
+    }
+  ];
 }
 
 function wait(ms) {
@@ -1076,6 +1151,42 @@ router.get('/dashboard', requireAdmin, (req, res) => {
     flash: req.session.flash || null
   });
   delete req.session.flash;
+});
+
+// ── GET /admin/notifications ────────────────────────────────
+router.get('/notifications', requireAdmin, (req, res) => {
+  res.render('admin/notifications', {
+    notifications: getEmailNotificationDefinitions(),
+    copy: getNotificationCopy(),
+    copyFields: NOTIFICATION_COPY_FIELDS,
+    maxCopyLength: MAX_NOTIFICATION_COPY_LENGTH,
+    flash: req.session.flash || null
+  });
+  delete req.session.flash;
+});
+
+// ── POST /admin/notifications/copy ──────────────────────────
+router.post('/notifications/copy', requireAdmin, (req, res) => {
+  const validationError = getNotificationCopyValidationError(req.body);
+  if (validationError) {
+    req.session.flash = validationError;
+    return res.redirect('/admin/notifications#email-copy');
+  }
+
+  updateNotificationCopy(req.body);
+  writeAuditLog('update-notification-copy', {
+    fields: NOTIFICATION_COPY_FIELDS.map(field => field.key)
+  }, req);
+  req.session.flash = 'Email wording updated. Future emails will use the new copy.';
+  res.redirect('/admin/notifications#email-copy');
+});
+
+// ── POST /admin/notifications/reset-copy ────────────────────
+router.post('/notifications/reset-copy', requireAdmin, (req, res) => {
+  resetNotificationCopy();
+  writeAuditLog('reset-notification-copy', {}, req);
+  req.session.flash = 'Email wording restored to the defaults.';
+  res.redirect('/admin/notifications#email-copy');
 });
 
 // ── GET /admin/event/:id/edit ───────────────────────────────
