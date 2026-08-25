@@ -5,6 +5,8 @@ const { buildRsvpUrl } = require('./links');
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 const FROM = process.env.FROM_EMAIL || 'admin@dunedin-euchre.com';
+const ROSTER_FROM = process.env.ROSTER_FROM_EMAIL || 'Do_Not_Reply@dunedin-euchre.com';
+const ROSTER_EMAIL_NOTICE = 'Please do not reply to this message. Replies to this message are routed to an unmonitored mailbox. If you have questions please call Pam at 937-701-3301-555-1212.';
 const BASE_URL = process.env.BASE_URL || 'https://dunedin-euchre.com';
 const RESEND_MAX_RETRIES = parsePositiveInteger(process.env.RESEND_MAX_RETRIES, 3);
 const RESEND_RETRY_DELAY_MS = parsePositiveInteger(process.env.RESEND_RETRY_DELAY_MS, 1000);
@@ -112,6 +114,9 @@ function buildRsvpInviteEmail(participant, event) {
   const subject = `Dunedin Euchre – RSVP for ${eventTitle}`;
   const html = `
     <div style="font-family: Georgia, serif; max-width: 520px; margin: 0 auto; padding: 32px; color: #1e293b;">
+      <p style="font-family: Arial, sans-serif; font-size: 13px; line-height: 1.5; color: #64748b; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 12px 14px; margin: 0 0 24px;">
+        ${ROSTER_EMAIL_NOTICE}
+      </p>
       <h2 style="margin: 0 0 8px; font-size: 24px;">Dunedin Euchre</h2>
       <p style="font-size: 15px; color: #64748b; margin: 0 0 28px;">Monthly Tournament</p>
 
@@ -175,6 +180,9 @@ function buildRsvpReminderEmail(participant, event, options = {}) {
   const subject = (options.subject || '').trim() || `Reminder and Last Call for ${eventTitle}`;
   const html = `
     <div style="font-family: Georgia, serif; max-width: 520px; margin: 0 auto; padding: 32px; color: #1e293b;">
+      <p style="font-family: Arial, sans-serif; font-size: 13px; line-height: 1.5; color: #64748b; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 12px 14px; margin: 0 0 24px;">
+        ${ROSTER_EMAIL_NOTICE}
+      </p>
       <h2 style="margin: 0 0 8px; font-size: 24px;">Dunedin Euchre</h2>
       <p style="font-size: 15px; color: #64748b; margin: 0 0 28px;">Reminder and Last Call</p>
 
@@ -235,7 +243,7 @@ async function sendRsvpInvite(participant, event) {
   const invite = buildRsvpInviteEmail(participant, event);
 
   return sendEmail({
-    from: FROM,
+    from: ROSTER_FROM,
     to: participant.email,
     subject: invite.subject,
     html: invite.html
@@ -246,7 +254,7 @@ async function sendRsvpReminder(participant, event, options = {}) {
   const reminder = buildRsvpReminderEmail(participant, event, options);
 
   return sendEmail({
-    from: FROM,
+    from: ROSTER_FROM,
     to: participant.email,
     subject: reminder.subject,
     html: reminder.html,
@@ -274,6 +282,8 @@ module.exports = {
   sendMagicLink,
   sendRsvpInvite,
   sendRsvpReminder,
+  ROSTER_FROM,
+  ROSTER_EMAIL_NOTICE,
   formatEventDate,
   formatTime,
   __test__: {

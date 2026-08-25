@@ -6,7 +6,10 @@ const test = require('node:test');
 process.env.RESEND_API_KEY = process.env.RESEND_API_KEY || 're_test_key';
 
 const {
+  buildRsvpInviteEmail,
   buildRsvpReminderEmail,
+  ROSTER_EMAIL_NOTICE,
+  ROSTER_FROM,
   __test__: { sendEmail }
 } = require('../services/email');
 const { buildRsvpUrl } = require('../services/links');
@@ -140,4 +143,29 @@ test('buildRsvpReminderEmail uses the provided subject and includes the event RS
   assert.match(reminder.html, /Reminder and Last Call/);
   assert.match(reminder.html, /Please RSVP before noon\./);
   assert.match(reminder.html, new RegExp(expectedLink.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+});
+
+test('roster emails use the no-reply sender and place the no-reply notice first', () => {
+  const participant = {
+    id: 47,
+    name: 'Mike Buckingham',
+    email: 'mikebuckingham@gmail.com'
+  };
+  const event = {
+    id: 4,
+    title: 'Dunedin Euchre Night 4/25',
+    event_date: '2026-04-25',
+    location_name: 'Manatee Recreation Center',
+    start_time: '18:00',
+    end_time: '20:30'
+  };
+
+  const invite = buildRsvpInviteEmail(participant, event);
+  const reminder = buildRsvpReminderEmail(participant, event);
+
+  assert.equal(ROSTER_FROM, process.env.ROSTER_FROM_EMAIL || 'Do_Not_Reply@dunedin-euchre.com');
+  for (const email of [invite, reminder]) {
+    assert.match(email.html, new RegExp(ROSTER_EMAIL_NOTICE.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+    assert.ok(email.html.indexOf(ROSTER_EMAIL_NOTICE) < email.html.indexOf('<h2'));
+  }
 });

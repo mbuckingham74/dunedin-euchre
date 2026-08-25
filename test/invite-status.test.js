@@ -45,7 +45,7 @@ test('getEventInviteDeliveryStatus matches the invite email for the selected eve
         },
         {
           id: 'email-correct-event',
-          from: 'admin@dunedin-euchre.com',
+          from: 'Do_Not_Reply@dunedin-euchre.com',
           to: ['alubowicz1942@gmail.com'],
           subject: 'Dunedin Euchre – RSVP for Dunedin Euchre Night',
           created_at: '2026-04-22 23:41:49+00',

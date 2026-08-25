@@ -6,7 +6,9 @@ const { buildRsvpUrl } = require('./links');
 const RESEND_API_BASE_URL = 'https://api.resend.com';
 const RESEND_EMAIL_PAGE_SIZE = parsePositiveInteger(process.env.RESEND_EMAIL_PAGE_SIZE, 100);
 const RESEND_EMAIL_MAX_PAGES = parsePositiveInteger(process.env.RESEND_EMAIL_MAX_PAGES, 3);
-const INVITE_FROM = process.env.FROM_EMAIL || 'admin@dunedin-euchre.com';
+const INVITE_FROM = process.env.ROSTER_FROM_EMAIL || 'Do_Not_Reply@dunedin-euchre.com';
+const LEGACY_INVITE_FROM = process.env.FROM_EMAIL || 'admin@dunedin-euchre.com';
+const INVITE_FROMS = new Set([INVITE_FROM, LEGACY_INVITE_FROM]);
 
 function parsePositiveInteger(value, fallback) {
   const parsed = Number.parseInt(value, 10);
@@ -156,7 +158,7 @@ async function getEventInviteDeliveryStatus(participants, event, options = {}) {
     if (emails.length === 0) break;
 
     for (const email of emails) {
-      if (email.from !== INVITE_FROM || email.subject !== expectedSubject) {
+      if (!INVITE_FROMS.has(email.from) || email.subject !== expectedSubject) {
         continue;
       }
 
