@@ -8,6 +8,7 @@ process.env.RESEND_API_KEY = process.env.RESEND_API_KEY || 're_test_key';
 const {
   buildRsvpInviteEmail,
   buildRsvpReminderEmail,
+  REMINDER_DEADLINE_NOTICE,
   ROSTER_EMAIL_NOTICE,
   ROSTER_FROM,
   __test__: { sendEmail }
@@ -143,6 +144,25 @@ test('buildRsvpReminderEmail uses the provided subject and includes the event RS
   assert.match(reminder.html, /Reminder and Last Call/);
   assert.match(reminder.html, /Please RSVP before noon\./);
   assert.match(reminder.html, new RegExp(expectedLink.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+});
+
+test('buildRsvpReminderEmail places the bold red RSVP deadline notice first', () => {
+  const reminder = buildRsvpReminderEmail(
+    { id: 47, name: 'Mike Buckingham', email: 'mikebuckingham@gmail.com' },
+    {
+      id: 4,
+      title: 'Dunedin Euchre Night 4/25',
+      event_date: '2026-04-25',
+      location_name: 'Manatee Recreation Center',
+      start_time: '18:00',
+      end_time: '20:30'
+    }
+  );
+
+  assert.match(reminder.html, /color: #dc2626/);
+  assert.match(reminder.html, /font-weight: 700/);
+  assert.match(reminder.html, new RegExp(REMINDER_DEADLINE_NOTICE.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  assert.ok(reminder.html.indexOf(REMINDER_DEADLINE_NOTICE) < reminder.html.indexOf(ROSTER_EMAIL_NOTICE));
 });
 
 test('roster emails use the no-reply sender and place the no-reply notice first', () => {
