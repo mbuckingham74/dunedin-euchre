@@ -12,6 +12,7 @@ const db = require('./db/database');
 const publicRoutes = require('./routes/public');
 const adminRoutes = require('./routes/admin');
 const { startReminderWorker } = require('./services/reminders');
+const { startRsvpSummaryWorker } = require('./services/rsvp-summary');
 const { getUploadsDir } = require('./services/uploads');
 
 // ── Upload magic-byte verification ─────────────────────────────
@@ -314,6 +315,7 @@ app.use((err, req, res, next) => {
 const PORT = process.env.PORT || 3456;
 
 startReminderWorker();
+startRsvpSummaryWorker();
 
 if (require.main === module) {
   app.listen(PORT, () => {

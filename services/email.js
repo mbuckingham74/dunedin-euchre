@@ -243,6 +243,101 @@ function buildRsvpReminderEmail(participant, event, options = {}) {
   return { subject, html };
 }
 
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function getSummaryPeople(roster, propertyName) {
+  const people = [];
+
+  for (const entry of Array.isArray(roster) ? roster : []) {
+    for (const name of entry[propertyName] || []) {
+      people.push({
+        name,
+        comment: (entry.comment || '').trim()
+      });
+    }
+  }
+
+  return people.sort((left, right) => left.name.localeCompare(right.name));
+}
+
+function buildSummaryTable(title, people, colors) {
+  const rows = people.length > 0
+    ? people.map((person, index) => `
+        <tr>
+          <td style="padding:12px 14px; border-bottom:1px solid #e2e8f0; font-weight:600; color:#0f172a; background:${index % 2 === 0 ? '#ffffff' : '#f8fafc'};">${escapeHtml(person.name)}</td>
+          <td style="padding:12px 14px; border-bottom:1px solid #e2e8f0; color:#475569; background:${index % 2 === 0 ? '#ffffff' : '#f8fafc'};">${person.comment ? escapeHtml(person.comment) : '&mdash;'}</td>
+        </tr>
+      `).join('')
+    : `
+        <tr>
+          <td colspan="2" style="padding:18px 14px; color:#64748b; background:#ffffff;">No one is listed.</td>
+        </tr>
+      `;
+
+  return `
+    <h3 style="margin:28px 0 10px; font-size:20px; color:${colors.text};">${escapeHtml(title)} (${people.length})</h3>
+    <table role="presentation" style="width:100%; border-collapse:collapse; border:1px solid #cbd5e1; border-radius:6px; overflow:hidden; font-family:Arial, sans-serif; font-size:16px;">
+      <thead>
+        <tr>
+          <th align="left" style="width:42%; padding:12px 14px; background:${colors.background}; color:${colors.text}; border-bottom:1px solid ${colors.border};">Name</th>
+          <th align="left" style="padding:12px 14px; background:${colors.background}; color:${colors.text}; border-bottom:1px solid ${colors.border};">Note</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `;
+}
+
+function buildRsvpSummaryEmail(event, roster, options = {}) {
+  const dateStr = formatEventDate(event.event_date);
+  const eventTitle = (event.title || '').trim() || `Dunedin Euchre on ${dateStr}`;
+  const subject = (options.subject || '').trim() || `RSVP list for ${eventTitle}`;
+  const coming = getSummaryPeople(roster, 'attendeeNames');
+  const declined = getSummaryPeople(roster, 'declinedNames');
+  const maybeCount = (Array.isArray(roster) ? roster : [])
+    .reduce((count, entry) => count + (entry.maybeNames || []).length, 0);
+  const pendingCount = (Array.isArray(roster) ? roster : [])
+    .reduce((count, entry) => count + (entry.pendingNames || []).length, 0);
+  const location = (event.location_name || '').trim();
+
+  const html = `
+    <div style="font-family:Arial, sans-serif; max-width:680px; margin:0 auto; padding:28px; color:#1e293b; background:#ffffff;">
+      <p style="margin:0 0 8px; color:#64748b; font-size:14px; font-weight:700; letter-spacing:.06em; text-transform:uppercase;">Dunedin Euchre</p>
+      <h1 style="margin:0 0 8px; color:#0f172a; font-size:26px; line-height:1.25;">Event-day RSVP list</h1>
+      <p style="margin:0 0 24px; color:#475569; font-size:17px; line-height:1.5;">
+        <strong>${escapeHtml(eventTitle)}</strong><br>
+        ${escapeHtml(dateStr)}${location ? ` &bull; ${escapeHtml(location)}` : ''}${event.start_time ? ` &bull; ${escapeHtml(formatTime(event.start_time))}` : ''}
+      </p>
+
+      <table role="presentation" style="width:100%; border-collapse:separate; border-spacing:8px 0; margin:0 -8px 6px; font-family:Arial, sans-serif;">
+        <tr>
+          <td style="width:50%; padding:14px; border-radius:6px; background:#dcfce7; color:#166534; font-size:16px;"><strong style="font-size:24px;">${coming.length}</strong><br>Coming</td>
+          <td style="width:50%; padding:14px; border-radius:6px; background:#fee2e2; color:#991b1b; font-size:16px;"><strong style="font-size:24px;">${declined.length}</strong><br>Declined</td>
+        </tr>
+      </table>
+
+      ${buildSummaryTable('Coming', coming, { background: '#dcfce7', text: '#166534', border: '#86efac' })}
+      ${buildSummaryTable('Declined', declined, { background: '#fee2e2', text: '#991b1b', border: '#fca5a5' })}
+
+      ${(maybeCount > 0 || pendingCount > 0) ? `
+        <p style="margin:24px 0 0; padding:12px 14px; border-radius:6px; background:#f8fafc; color:#475569; font-size:14px; line-height:1.5;">
+          Also on the invite list: <strong>${maybeCount}</strong> maybe and <strong>${pendingCount}</strong> with no response.
+        </p>
+      ` : ''}
+      <p style="margin:24px 0 0; color:#94a3b8; font-size:12px; line-height:1.5;">This automatic summary reflects the RSVP list at the time it was sent.</p>
+    </div>
+  `;
+
+  return { subject, html };
+}
+
 async function sendRsvpInvite(participant, event) {
   const invite = buildRsvpInviteEmail(participant, event);
 
@@ -266,6 +361,17 @@ async function sendRsvpReminder(participant, event, options = {}) {
   });
 }
 
+async function sendRsvpSummary(toEmail, event, roster, options = {}) {
+  const summary = buildRsvpSummaryEmail(event, roster, options);
+
+  return sendEmail({
+    from: FROM,
+    to: toEmail,
+    subject: summary.subject,
+    html: summary.html
+  });
+}
+
 function formatEventDate(dateStr) {
   const d = new Date(dateStr + 'T12:00:00');
   return d.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
@@ -280,12 +386,15 @@ function formatTime(t) {
 }
 
 module.exports = {
+  buildRsvpSummaryEmail,
   buildRsvpReminderEmail,
   buildRsvpInviteEmail,
   sendEmail,
   sendMagicLink,
   sendRsvpInvite,
   sendRsvpReminder,
+  sendRsvpSummary,
+  FROM,
   ROSTER_FROM,
   ROSTER_EMAIL_NOTICE,
   REMINDER_DEADLINE_NOTICE,

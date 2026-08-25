@@ -8,6 +8,8 @@ process.env.RESEND_API_KEY = process.env.RESEND_API_KEY || 're_test_key';
 const {
   buildRsvpInviteEmail,
   buildRsvpReminderEmail,
+  buildRsvpSummaryEmail,
+  FROM,
   REMINDER_DEADLINE_NOTICE,
   ROSTER_EMAIL_NOTICE,
   ROSTER_FROM,
@@ -195,4 +197,50 @@ test('roster emails use the no-reply sender and place the no-reply notice first'
     assert.doesNotMatch(noticeMarkup, /font-weight|<strong>/);
   }
   assert.doesNotMatch(ROSTER_EMAIL_NOTICE, /555-1212/);
+});
+
+test('buildRsvpSummaryEmail renders readable coming and declined tables', () => {
+  const summary = buildRsvpSummaryEmail(
+    {
+      title: 'Dunedin Euchre Night',
+      event_date: '2026-04-25',
+      location_name: 'Manatee Recreation Center',
+      start_time: '18:00'
+    },
+    [
+      {
+        attendeeNames: ['Alice Example'],
+        declinedNames: ['Bob Example'],
+        maybeNames: [],
+        pendingNames: [],
+        comment: 'Bringing cards'
+      },
+      {
+        attendeeNames: ['<Casey>'],
+        declinedNames: [],
+        maybeNames: [],
+        pendingNames: [],
+        comment: '<script>alert(1)</script>'
+      },
+      {
+        attendeeNames: [],
+        declinedNames: ['Dana Example'],
+        maybeNames: ['Morgan Example'],
+        pendingNames: ['Pat Example'],
+        comment: ''
+      }
+    ]
+  );
+
+  assert.equal(summary.subject, 'RSVP list for Dunedin Euchre Night');
+  assert.match(summary.html, /Coming \(2\)/);
+  assert.match(summary.html, /Declined \(2\)/);
+  assert.match(summary.html, /Alice Example/);
+  assert.match(summary.html, /Bob Example/);
+  assert.match(summary.html, /&lt;Casey&gt;/);
+  assert.match(summary.html, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
+  assert.doesNotMatch(summary.html, /<script>/);
+  assert.match(summary.html, /<strong>1<\/strong> maybe/);
+  assert.match(summary.html, /<strong>1<\/strong> with no response/);
+  assert.equal(FROM, process.env.FROM_EMAIL || 'admin@dunedin-euchre.com');
 });

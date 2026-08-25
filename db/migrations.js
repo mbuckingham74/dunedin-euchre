@@ -361,6 +361,31 @@ const migrations = [
         ON scheduled_reminders(status, send_at);
       `);
     }
+  },
+  {
+    id: '009_scheduled_rsvp_summaries',
+    up(db) {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS scheduled_rsvp_summaries (
+          id               INTEGER PRIMARY KEY AUTOINCREMENT,
+          event_id         INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+          send_at          TEXT NOT NULL,
+          recipient_email  TEXT NOT NULL,
+          subject          TEXT NOT NULL,
+          status           TEXT NOT NULL DEFAULT 'pending'
+                           CHECK(status IN ('pending', 'processing', 'sent', 'failed', 'canceled')),
+          resend_email_id  TEXT,
+          last_error       TEXT,
+          created_at       TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at       TEXT NOT NULL DEFAULT (datetime('now')),
+          sent_at          TEXT,
+          UNIQUE(event_id)
+        );
+
+        CREATE INDEX IF NOT EXISTS scheduled_rsvp_summaries_status_send_at_idx
+        ON scheduled_rsvp_summaries(status, send_at);
+      `);
+    }
   }
 ];
 

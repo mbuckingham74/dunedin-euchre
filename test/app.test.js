@@ -180,6 +180,7 @@ function resetUploadsDirectory() {
 
 function resetDatabase() {
   db.exec(`
+    DELETE FROM scheduled_rsvp_summaries;
     DELETE FROM scheduled_reminders;
     DELETE FROM responses;
     DELETE FROM participants;
