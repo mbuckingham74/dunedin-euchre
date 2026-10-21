@@ -7,6 +7,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { once } = require('node:events');
 const test = require('node:test');
+const vm = require('node:vm');
 
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dunedin-euchre-'));
 process.env.DB_PATH = path.join(tempDir, 'test.db');
@@ -872,6 +873,116 @@ test('participant create route reactivates instead of duplicating an existing em
     email: 'alice@example.com',
     active: 1
   }]);
+});
+
+test('Manage Roster offers confirmed deletion for active and removed shared invites', async () => {
+  const active = insertParticipant({ name: "Pat O'Brien and Jo", party_members: '["Pat O\'Brien","Jo"]' });
+  const removed = insertParticipant({ name: 'Removed Person', email: 'removed@example.com', rsvp_token: 'removed-token', active: 0 });
+  const cookie = await signInAsAdmin();
+  const response = await request(`${baseUrl}/admin/participants`, { headers: { cookie } });
+  const body = await response.text();
+
+  assert.equal(response.status, 200);
+  for (const participant of [active, removed]) {
+    assert.match(body, new RegExp(`action="/admin/participants/${participant.id}/permanent-delete"`));
+  }
+  assert.match(body, /data-confirm="Permanently delete Pat O&#39;Brien and Jo/);
+  assert.match(body, /This cannot be undone\./);
+  assert.match(body, /Delete permanently erases the shared invite and its RSVP history for all events\./);
+});
+
+test('roster confirmation cancels deletion and safely displays names containing quotes', () => {
+  const message = `Permanently delete Pat O'Brien and "Jo"?`;
+  let submit;
+  let confirmedMessage;
+  let accepted = false;
+  const form = {
+    dataset: { confirm: message },
+    addEventListener(type, handler) {
+      assert.equal(type, 'submit');
+      submit = handler;
+    }
+  };
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../public/js/admin.js'), 'utf8'), {
+    document: { querySelectorAll: selector => selector === 'form[data-confirm]' ? [form] : [] },
+    window: { location: { hash: '' }, confirm: value => { confirmedMessage = value; return accepted; } }
+  });
+  let prevented = false;
+  submit({ preventDefault: () => { prevented = true; } });
+  assert.equal(confirmedMessage, message);
+  assert.equal(prevented, true);
+  accepted = true;
+  prevented = false;
+  submit({ preventDefault: () => { prevented = true; } });
+  assert.equal(prevented, false);
+});
+
+for (const active of [1, 0]) {
+  test(`admin can permanently delete an ${active ? 'active' : 'inactive'} participant and only their related records`, async () => {
+    const participant = insertParticipant({ active });
+    const other = insertParticipant({ name: 'Other Person', email: 'other@example.com', rsvp_token: 'other-token' });
+    const event = insertEvent({ is_published: 1 });
+    const anotherEvent = insertEvent({ event_date: '2999-05-15' });
+    insertResponse(participant.id, event.id);
+    insertResponse(participant.id, anotherEvent.id);
+    insertResponse(other.id, event.id);
+    const insertReminder = db.prepare(`
+      INSERT INTO scheduled_reminders (event_id, participant_id, kind, send_at, subject)
+      VALUES (?, ?, 'reminder', '2999-04-14T12:00:00.000Z', 'Reminder')
+    `);
+    insertReminder.run(event.id, participant.id);
+    insertReminder.run(event.id, other.id);
+    const cookie = await signInAsAdmin();
+
+    const response = await request(`${baseUrl}/admin/participants/${participant.id}/permanent-delete`, {
+      method: 'POST',
+      headers: { cookie, 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ selected_event_id: String(event.id) }),
+      redirect: 'manual'
+    });
+
+    assert.equal(response.status, 302);
+    assert.equal(response.headers.get('location'), `/admin/participants?eventId=${event.id}`);
+    assert.equal(db.prepare('SELECT * FROM participants WHERE id = ?').get(participant.id), undefined);
+    assert.equal(db.prepare('SELECT COUNT(*) AS count FROM responses WHERE participant_id = ?').get(participant.id).count, 0);
+    assert.equal(db.prepare('SELECT COUNT(*) AS count FROM scheduled_reminders WHERE participant_id = ?').get(participant.id).count, 0);
+    assert.equal(db.prepare('SELECT COUNT(*) AS count FROM participants').get().count, 1);
+    assert.equal(db.prepare('SELECT COUNT(*) AS count FROM responses').get().count, 1);
+    assert.equal(db.prepare('SELECT COUNT(*) AS count FROM scheduled_reminders').get().count, 1);
+    assert.equal(db.prepare('SELECT COUNT(*) AS count FROM events').get().count, 2);
+    const page = await request(`${baseUrl}/admin/participants?eventId=${event.id}`, { headers: { cookie } });
+    const body = await page.text();
+    assert.match(body, /Alice Example permanently deleted from the roster\./);
+    assert.doesNotMatch(body, new RegExp(`id="participant-${participant.id}"`));
+    assert.equal((await request(`${baseUrl}${buildRsvpPath(participant, event)}`)).status, 404);
+  });
+}
+
+test('permanent participant deletion requires an admin session and valid CSRF token', async () => {
+  const participant = insertParticipant();
+  const url = `${baseUrl}/admin/participants/${participant.id}/permanent-delete`;
+  const anonymous = await request(url, { method: 'POST', redirect: 'manual' });
+  assert.equal(anonymous.status, 302);
+  assert.equal(anonymous.headers.get('location'), '/admin');
+
+  const cookie = await signInAsAdmin();
+  const missingCsrf = await nativeFetch(url, { method: 'POST', headers: { cookie }, redirect: 'manual' });
+  assert.equal(missingCsrf.status, 403);
+  assert.ok(db.prepare('SELECT * FROM participants WHERE id = ?').get(participant.id));
+});
+
+test('permanent participant deletion handles missing and invalid IDs without deleting anyone', async () => {
+  const participant = insertParticipant();
+  const cookie = await signInAsAdmin();
+  for (const id of ['999999', 'invalid']) {
+    const response = await request(`${baseUrl}/admin/participants/${id}/permanent-delete`, {
+      method: 'POST', headers: { cookie }, redirect: 'manual'
+    });
+    assert.equal(response.status, 302);
+    const page = await request(`${baseUrl}/admin/participants`, { headers: { cookie } });
+    assert.match(await page.text(), /Participant not found\./);
+  }
+  assert.ok(db.prepare('SELECT * FROM participants WHERE id = ?').get(participant.id));
 });
 
 test('participant create route stores party member names for shared invites', async () => {

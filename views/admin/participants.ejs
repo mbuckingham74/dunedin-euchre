@@ -109,6 +109,9 @@
           (<%= participants.filter(p => p.active).length %> active)
         </span>
       </h2>
+      <p class="admin-card-note" style="margin-bottom:1rem;">
+        Remove stops future invitations and keeps RSVP history. Delete permanently erases the shared invite and its RSVP history for all events.
+      </p>
       <div class="admin-table-wrap">
         <table class="admin-table">
           <thead>
@@ -205,12 +208,18 @@
                       data-selected-event-id="<%= selectedEvent ? selectedEvent.id : '' %>"
                     >Edit</button>
                     <form method="POST" action="/admin/participants/<%= p.id %>/delete" style="display:inline;"
-                          onsubmit="return confirm('Remove <%= p.name %>?')">
+                          data-confirm="Remove <%= p.name %> from future invitations? RSVP history will be kept.">
                       <input type="hidden" name="_csrf" value="<%= _csrf %>">
                       <input type="hidden" name="selected_event_id" value="<%= selectedEvent ? selectedEvent.id : '' %>">
                       <button type="submit" class="btn-sm btn-danger">Remove</button>
                     </form>
                   <% } %>
+                  <form method="POST" action="/admin/participants/<%= p.id %>/permanent-delete" style="display:inline;"
+                        data-confirm="Permanently delete <%= p.name %> (<%= p.email %>)? This deletes everyone on this shared invite, all of their RSVP history, and scheduled reminders. This cannot be undone.">
+                    <input type="hidden" name="_csrf" value="<%= _csrf %>">
+                    <input type="hidden" name="selected_event_id" value="<%= selectedEvent ? selectedEvent.id : '' %>">
+                    <button type="submit" class="btn-sm btn-danger">Delete</button>
+                  </form>
                 </td>
               </tr>
             <% }); %>

@@ -1283,7 +1283,7 @@ router.post('/notifications/:type/test', requireAdmin, async (req, res) => {
       eventId: event ? event.id : null
     }, req);
   } catch (error) {
-    console.error(`Failed to send ${type} notification test.`, error.message);
+    console.error('Failed to send notification test.', error.message);
     req.session.flash = `Unable to send the test email: ${error.message}`;
   }
 
@@ -1998,6 +1998,27 @@ router.post('/participants/:id/delete', requireAdmin, (req, res) => {
   writeAuditLog('delete-participant', { participantId: req.params.id }, req);
 
   req.session.flash = 'Participant removed.';
+  res.redirect(buildParticipantsRedirect(selectedEventId));
+});
+
+// ── POST /admin/participants/:id/permanent-delete ────────────
+router.post('/participants/:id/permanent-delete', requireAdmin, (req, res) => {
+  const selectedEventId = parseEventId(req.body.selected_event_id);
+  const participant = db.prepare('SELECT * FROM participants WHERE id = ?')
+    .get(parseParticipantId(req.params.id));
+  if (!participant) {
+    req.session.flash = { type: 'error', message: 'Participant not found.' };
+    return res.redirect(buildParticipantsRedirect(selectedEventId));
+  }
+
+  db.transaction(() => {
+    db.prepare('DELETE FROM responses WHERE participant_id = ?').run(participant.id);
+    db.prepare('DELETE FROM participants WHERE id = ?').run(participant.id);
+  })();
+
+  writeAuditLog('permanently-delete-participant', { participantId: participant.id }, req);
+
+  req.session.flash = `${participant.name} permanently deleted from the roster.`;
   res.redirect(buildParticipantsRedirect(selectedEventId));
 });
 

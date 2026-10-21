@@ -56,23 +56,23 @@ rsync -az --delete -e ssh \
 ssh "$REMOTE_HOST" "REMOTE_DIR='$REMOTE_DIR' SERVICE_NAME='$SERVICE_NAME' bash -s" <<'REMOTE_EOF'
 set -euo pipefail
 cd "$REMOTE_DIR"
-docker compose config --quiet
-docker compose build "$SERVICE_NAME"
-docker compose up -d --no-deps "$SERVICE_NAME"
+timeout -k 5s 15s docker compose config --quiet
+timeout -k 10s 300s docker compose build "$SERVICE_NAME"
+timeout -k 10s 60s docker compose up -d --no-deps "$SERVICE_NAME"
 
 deadline=$((SECONDS + 120))
 while true; do
-  container_id="$(docker compose ps -q "$SERVICE_NAME")"
-  health="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$container_id")"
+  container_id="$(timeout -k 5s 15s docker compose ps -q "$SERVICE_NAME")"
+  health="$(timeout -k 5s 15s docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$container_id")"
   [[ "$health" == healthy ]] && break
   if [[ "$health" == unhealthy || "$health" == exited || "$health" == dead || SECONDS -ge deadline ]]; then
-    docker compose logs --tail=100 "$SERVICE_NAME" >&2 || true
+    timeout -k 5s 15s docker compose logs --since=10m --tail=100 "$SERVICE_NAME" >&2 || true
     exit 1
   fi
   sleep 5
 done
 
-docker exec "$container_id" node -e \
+timeout -k 5s 15s docker exec "$container_id" node -e \
   'fetch("http://127.0.0.1:3456/healthz").then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))'
 REMOTE_EOF
 

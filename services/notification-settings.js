@@ -79,8 +79,10 @@ function resetNotificationCopy(keysToReset = [...COPY_KEYS]) {
   const keys = [...new Set(keysToReset)].filter(key => COPY_KEYS.has(key));
   if (keys.length === 0) return getNotificationCopy();
 
-  const placeholders = keys.map(() => '?').join(', ');
-  db.prepare(`DELETE FROM notification_settings WHERE key IN (${placeholders})`).run(...keys);
+  const remove = db.prepare('DELETE FROM notification_settings WHERE key = ?');
+  db.transaction(() => {
+    for (const key of keys) remove.run(key);
+  })();
   return getNotificationCopy();
 }
 

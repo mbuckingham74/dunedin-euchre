@@ -140,6 +140,12 @@ function setNotificationEditorOpen(button, isOpen) {
   card.classList.toggle('notification-card-editing', isOpen);
 }
 
+document.querySelectorAll('form[data-confirm]').forEach(form => {
+  form.addEventListener('submit', event => {
+    if (!window.confirm(form.dataset.confirm)) event.preventDefault();
+  });
+});
+
 // Copy-to-clipboard for RSVP links
 document.querySelectorAll('.btn-copy').forEach(btn => {
   btn.addEventListener('click', async () => {
