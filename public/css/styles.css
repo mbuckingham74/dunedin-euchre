@@ -1352,6 +1352,29 @@ body.modal-open {
 .comment-cell { color: var(--gray-500); font-style: italic; max-width: 240px; }
 .date-cell { color: var(--gray-400); white-space: nowrap; font-size: 0.875rem; }
 .actions-cell { white-space: nowrap; }
+.participants-table { table-layout: fixed; }
+.participant-name-column { width: 12%; }
+.participant-email-column { width: 19%; }
+.participant-invitees-column { width: 12%; }
+.participant-link-column { width: 14%; }
+.participant-response-column { width: 19%; }
+.participant-status-column { width: 10%; }
+.participant-actions-column { width: 14%; }
+.participants-table td {
+  overflow-wrap: anywhere;
+  vertical-align: top;
+}
+.participants-table .participant-response-summary { min-width: 0; }
+.participants-table .actions-cell { white-space: normal; }
+.participants-table .rsvp-link-preview { display: block; margin-bottom: 0.4rem; }
+.participants-table .btn-copy { margin: 0 0 0.4rem; }
+.participants-table .btn-sm { max-width: 100%; white-space: normal; }
+.participant-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
 .admin-email-link {
   color: var(--blue);
   word-break: break-all;
@@ -2203,6 +2226,40 @@ input[type="file"].form-input { padding: 0.4rem; }
 }
 
 @media (max-width: 900px) {
+  .participants-table,
+  .participants-table tbody { display: block; }
+  .participants-table colgroup { display: none; }
+  .participants-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  .participants-table tr {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem;
+    padding: 1rem 0;
+    border-bottom: 1px solid var(--gray-200);
+  }
+  .participants-table tr:last-child { border-bottom: none; }
+  .participants-table td {
+    display: block;
+    min-width: 0;
+    padding: 0;
+    border: none;
+  }
+  .participants-table td::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 0.35rem;
+    color: var(--gray-500);
+    font-size: 0.8rem;
+    font-weight: 700;
+  }
+  .participants-table .actions-cell { grid-column: 1 / -1; }
+  .participant-actions { flex-direction: row; flex-wrap: wrap; }
   .rsvp-layout {
     grid-template-columns: 1fr;
     padding: 1rem;
@@ -2271,6 +2328,7 @@ input[type="file"].form-input { padding: 0.4rem; }
 }
 
 @media (max-width: 640px) {
+  .participants-table tr { grid-template-columns: minmax(0, 1fr); }
   html { font-size: 16px; }
   .site-header { padding: 1.2rem 1rem; }
   .header-inner {

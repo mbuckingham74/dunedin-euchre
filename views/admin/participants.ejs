@@ -113,7 +113,16 @@
         Remove stops future invitations and keeps RSVP history. Delete permanently erases the shared invite and its RSVP history for all events.
       </p>
       <div class="admin-table-wrap">
-        <table class="admin-table">
+        <table class="admin-table participants-table">
+          <colgroup>
+            <col class="participant-name-column">
+            <col class="participant-email-column">
+            <col class="participant-invitees-column">
+            <col class="participant-link-column">
+            <col class="participant-response-column">
+            <col class="participant-status-column">
+            <col class="participant-actions-column">
+          </colgroup>
           <thead>
             <tr>
               <th>Name</th>
@@ -131,25 +140,24 @@
               <% if (!p.active) rowClasses.push('row-inactive'); %>
               <% if (p.active && p.currentResponse && p.currentResponse.status) rowClasses.push('row-' + p.currentResponse.status); %>
               <tr id="participant-<%= p.id %>" class="<%= rowClasses.join(' ') %>">
-                <td id="name-cell-<%= p.id %>"><%= p.name %></td>
-                <td id="email-cell-<%= p.id %>"><%= p.email %></td>
-                <td>
+                <td data-label="Name" id="name-cell-<%= p.id %>"><%= p.name %></td>
+                <td data-label="Email" id="email-cell-<%= p.id %>"><%= p.email %></td>
+                <td data-label="Invitees">
                   <div><%= p.partyMembers.join(', ') %></div>
                   <div style="font-size:0.8rem;color:var(--gray-500);margin-top:0.2rem;">
                     <%= p.partyMembers.length %> invitee<%= p.partyMembers.length === 1 ? '' : 's' %>
                   </div>
                 </td>
-                <td>
+                <td data-label="RSVP Link">
                   <% const link = selectedEvent ? baseUrl + buildRsvpPath(p, selectedEvent) : null; %>
                   <% if (p.active && link) { %>
-                    <a href="<%= link %>" target="_blank" rel="noopener noreferrer" class="rsvp-link-preview"><%= link %></a>
+                    <a href="<%= link %>" target="_blank" rel="noopener noreferrer" class="rsvp-link-preview">Open RSVP</a>
                     <button class="btn-copy btn-sm" data-copy="<%= link %>" title="Copy link">Copy</button>
                     <a
                       href="/admin/event/<%= selectedEvent.id %>/preview?participantId=<%= p.id %>"
                       target="_blank"
                       rel="noopener noreferrer"
                       class="btn-sm btn-secondary"
-                      style="margin-left:0.4rem;"
                     >Preview RSVP</a>
                   <% } else if (p.active) { %>
                     <span style="color:var(--gray-400);">Create an event to generate a link.</span>
@@ -157,7 +165,7 @@
                     <span style="color:var(--gray-400);">—</span>
                   <% } %>
                 </td>
-                <td>
+                <td data-label="Current RSVP">
                   <% if (p.active && selectedEvent) { %>
                     <div class="participant-response-summary">
                       <span class="status-pill <%= getParticipantResponseTone(p.currentResponse) %>"><%= getParticipantResponseLabel(p.currentResponse) %></span>
@@ -177,14 +185,15 @@
                     <span style="color:var(--gray-400);">—</span>
                   <% } %>
                 </td>
-                <td>
+                <td data-label="Status">
                   <% if (p.active) { %>
                     <span class="status-pill pill-yes">Active</span>
                   <% } else { %>
                     <span class="status-pill pill-no">Removed</span>
                   <% } %>
                 </td>
-                <td class="actions-cell">
+                <td data-label="Actions" class="actions-cell">
+                  <div class="participant-actions">
                   <% if (p.active) { %>
                     <% if (selectedEvent) { %>
                       <button
@@ -220,6 +229,7 @@
                     <input type="hidden" name="selected_event_id" value="<%= selectedEvent ? selectedEvent.id : '' %>">
                     <button type="submit" class="btn-sm btn-danger">Delete</button>
                   </form>
+                  </div>
                 </td>
               </tr>
             <% }); %>
