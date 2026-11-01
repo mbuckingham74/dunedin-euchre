@@ -91,7 +91,7 @@ const ADMIN_EMAILS = (process.env.ADMIN_EMAIL || '')
   .split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
 const TEST_EVENT_PREFIX = '[TEST]';
 const DEFAULT_TESTING_PARTICIPANT_EMAIL = 'mikebuckingham@gmail.com';
-const BULK_INVITE_SENDS_PER_SECOND = parsePositiveInteger(process.env.RESEND_BULK_EMAILS_PER_SECOND, 4);
+const BULK_INVITE_SENDS_PER_SECOND = parsePositiveInteger(process.env.SMTP2GO_INVITE_SENDS_PER_SECOND, 4);
 const BULK_INVITE_DELAY_MS = Math.ceil(1000 / BULK_INVITE_SENDS_PER_SECOND);
 const QUICK_INVITE_RECIPIENT_LIMIT = 2;
 const uploadsDir = getUploadsDir();
@@ -2415,7 +2415,7 @@ router.post('/event/:id/test-invite', requireAdmin, async (req, res) => {
     await sendRsvpInvite({
       ...participant,
       email: testEmail
-    }, event);
+    }, event, { trackDelivery: false });
     req.session.flash = `Test invite sent to ${testEmail} for ${participant.name}.`;
 
     writeAuditLog('send-test-invite', { eventId: event.id, participantId: participant.id, testEmail }, req);

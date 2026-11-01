@@ -3,8 +3,6 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 
-process.env.RESEND_API_KEY = process.env.RESEND_API_KEY || 're_test_key';
-
 const {
   buildMagicLinkEmail,
   buildRsvpInviteEmail,
@@ -56,7 +54,7 @@ test('sendEmail retries rate-limited responses and eventually succeeds', async (
   assert.deepEqual(result, { id: 'email_123' });
 });
 
-test('sendEmail throws non-retryable Resend API errors', async () => {
+test('sendEmail throws non-retryable SMTP2GO API errors', async () => {
   let attempts = 0;
 
   await assert.rejects(
@@ -88,7 +86,7 @@ test('sendEmail throws non-retryable Resend API errors', async () => {
   assert.equal(attempts, 1);
 });
 
-test('sendEmail retries transient transport errors thrown by the client', async () => {
+test('sendEmail retries explicit SMTP2GO rate-limit responses', async () => {
   let attempts = 0;
   const sleeps = [];
 
@@ -100,9 +98,14 @@ test('sendEmail retries transient transport errors thrown by the client', async 
         attempts += 1;
 
         if (attempts === 1) {
-          const error = new Error('Unable to fetch data. The request could not be resolved.');
-          error.name = 'application_error';
-          throw error;
+          return {
+            data: null,
+            error: {
+              name: 'rate_limit_exceeded',
+              message: 'Too many requests.',
+              statusCode: 429
+            }
+          };
         }
 
         return {
@@ -119,6 +122,27 @@ test('sendEmail retries transient transport errors thrown by the client', async 
   assert.equal(attempts, 2);
   assert.deepEqual(sleeps, [1000]);
   assert.deepEqual(result, { id: 'email_456' });
+});
+
+test('sendEmail does not retry unclassified transport errors', async () => {
+  let attempts = 0;
+
+  await assert.rejects(
+    sendEmail(
+      { subject: 'RSVP invite' },
+      {
+        maxRetries: 3,
+        send: async () => {
+          attempts += 1;
+          throw new TypeError('Network request failed.');
+        },
+        sleep: async () => {}
+      }
+    ),
+    /Network request failed/
+  );
+
+  assert.equal(attempts, 1);
 });
 
 test('buildRsvpReminderEmail uses the provided subject and includes the event RSVP link', () => {

@@ -142,12 +142,15 @@ function ensureScheduledRsvpSummaries(options = {}) {
       recipient_email,
       subject,
       status,
-      resend_email_id,
+      email_provider,
+      provider_message_id,
+      provider_delivery_status,
+      delivery_key,
       last_error,
       sent_at,
       updated_at
     )
-    VALUES (?, ?, ?, ?, 'pending', NULL, NULL, NULL, datetime('now'))
+    VALUES (?, ?, ?, ?, 'pending', NULL, NULL, NULL, NULL, NULL, NULL, datetime('now'))
     ON CONFLICT(event_id) DO UPDATE SET
       send_at = CASE
         WHEN scheduled_rsvp_summaries.status = 'sent' THEN scheduled_rsvp_summaries.send_at
@@ -166,8 +169,28 @@ function ensureScheduledRsvpSummaries(options = {}) {
           THEN scheduled_rsvp_summaries.status
         ELSE 'pending'
       END,
-      resend_email_id = CASE
-        WHEN scheduled_rsvp_summaries.status = 'sent' THEN scheduled_rsvp_summaries.resend_email_id
+      email_provider = CASE
+        WHEN scheduled_rsvp_summaries.status = 'sent'
+          OR scheduled_rsvp_summaries.provider_delivery_status = 'ambiguous'
+          THEN scheduled_rsvp_summaries.email_provider
+        ELSE NULL
+      END,
+      provider_message_id = CASE
+        WHEN scheduled_rsvp_summaries.status = 'sent'
+          OR scheduled_rsvp_summaries.provider_delivery_status = 'ambiguous'
+          THEN scheduled_rsvp_summaries.provider_message_id
+        ELSE NULL
+      END,
+      provider_delivery_status = CASE
+        WHEN scheduled_rsvp_summaries.status = 'sent'
+          OR scheduled_rsvp_summaries.provider_delivery_status = 'ambiguous'
+          THEN scheduled_rsvp_summaries.provider_delivery_status
+        ELSE NULL
+      END,
+      delivery_key = CASE
+        WHEN scheduled_rsvp_summaries.status = 'sent'
+          OR scheduled_rsvp_summaries.provider_delivery_status = 'ambiguous'
+          THEN scheduled_rsvp_summaries.delivery_key
         ELSE NULL
       END,
       last_error = CASE
@@ -282,13 +305,17 @@ async function processScheduledRsvpSummaries(options = {}) {
         db.prepare(`
           UPDATE scheduled_rsvp_summaries
           SET status = 'sent',
-              resend_email_id = ?,
+              email_provider = 'smtp2go',
+              provider_message_id = ?,
+              provider_delivery_status = 'accepted',
+              delivery_key = ?,
               sent_at = ?,
               last_error = NULL,
               updated_at = datetime('now')
           WHERE id = ?
         `).run(
           response && response.id ? response.id : null,
+          response && response.deliveryKey ? response.deliveryKey : null,
           new Date().toISOString(),
           row.id
         );
@@ -296,10 +323,17 @@ async function processScheduledRsvpSummaries(options = {}) {
         db.prepare(`
           UPDATE scheduled_rsvp_summaries
           SET status = 'failed',
+              provider_delivery_status = ?,
+              delivery_key = ?,
               last_error = ?,
               updated_at = datetime('now')
           WHERE id = ?
-        `).run(error.message, row.id);
+        `).run(
+          error && error.ambiguous ? 'ambiguous' : 'failed',
+          error && error.deliveryKey ? error.deliveryKey : null,
+          error.message,
+          row.id
+        );
       }
     }
   } finally {

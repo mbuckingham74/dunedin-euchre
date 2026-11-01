@@ -398,6 +398,52 @@ const migrations = [
         );
       `);
     }
+  },
+  {
+    id: '011_smtp2go_delivery_history',
+    up(db) {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS email_delivery_history (
+          id                     INTEGER PRIMARY KEY AUTOINCREMENT,
+          delivery_key           TEXT NOT NULL UNIQUE,
+          provider               TEXT NOT NULL,
+          purpose                TEXT NOT NULL,
+          event_id               INTEGER,
+          participant_id         INTEGER,
+          recipient_email        TEXT NOT NULL,
+          subject                TEXT NOT NULL,
+          provider_message_id    TEXT,
+          delivery_status        TEXT NOT NULL DEFAULT 'sending',
+          last_event             TEXT,
+          sent_at                TEXT,
+          last_event_at          TEXT,
+          last_error             TEXT,
+          created_at             TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at             TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE INDEX IF NOT EXISTS email_delivery_history_event_participant_idx
+        ON email_delivery_history(purpose, event_id, participant_id, created_at DESC);
+
+        CREATE INDEX IF NOT EXISTS email_delivery_history_provider_message_idx
+        ON email_delivery_history(provider, provider_message_id);
+      `);
+
+      for (const [tableName, columnName, statement] of [
+        ['scheduled_reminders', 'email_provider', 'ALTER TABLE scheduled_reminders ADD COLUMN email_provider TEXT'],
+        ['scheduled_reminders', 'provider_message_id', 'ALTER TABLE scheduled_reminders ADD COLUMN provider_message_id TEXT'],
+        ['scheduled_reminders', 'provider_delivery_status', 'ALTER TABLE scheduled_reminders ADD COLUMN provider_delivery_status TEXT'],
+        ['scheduled_reminders', 'delivery_key', 'ALTER TABLE scheduled_reminders ADD COLUMN delivery_key TEXT'],
+        ['scheduled_rsvp_summaries', 'email_provider', 'ALTER TABLE scheduled_rsvp_summaries ADD COLUMN email_provider TEXT'],
+        ['scheduled_rsvp_summaries', 'provider_message_id', 'ALTER TABLE scheduled_rsvp_summaries ADD COLUMN provider_message_id TEXT'],
+        ['scheduled_rsvp_summaries', 'provider_delivery_status', 'ALTER TABLE scheduled_rsvp_summaries ADD COLUMN provider_delivery_status TEXT'],
+        ['scheduled_rsvp_summaries', 'delivery_key', 'ALTER TABLE scheduled_rsvp_summaries ADD COLUMN delivery_key TEXT']
+      ]) {
+        if (!getTableColumns(db, tableName).has(columnName)) {
+          db.exec(statement);
+        }
+      }
+    }
   }
 ];
 

@@ -1,20 +1,20 @@
 'use strict';
 
-const { Resend } = require('resend');
 const { buildRsvpUrl } = require('./links');
 const {
   DEFAULT_NOTIFICATION_COPY,
   renderNotificationCopy
 } = require('./notification-copy');
 
-const resend = new Resend(process.env.RESEND_API_KEY);
 const FROM = process.env.FROM_EMAIL || 'admin@dunedin-euchre.com';
 const ROSTER_FROM = process.env.ROSTER_FROM_EMAIL || 'Do_Not_Reply@dunedin-euchre.com';
 const ROSTER_EMAIL_NOTICE = DEFAULT_NOTIFICATION_COPY.no_reply_notice;
 const REMINDER_DEADLINE_NOTICE = DEFAULT_NOTIFICATION_COPY.reminder_deadline_notice;
 const BASE_URL = process.env.BASE_URL || 'https://dunedin-euchre.com';
-const RESEND_MAX_RETRIES = parsePositiveInteger(process.env.RESEND_MAX_RETRIES, 3);
-const RESEND_RETRY_DELAY_MS = parsePositiveInteger(process.env.RESEND_RETRY_DELAY_MS, 1000);
+const SMTP2GO_API_BASE_URL = 'https://api.smtp2go.com/v3';
+const SMTP2GO_MAX_RETRIES = parsePositiveInteger(process.env.SMTP2GO_MAX_RETRIES, 3);
+const SMTP2GO_RETRY_DELAY_MS = parsePositiveInteger(process.env.SMTP2GO_RETRY_DELAY_MS, 1000);
+const SMTP2GO_REQUEST_TIMEOUT_MS = parsePositiveInteger(process.env.SMTP2GO_REQUEST_TIMEOUT_MS, 15000);
 
 function parsePositiveInteger(value, fallback) {
   const parsed = Number.parseInt(value, 10);
@@ -26,44 +26,240 @@ function sleep(ms) {
 }
 
 function getStatusCode(error) {
-  const statusCode = Number(error && (error.statusCode || error.status));
+  const statusCode = Number(error && (error.statusCode ?? error.status));
   return Number.isInteger(statusCode) ? statusCode : null;
 }
 
-function normalizeResendError(error) {
+function normalizeProviderError(error, provider = 'email') {
   if (error instanceof Error) {
     return error;
   }
 
+  const errorDetails = error && typeof error === 'object' ? error : {};
   const normalized = new Error(
-    error && error.message
-      ? error.message
-      : 'Unable to send email with Resend.'
+    errorDetails.message || errorDetails.error || `Unable to send email with ${provider}.`
   );
-  normalized.name = error && error.name ? error.name : 'resend_error';
+  normalized.name = errorDetails.name || errorDetails.error_code || `${provider}_error`;
 
   const statusCode = getStatusCode(error);
   if (statusCode) {
     normalized.statusCode = statusCode;
   }
 
+  if (errorDetails.code) {
+    normalized.code = errorDetails.code;
+  }
+
+  if (Array.isArray(errorDetails.failures)) {
+    normalized.failures = errorDetails.failures;
+  }
+
   return normalized;
 }
 
-function isRetryableResendError(error) {
-  const statusCode = getStatusCode(error);
-  return statusCode === 429 || statusCode >= 500 || error.name === 'application_error';
+function isRetryableSmtp2goError(error) {
+  // SMTP2GO has no idempotency key. An explicit rate-limit response is the
+  // only retryable condition because it confirms the request was not accepted.
+  return getStatusCode(error) === 429 && !error.ambiguous;
 }
 
-function getRetryDelayMs(attempt, error) {
+function getRetryDelayMs(attempt, error, retryDelayMs = SMTP2GO_RETRY_DELAY_MS) {
   const multiplier = getStatusCode(error) === 429 ? attempt + 1 : 2 ** attempt;
-  return RESEND_RETRY_DELAY_MS * multiplier;
+  return retryDelayMs * multiplier;
+}
+
+function formatSmtp2goSender(from) {
+  const sender = String(from || '').trim();
+  if (!sender) {
+    throw new Error('An email sender is required.');
+  }
+
+  if (sender.includes('<') && sender.includes('>')) {
+    return sender;
+  }
+
+  if (!/^[^\s<>@]+@[^\s<>@]+$/.test(sender)) {
+    throw new Error('The SMTP2GO sender must be an email address or a formatted name and email address.');
+  }
+
+  const displayName = /do[_\s-]?not[_\s-]?reply/i.test(sender)
+    ? 'Dunedin Euchre No Reply'
+    : 'Dunedin Euchre';
+  return `${displayName} <${sender}>`;
+}
+
+function buildSmtp2goPayload(message = {}) {
+  const recipients = Array.isArray(message.to) ? message.to : [message.to];
+  const to = recipients.map(value => String(value || '').trim()).filter(Boolean);
+  if (to.length === 0) {
+    throw new Error('At least one email recipient is required.');
+  }
+
+  const payload = {
+    sender: formatSmtp2goSender(message.from),
+    to
+  };
+
+  if (message.subject !== undefined) payload.subject = message.subject;
+
+  const htmlBody = message.html ?? message.html_body;
+  const textBody = message.text ?? message.text_body;
+  if (htmlBody !== undefined) payload.html_body = htmlBody;
+  if (textBody !== undefined) payload.text_body = textBody;
+
+  if (message.scheduledAt || message.schedule) {
+    throw new Error('Provider-side scheduling is disabled. Queue email in SQLite and let the worker send it when due.');
+  }
+
+  for (const field of [
+    'cc',
+    'bcc',
+    'custom_headers',
+    'attachments',
+    'inlines',
+    'template_id',
+    'template_data',
+    'fastaccept'
+  ]) {
+    if (message[field] !== undefined) {
+      payload[field] = message[field];
+    }
+  }
+
+  return payload;
+}
+
+function createSmtp2goResponseError(message, options = {}) {
+  const error = new Error(message);
+  error.name = options.name || 'smtp2go_response_error';
+  if (Number.isInteger(options.statusCode)) {
+    error.statusCode = options.statusCode;
+  }
+  if (Array.isArray(options.failures)) {
+    error.failures = options.failures;
+  }
+  error.ambiguous = Boolean(options.ambiguous);
+  return error;
+}
+
+function getSmtp2goErrorDetails(body) {
+  if (!body || typeof body !== 'object') return {};
+  const data = body.data && typeof body.data === 'object' ? body.data : body;
+  return {
+    message: data.error || data.message || body.error || body.message,
+    name: data.error_code || data.name || body.error_code || body.name,
+    code: data.error_code || body.error_code
+  };
+}
+
+async function sendWithSmtp2go(message, options = {}) {
+  const apiKey = String(options.apiKey || process.env.SMTP2GO_API_KEY || '').trim();
+  if (!apiKey) {
+    const error = new Error('Missing SMTP2GO_API_KEY.');
+    error.name = 'smtp2go_configuration_error';
+    throw error;
+  }
+
+  const requestBody = buildSmtp2goPayload(message);
+  const baseUrl = String(
+    options.baseUrl || process.env.SMTP2GO_API_BASE_URL || SMTP2GO_API_BASE_URL
+  ).replace(/\/+$/, '');
+  const fetchImpl = options.fetchImpl || fetch;
+  const timeoutMs = parsePositiveInteger(options.timeoutMs, SMTP2GO_REQUEST_TIMEOUT_MS);
+  const requestOptions = {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Smtp2go-Api-Key': apiKey
+    },
+    body: JSON.stringify(requestBody)
+  };
+
+  if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
+    requestOptions.signal = AbortSignal.timeout(timeoutMs);
+  }
+
+  let response;
+  try {
+    response = await fetchImpl(`${baseUrl}/email/send`, requestOptions);
+  } catch (error) {
+    const normalized = normalizeProviderError(error, 'smtp2go');
+    normalized.ambiguous = true;
+    throw normalized;
+  }
+
+  let body;
+  try {
+    body = await response.json();
+  } catch (error) {
+    throw createSmtp2goResponseError('SMTP2GO returned a response that was not valid JSON.', {
+      ambiguous: response.ok || response.status >= 500
+    });
+  }
+
+  if (!response.ok) {
+    const details = getSmtp2goErrorDetails(body);
+    const error = createSmtp2goResponseError(
+      details.message || `SMTP2GO request failed with status ${response.status}.`,
+      {
+        name: details.name || 'smtp2go_api_error',
+        statusCode: response.status,
+        ambiguous: response.status >= 500
+      }
+    );
+    if (details.code) error.code = details.code;
+    throw error;
+  }
+
+  const data = body && body.data;
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    throw createSmtp2goResponseError('SMTP2GO returned a successful response without a data object.', {
+      ambiguous: true
+    });
+  }
+
+  const failures = Array.isArray(data.failures) ? data.failures : [];
+  if (Number(data.failed || 0) > 0) {
+    const firstFailure = failures[0];
+    const failureMessage = typeof firstFailure === 'string'
+      ? firstFailure
+      : firstFailure && (firstFailure.error || firstFailure.message);
+    throw createSmtp2goResponseError(
+      failureMessage || `SMTP2GO reported ${data.failed} failed email${Number(data.failed) === 1 ? '' : 's'}.`,
+      {
+        name: 'smtp2go_send_error',
+        statusCode: 422,
+        failures,
+        ambiguous: Number(data.succeeded) > 0 || !Number.isFinite(Number(data.succeeded))
+      }
+    );
+  }
+
+  const emailId = data.email_id || null;
+  if (!emailId) {
+    throw createSmtp2goResponseError(
+      'SMTP2GO accepted the email without returning an email_id.',
+      { ambiguous: true }
+    );
+  }
+
+  return {
+    data: {
+      ...data,
+      id: emailId,
+      emailId,
+      scheduleId: null,
+      requestId: body.request_id || null
+    },
+    error: null
+  };
 }
 
 async function sendEmail(payload, options = {}) {
-  const send = options.send || (message => resend.emails.send(message));
+  const send = options.send || (message => sendWithSmtp2go(message, options));
   const wait = options.sleep || sleep;
-  const maxRetries = options.maxRetries ?? RESEND_MAX_RETRIES;
+  const maxRetries = options.maxRetries ?? SMTP2GO_MAX_RETRIES;
+  const retryDelayMs = options.retryDelayMs ?? SMTP2GO_RETRY_DELAY_MS;
 
   for (let attempt = 0; ; attempt += 1) {
     try {
@@ -73,16 +269,65 @@ async function sendEmail(payload, options = {}) {
         return response ? response.data : null;
       }
 
-      throw normalizeResendError(response.error);
+      throw normalizeProviderError(response.error, 'smtp2go');
     } catch (error) {
-      const normalizedError = normalizeResendError(error);
-      if (attempt >= maxRetries || !isRetryableResendError(normalizedError)) {
+      const normalizedError = normalizeProviderError(error, 'smtp2go');
+      const isRetryable = isRetryableSmtp2goError(normalizedError);
+      if (attempt >= maxRetries || !isRetryable) {
         throw normalizedError;
       }
 
-      await wait(getRetryDelayMs(attempt, normalizedError));
+      await wait(getRetryDelayMs(attempt, normalizedError, retryDelayMs));
     }
   }
+}
+
+async function sendTrackedEmail(payload, deliveryDetails, options = {}) {
+  if (options.trackDelivery === false || !deliveryDetails) {
+    return sendEmail(payload, options.emailOptions || {});
+  }
+
+  const {
+    createDeliveryAttempt,
+    markDeliveryAccepted,
+    markDeliveryFailed
+  } = require('./email-delivery-history');
+  const attempt = createDeliveryAttempt(deliveryDetails);
+  const existingHeaders = Array.isArray(payload.custom_headers) ? payload.custom_headers : [];
+  const customHeaders = existingHeaders.filter(header => (
+    String(header && header.header || '').toLowerCase() !== 'x-dunedin-delivery-id'
+  ));
+  customHeaders.push({ header: 'X-Dunedin-Delivery-ID', value: attempt.deliveryKey });
+
+  let result;
+  try {
+    result = await sendEmail({ ...payload, custom_headers: customHeaders }, options.emailOptions || {});
+  } catch (error) {
+    error.deliveryKey = attempt.deliveryKey;
+    try {
+      markDeliveryFailed(attempt.deliveryKey, error);
+    } catch (recordingError) {
+      // Keep the original send error; the pending row still blocks an invite retry.
+    }
+    throw error;
+  }
+
+  try {
+    markDeliveryAccepted(attempt.deliveryKey, {
+      providerMessageId: result && result.id,
+      sentAt: new Date().toISOString()
+    });
+  } catch (error) {
+    error.ambiguous = true;
+    try {
+      markDeliveryFailed(attempt.deliveryKey, error);
+    } catch (recordingError) {
+      // The original 'sending' row still prevents an unsafe retry.
+    }
+    throw error;
+  }
+
+  return { ...result, deliveryKey: attempt.deliveryKey };
 }
 
 function buildMagicLinkEmail(token, options = {}) {
@@ -110,14 +355,18 @@ function buildMagicLinkEmail(token, options = {}) {
   return { subject, html };
 }
 
-async function sendMagicLink(toEmail, token) {
+async function sendMagicLink(toEmail, token, options = {}) {
   const email = buildMagicLinkEmail(token, { copy: getSavedNotificationCopy() });
-  return sendEmail({
+  return sendTrackedEmail({
     from: FROM,
     to: toEmail,
     subject: email.subject,
     html: email.html
-  });
+  }, {
+    purpose: 'admin_auth',
+    recipientEmail: toEmail,
+    subject: email.subject
+  }, options);
 }
 
 function getEmailCopy(options = {}) {
@@ -377,12 +626,23 @@ async function sendRsvpInvite(participant, event, options = {}) {
     copy: options.copy || getSavedNotificationCopy()
   });
 
-  return sendEmail({
+  const payload = {
     from: ROSTER_FROM,
     to: participant.email,
     subject: invite.subject,
     html: invite.html
-  });
+  };
+  const hasDeliveryIdentity = Number.isInteger(Number(participant.id))
+    && Number(participant.id) > 0
+    && Number.isInteger(Number(event.id))
+    && Number(event.id) > 0;
+  return sendTrackedEmail(payload, hasDeliveryIdentity ? {
+    purpose: 'invitation',
+    eventId: Number(event.id),
+    participantId: Number(participant.id),
+    recipientEmail: participant.email,
+    subject: invite.subject
+  } : null, options);
 }
 
 async function sendRsvpReminder(participant, event, options = {}) {
@@ -391,13 +651,18 @@ async function sendRsvpReminder(participant, event, options = {}) {
     copy: options.copy || getSavedNotificationCopy()
   });
 
-  return sendEmail({
+  return sendTrackedEmail({
     from: ROSTER_FROM,
     to: participant.email,
     subject: reminder.subject,
-    html: reminder.html,
-    scheduledAt: options.scheduledAt
-  });
+    html: reminder.html
+  }, {
+    purpose: 'reminder',
+    eventId: Number(event.id) || null,
+    participantId: Number(participant.id) || null,
+    recipientEmail: participant.email,
+    subject: reminder.subject
+  }, options);
 }
 
 async function sendRsvpSummary(toEmail, event, roster, options = {}) {
@@ -406,11 +671,16 @@ async function sendRsvpSummary(toEmail, event, roster, options = {}) {
     copy: options.copy || getSavedNotificationCopy()
   });
 
-  return sendEmail({
+  return sendTrackedEmail({
     from: FROM,
     to: toEmail,
     subject: summary.subject,
     html: summary.html
+  }, {
+    purpose: 'rsvp_summary',
+    eventId: Number(event.id) || null,
+    recipientEmail: toEmail,
+    subject: summary.subject
   });
 }
 
@@ -444,10 +714,14 @@ module.exports = {
   formatEventDate,
   formatTime,
   __test__: {
+    buildSmtp2goPayload,
+    formatSmtp2goSender,
     getRetryDelayMs,
-    isRetryableResendError,
-    normalizeResendError,
+    isRetryableSmtp2goError,
+    normalizeProviderError,
     sendEmail,
+    sendTrackedEmail,
+    sendWithSmtp2go,
     sleep
   }
 };

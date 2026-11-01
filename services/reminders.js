@@ -2,11 +2,7 @@
 
 const db = require('../db/database');
 const { buildRsvpReminderEmail, sendRsvpReminder } = require('./email');
-const {
-  getEventInviteDeliveryStatus,
-  getResendEmail,
-  listResendEmails
-} = require('./invite-status');
+const { getEventInviteDeliveryStatus } = require('./invite-status');
 const { applyManagedLocation } = require('./locations');
 
 const REMINDER_KIND = 'day_before_9am_pacific';
@@ -118,49 +114,51 @@ function buildReminderSubject(event) {
   return `Reminder and Last Call for ${title}`;
 }
 
-async function wait(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-async function withRetry(fn, args, options = {}) {
-  const maxRetries = Number.isInteger(options.maxRetries) ? options.maxRetries : 5;
-
-  for (let attempt = 0; ; attempt += 1) {
-    try {
-      if (attempt > 0) {
-        await wait(500 * (attempt + 1));
-      }
-
-      return await fn(...args);
-    } catch (error) {
-      if (!(error && error.statusCode === 429) || attempt >= maxRetries) {
-        throw error;
-      }
-    }
-  }
-}
-
-function getEligibleReminderRecipients(delivery) {
+function getEligibleReminderRecipients(delivery, options = {}) {
   return delivery.statuses
-    .filter(status => status && status.emailId && status.group !== 'issue')
+    .filter(status => status && status.emailId && (options.includeIssue || status.group !== 'issue'))
     .map(status => status.participant);
 }
 
 async function scheduleEventReminder(event, participants, options = {}) {
   const roster = Array.isArray(participants) ? participants : [];
-  const schedule = getDefaultReminderSchedule(event, options);
+  const schedule = options.scheduledAt
+    ? {
+      ...getDefaultReminderSchedule(event, options),
+      scheduledAt: new Date(options.scheduledAt).toISOString()
+    }
+    : getDefaultReminderSchedule(event, options);
+  if (new Date(schedule.scheduledAt).getTime() <= Date.now()) {
+    throw new Error('Reminder schedule must be in the future.');
+  }
   const subject = options.subject || buildReminderSubject(event);
   const baseUrl = options.baseUrl || DEFAULT_BASE_URL;
-  const delivery = await getEventInviteDeliveryStatus(roster, event, {
-    baseUrl,
-    maxPages: options.maxPages || 10,
-    listEmails: innerOptions => withRetry(listResendEmails, [innerOptions]),
-    getEmail: (emailId, innerOptions) => withRetry(getResendEmail, [emailId, innerOptions])
+  const delivery = options.delivery || await getEventInviteDeliveryStatus(roster, event, {
+    ...options,
+    baseUrl
   });
-  const recipients = getEligibleReminderRecipients(delivery);
+  const recipients = getEligibleReminderRecipients(delivery, options);
 
   if (recipients.length === 0) {
     throw new Error('No reminder recipients were found for this event.');
+  }
+
+  const recipientIds = recipients.map(participant => Number(participant.id)).filter(Number.isInteger);
+  if (recipientIds.length > 0) {
+    const recipientIdSet = new Set(recipientIds);
+    const unresolved = db.prepare(`
+      SELECT participant_id
+      FROM scheduled_reminders
+      WHERE event_id = ?
+        AND provider_delivery_status = 'ambiguous'
+    `).all(event.id)
+      .filter(row => recipientIdSet.has(Number(row.participant_id)))
+      .length;
+    if (unresolved > 0) {
+      throw new Error(
+        `${unresolved} reminder delivery result${unresolved === 1 ? ' is' : 's are'} uncertain. Reconcile SMTP2GO activity before queueing another reminder.`
+      );
+    }
   }
 
   const upsertReminder = db.prepare(`
@@ -171,29 +169,58 @@ async function scheduleEventReminder(event, participants, options = {}) {
       send_at,
       subject,
       status,
-      resend_email_id,
+      email_provider,
+      provider_message_id,
+      provider_delivery_status,
+      delivery_key,
       last_error,
       sent_at,
       updated_at
     )
-    VALUES (?, ?, ?, ?, ?, 'pending', NULL, NULL, NULL, datetime('now'))
+    VALUES (?, ?, ?, ?, ?, 'pending', NULL, NULL, NULL, NULL, NULL, NULL, datetime('now'))
     ON CONFLICT(event_id, participant_id, kind) DO UPDATE SET
       send_at = excluded.send_at,
       subject = excluded.subject,
       status = CASE
-        WHEN scheduled_reminders.status = 'sent' THEN scheduled_reminders.status
+        WHEN scheduled_reminders.status = 'sent'
+          OR scheduled_reminders.provider_delivery_status = 'ambiguous'
+          THEN scheduled_reminders.status
         ELSE 'pending'
       END,
-      resend_email_id = CASE
-        WHEN scheduled_reminders.status = 'sent' THEN scheduled_reminders.resend_email_id
+      email_provider = CASE
+        WHEN scheduled_reminders.status = 'sent'
+          OR scheduled_reminders.provider_delivery_status = 'ambiguous'
+          THEN scheduled_reminders.email_provider
+        ELSE NULL
+      END,
+      provider_message_id = CASE
+        WHEN scheduled_reminders.status = 'sent'
+          OR scheduled_reminders.provider_delivery_status = 'ambiguous'
+          THEN scheduled_reminders.provider_message_id
+        ELSE NULL
+      END,
+      provider_delivery_status = CASE
+        WHEN scheduled_reminders.status = 'sent'
+          OR scheduled_reminders.provider_delivery_status = 'ambiguous'
+          THEN scheduled_reminders.provider_delivery_status
+        ELSE NULL
+      END,
+      delivery_key = CASE
+        WHEN scheduled_reminders.status = 'sent'
+          OR scheduled_reminders.provider_delivery_status = 'ambiguous'
+          THEN scheduled_reminders.delivery_key
         ELSE NULL
       END,
       last_error = CASE
-        WHEN scheduled_reminders.status = 'sent' THEN scheduled_reminders.last_error
+        WHEN scheduled_reminders.status = 'sent'
+          OR scheduled_reminders.provider_delivery_status = 'ambiguous'
+          THEN scheduled_reminders.last_error
         ELSE NULL
       END,
       sent_at = CASE
-        WHEN scheduled_reminders.status = 'sent' THEN scheduled_reminders.sent_at
+        WHEN scheduled_reminders.status = 'sent'
+          OR scheduled_reminders.provider_delivery_status = 'ambiguous'
+          THEN scheduled_reminders.sent_at
         ELSE NULL
       END,
       updated_at = datetime('now')
@@ -336,6 +363,7 @@ async function processScheduledReminders(options = {}) {
 
   try {
     const batch = getReminderProcessingBatch(options.limit);
+    const sendReminder = options.sendReminder || sendRsvpReminder;
 
     for (const row of batch) {
       const participant = getParticipantById(row.participant_id);
@@ -353,20 +381,24 @@ async function processScheduledReminders(options = {}) {
       }
 
       try {
-        const response = await sendRsvpReminder(participant, event, {
+        const response = await sendReminder(participant, event, {
           subject: row.subject
         });
 
         db.prepare(`
           UPDATE scheduled_reminders
           SET status = 'sent',
-              resend_email_id = ?,
+              email_provider = 'smtp2go',
+              provider_message_id = ?,
+              provider_delivery_status = 'accepted',
+              delivery_key = ?,
               sent_at = ?,
               last_error = NULL,
               updated_at = datetime('now')
           WHERE id = ?
         `).run(
           response && response.id ? response.id : null,
+          response && response.deliveryKey ? response.deliveryKey : null,
           new Date().toISOString(),
           row.id
         );
@@ -374,10 +406,17 @@ async function processScheduledReminders(options = {}) {
         db.prepare(`
           UPDATE scheduled_reminders
           SET status = 'failed',
+              provider_delivery_status = ?,
+              delivery_key = ?,
               last_error = ?,
               updated_at = datetime('now')
           WHERE id = ?
-        `).run(error.message, row.id);
+        `).run(
+          error && error.ambiguous ? 'ambiguous' : 'failed',
+          error && error.deliveryKey ? error.deliveryKey : null,
+          error.message,
+          row.id
+        );
       }
     }
   } finally {
@@ -428,6 +467,6 @@ module.exports = {
     getPreviousDateKey,
     getTimeZoneParts,
     getZonedIsoString,
-    withRetry
+    getEligibleReminderRecipients
   }
 };

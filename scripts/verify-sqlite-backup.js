@@ -5,9 +5,21 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-function quoteIdentifier(identifier) {
-  return `"${identifier.replaceAll('"', '""')}"`;
-}
+const TABLE_COUNT_QUERIES = Object.freeze({
+  _codex_probe: 'SELECT COUNT(*) AS count FROM _codex_probe',
+  admin_tokens: 'SELECT COUNT(*) AS count FROM admin_tokens',
+  email_delivery_history: 'SELECT COUNT(*) AS count FROM email_delivery_history',
+  event_public_slugs: 'SELECT COUNT(*) AS count FROM event_public_slugs',
+  events: 'SELECT COUNT(*) AS count FROM events',
+  locations: 'SELECT COUNT(*) AS count FROM locations',
+  notification_settings: 'SELECT COUNT(*) AS count FROM notification_settings',
+  participants: 'SELECT COUNT(*) AS count FROM participants',
+  responses: 'SELECT COUNT(*) AS count FROM responses',
+  scheduled_reminders: 'SELECT COUNT(*) AS count FROM scheduled_reminders',
+  scheduled_rsvp_summaries: 'SELECT COUNT(*) AS count FROM scheduled_rsvp_summaries',
+  schema_migrations: 'SELECT COUNT(*) AS count FROM schema_migrations',
+  sessions: 'SELECT COUNT(*) AS count FROM sessions'
+});
 
 function assertIntegrity(database, label) {
   const rows = database.pragma('integrity_check');
@@ -42,9 +54,11 @@ function inspectDatabase(database, label) {
   }
 
   const rowCounts = Object.fromEntries(tables.map(({ name }) => {
-    const result = database.prepare(
-      `SELECT COUNT(*) AS count FROM ${quoteIdentifier(name)}`
-    ).get();
+    const query = TABLE_COUNT_QUERIES[name];
+    if (!query) {
+      throw new Error(`${label} has no registered row-count query for table ${name}`);
+    }
+    const result = database.prepare(query).get();
     return [name, result.count];
   }));
 

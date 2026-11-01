@@ -1,7 +1,6 @@
 'use strict';
 
 const assert = require('node:assert/strict');
-const crypto = require('node:crypto');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -10,7 +9,6 @@ const test = require('node:test');
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dunedin-euchre-summary-'));
 process.env.DB_PATH = path.join(tempDir, 'test.db');
 process.env.NODE_ENV = 'test';
-process.env.RESEND_API_KEY = process.env.RESEND_API_KEY || `re_${crypto.randomBytes(24).toString('hex')}`;
 process.env.ADMIN_EMAIL = 'mom@example.com,admin@example.com';
 process.env.EVENT_RSVP_SUMMARY_TIMEZONE = 'America/New_York';
 
@@ -36,7 +34,7 @@ test('RSVP summaries target 4pm Eastern across daylight-saving changes', () => {
   assert.equal(SUMMARY_RECIPIENT_EMAIL, 'mom@example.com');
 });
 
-test('the event-day worker sends the current roster once and records the Resend id', async () => {
+test('the event-day worker sends the current roster once and records the provider-neutral message ID', async () => {
   const eventResult = db.prepare(`
     INSERT INTO events (title, event_date, location_name, start_time, end_time, is_published)
     VALUES (?, ?, ?, ?, ?, 1)
@@ -79,7 +77,7 @@ test('the event-day worker sends the current roster once and records the Resend 
   const sends = [];
   const sendSummary = async (recipientEmail, event, roster, options) => {
     sends.push({ recipientEmail, event, roster, options });
-    return { id: 'resend-summary-123' };
+    return { id: 'smtp2go-summary-123' };
   };
   const processingOptions = {
     recipientEmail: 'mom@example.com',
@@ -98,14 +96,16 @@ test('the event-day worker sends the current roster once and records the Resend 
   assert.deepEqual(sends[0].roster[1].declinedNames, ['Carol Example']);
 
   const delivery = db.prepare(`
-    SELECT status, recipient_email, resend_email_id, send_at
+    SELECT status, recipient_email, email_provider, provider_message_id, provider_delivery_status, send_at
     FROM scheduled_rsvp_summaries
     WHERE event_id = ?
   `).get(eventId);
   assert.deepEqual(delivery, {
     status: 'sent',
     recipient_email: 'mom@example.com',
-    resend_email_id: 'resend-summary-123',
+    email_provider: 'smtp2go',
+    provider_message_id: 'smtp2go-summary-123',
+    provider_delivery_status: 'accepted',
     send_at: '2026-04-25T20:00:00.000Z'
   });
 });

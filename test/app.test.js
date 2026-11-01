@@ -21,7 +21,6 @@ process.env.EVENT_RSVP_SUMMARY_EMAIL = 'summary@example.com';
 process.env.EVENT_RSVP_SUMMARY_TIMEZONE = 'America/New_York';
 process.env.EVENT_RSVP_SUMMARY_HOUR = '16';
 process.env.BASE_URL = 'http://127.0.0.1';
-process.env.RESEND_API_KEY = process.env.RESEND_API_KEY || `re_${crypto.randomBytes(24).toString('hex')}`;
 
 const emailServicePath = require.resolve('../services/email');
 delete require.cache[emailServicePath];
@@ -1246,11 +1245,11 @@ test('admin can queue the default day-before reminder for invite recipients', as
   });
   const event = insertEvent({
     title: 'Workflow Event',
-    event_date: '2026-04-25'
+    event_date: '2999-04-25'
   });
   mockInviteDeliveryStatus = async participants => ({
     available: true,
-    checkedAt: '2026-04-22T12:00:00.000Z',
+    checkedAt: '2999-04-22T12:00:00.000Z',
     summary: {
       delivered: participants.length,
       pending: 0,
@@ -1259,7 +1258,7 @@ test('admin can queue the default day-before reminder for invite recipients', as
     },
     statuses: participants.map(entry => ({
       participant: entry,
-      sentAt: '2026-04-22T12:00:00.000Z',
+      sentAt: '2999-04-22T12:00:00.000Z',
       emailId: `invite-${entry.id}`,
       lastEvent: 'delivered',
       group: 'delivered',
@@ -1288,7 +1287,7 @@ test('admin can queue the default day-before reminder for invite recipients', as
     event_id: event.id,
     participant_id: participant.id,
     kind: 'day_before_9am_pacific',
-    send_at: '2026-04-24T13:00:00.000Z',
+    send_at: '2999-04-24T13:00:00.000Z',
     subject: 'Reminder and Last Call for Workflow Event',
     status: 'pending'
   }]);
@@ -1734,9 +1733,9 @@ test('invite delivery page shows live status for each participant', async () => 
 
 test('admin can send a single live invite from the invite delivery page', async () => {
   const participant = insertParticipant({
-    name: 'Resend Person',
-    email: 'resend@example.com',
-    rsvp_token: 'resend-token'
+    name: 'Invitation Test Person',
+    email: 'invitation-test@example.com',
+    rsvp_token: 'invitation-test-token'
   });
   const event = insertEvent({
     title: 'Delivery Check Event',

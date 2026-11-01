@@ -1,103 +1,58 @@
 'use strict';
 
-const { buildRsvpInviteEmail } = require('./email');
-const { buildRsvpUrl } = require('./links');
+const { listEventInvitationDeliveries, updateDeliveryFromActivity } = require('./email-delivery-history');
 
-const RESEND_API_BASE_URL = 'https://api.resend.com';
-const RESEND_EMAIL_PAGE_SIZE = parsePositiveInteger(process.env.RESEND_EMAIL_PAGE_SIZE, 100);
-const RESEND_EMAIL_MAX_PAGES = parsePositiveInteger(process.env.RESEND_EMAIL_MAX_PAGES, 3);
+const SMTP2GO_API_BASE_URL = 'https://api.smtp2go.com/v3';
+const SMTP2GO_ACTIVITY_PAGE_SIZE = 1000;
+const SMTP2GO_ACTIVITY_MAX_PAGES = 20;
 const INVITE_FROM = process.env.ROSTER_FROM_EMAIL || 'Do_Not_Reply@dunedin-euchre.com';
-const LEGACY_INVITE_FROM = process.env.FROM_EMAIL || 'admin@dunedin-euchre.com';
-const INVITE_FROMS = new Set([INVITE_FROM, LEGACY_INVITE_FROM]);
-
-function parsePositiveInteger(value, fallback) {
-  const parsed = Number.parseInt(value, 10);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
-}
+const DELIVERY_HEADER = 'X-Dunedin-Delivery-ID';
 
 function normalizeEmail(value) {
   return String(value || '').trim().toLowerCase();
 }
 
-function getApiKey(options = {}) {
-  return options.apiKey || process.env.RESEND_API_KEY || null;
+function toIsoUtc(value) {
+  if (!value) return new Date(0).toISOString();
+  const text = String(value).trim();
+  const normalized = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(text)
+    ? `${text.replace(' ', 'T')}Z`
+    : text;
+  const date = new Date(normalized);
+  return Number.isNaN(date.getTime()) ? new Date(0).toISOString() : date.toISOString();
 }
 
-function getFetchImpl(options = {}) {
-  return options.fetchImpl || fetch;
-}
-
-async function resendRequest(path, options = {}) {
-  const apiKey = getApiKey(options);
-  if (!apiKey) {
-    throw new Error('Missing RESEND_API_KEY.');
-  }
-
-  const fetchImpl = getFetchImpl(options);
-  const response = await fetchImpl(`${RESEND_API_BASE_URL}${path}`, {
-    method: 'GET',
-    headers: {
-      Authorization: `Bearer ${apiKey}`
-    }
-  });
-
-  if (!response.ok) {
-    let message = `Resend request failed with status ${response.status}.`;
-
-    try {
-      const error = await response.json();
-      if (error && error.message) {
-        message = error.message;
-      }
-    } catch (parseError) {
-      // Keep the default message when the error body is not JSON.
-    }
-
-    const failure = new Error(message);
-    failure.statusCode = response.status;
-    throw failure;
-  }
-
-  return response.json();
-}
-
-async function listResendEmails(options = {}) {
-  const searchParams = new URLSearchParams();
-  searchParams.set('limit', String(options.limit || RESEND_EMAIL_PAGE_SIZE));
-  if (options.before) {
-    searchParams.set('before', options.before);
-  }
-  if (options.after) {
-    searchParams.set('after', options.after);
-  }
-
-  return resendRequest(`/emails?${searchParams.toString()}`, options);
-}
-
-async function getResendEmail(emailId, options = {}) {
-  return resendRequest(`/emails/${emailId}`, options);
-}
-
-function getInviteDeliveryGroup(lastEvent) {
-  const normalizedEvent = String(lastEvent || '').trim().toLowerCase();
+function getInviteDeliveryGroup(lastEvent, deliveryStatus = null) {
+  const normalizedEvent = String(lastEvent || deliveryStatus || '').trim().toLowerCase();
   if (!normalizedEvent) return 'pending';
 
-  if (['delivered', 'opened', 'clicked'].includes(normalizedEvent)) {
+  if (['delivered', 'opened', 'clicked', 'resubscribed'].includes(normalizedEvent)) {
     return 'delivered';
   }
 
-  if (['bounced', 'complained', 'canceled'].includes(normalizedEvent)) {
+  if ([
+    'bounced',
+    'soft-bounced',
+    'hard-bounced',
+    'complained',
+    'spam',
+    'rejected',
+    'unsubscribed',
+    'canceled',
+    'failed'
+  ].includes(normalizedEvent)) {
     return 'issue';
   }
 
   return 'pending';
 }
 
-function formatInviteDeliveryLabel(lastEvent, hasMatch) {
+function formatInviteDeliveryLabel(lastEvent, hasMatch, deliveryStatus = null) {
   if (!hasMatch) return 'Missing';
 
-  const normalizedEvent = String(lastEvent || '').trim().toLowerCase();
-  if (!normalizedEvent) return 'Sent';
+  const normalizedEvent = String(lastEvent || deliveryStatus || '').trim().toLowerCase();
+  if (!normalizedEvent) return 'Accepted';
+  if (normalizedEvent === 'ambiguous' || normalizedEvent === 'sending') return 'Delivery Unknown';
 
   return normalizedEvent
     .split(/[_\s-]+/)
@@ -105,12 +60,111 @@ function formatInviteDeliveryLabel(lastEvent, hasMatch) {
     .join(' ');
 }
 
+function getFetchImpl(options = {}) {
+  return options.fetchImpl || fetch;
+}
+
+async function searchSmtp2goActivity(filters, options = {}) {
+  const apiKey = options.apiKey || process.env.SMTP2GO_API_KEY || null;
+  if (!apiKey) {
+    throw new Error('SMTP2GO activity is unavailable until SMTP2GO_API_KEY is configured.');
+  }
+
+  const fetchImpl = getFetchImpl(options);
+  const baseUrl = String(
+    options.baseUrl || process.env.SMTP2GO_API_BASE_URL || SMTP2GO_API_BASE_URL
+  ).replace(/\/+$/, '');
+  const requestOptions = {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Smtp2go-Api-Key': apiKey
+    },
+    body: JSON.stringify(filters)
+  };
+  const timeoutMs = Number.parseInt(options.timeoutMs || process.env.SMTP2GO_REQUEST_TIMEOUT_MS || '15000', 10);
+  if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function' && timeoutMs > 0) {
+    requestOptions.signal = AbortSignal.timeout(timeoutMs);
+  }
+
+  const response = await fetchImpl(`${baseUrl}/activity/search`, requestOptions);
+  let body;
+  try {
+    body = await response.json();
+  } catch (error) {
+    throw new Error('SMTP2GO activity returned a response that was not valid JSON.');
+  }
+
+  if (!response.ok || body?.data?.error) {
+    const message = body?.data?.error || body?.error || `SMTP2GO activity failed with status ${response.status}.`;
+    const failure = new Error(message);
+    failure.statusCode = response.status;
+    throw failure;
+  }
+
+  return body.data || {};
+}
+
+async function listSmtp2goActivityForSubject(records, options = {}) {
+  const bySubject = new Map();
+  for (const record of records) {
+    if (record.provider !== 'smtp2go') continue;
+    const subject = String(record.subject || '').trim();
+    if (!subject) continue;
+    const group = bySubject.get(subject) || [];
+    group.push(record);
+    bySubject.set(subject, group);
+  }
+
+  const allEvents = [];
+  for (const [subject, subjectRecords] of bySubject) {
+    const startDate = subjectRecords
+      .map(record => toIsoUtc(record.sent_at || record.created_at))
+      .sort()[0];
+    let continueToken = null;
+
+    for (let page = 0; page < (options.maxPages || SMTP2GO_ACTIVITY_MAX_PAGES); page += 1) {
+      const filters = {
+        start_date: startDate,
+        end_date: new Date().toISOString(),
+        search_subject: subject,
+        search_sender: options.sender || INVITE_FROM,
+        event_types: [
+          'processed', 'delivered', 'soft-bounced', 'hard-bounced', 'rejected',
+          'spam', 'unsubscribed', 'resubscribed', 'opened', 'clicked'
+        ],
+        custom_headers: [DELIVERY_HEADER],
+        only_latest_by_sent: true,
+        limit: options.limit || SMTP2GO_ACTIVITY_PAGE_SIZE
+      };
+      if (continueToken) filters.continue_token = continueToken;
+
+      const result = await (options.searchActivity || searchSmtp2goActivity)(filters, options);
+      allEvents.push(...(Array.isArray(result.events) ? result.events : []));
+      continueToken = result.continue_token || null;
+      if (!continueToken) break;
+    }
+  }
+
+  return allEvents;
+}
+
+function resolveActivityRow(event, byMessageId, byDeliveryKey) {
+  const messageId = String(event && event.email_id || '').trim();
+  if (messageId && byMessageId.has(messageId)) return byMessageId.get(messageId);
+
+  const headers = event && event.custom_headers && typeof event.custom_headers === 'object'
+    ? event.custom_headers
+    : {};
+  const deliveryKey = String(
+    headers[DELIVERY_HEADER] || headers[DELIVERY_HEADER.toLowerCase()] || ''
+  ).trim();
+  return deliveryKey ? byDeliveryKey.get(deliveryKey) || null : null;
+}
+
 async function getEventInviteDeliveryStatus(participants, event, options = {}) {
   const roster = Array.isArray(participants) ? participants : [];
-  const baseUrl = options.baseUrl || process.env.BASE_URL || 'https://dunedin-euchre.com';
   const checkedAt = new Date().toISOString();
-  const apiKey = getApiKey(options);
-
   const defaultStatuses = roster.map(participant => ({
     participant,
     sentAt: null,
@@ -120,120 +174,76 @@ async function getEventInviteDeliveryStatus(participants, event, options = {}) {
     label: 'Missing'
   }));
 
-  if (!apiKey || roster.length === 0 || !event) {
+  if (!event || roster.length === 0) {
     return {
-      available: Boolean(apiKey),
+      available: true,
       checkedAt,
-      summary: {
-        delivered: 0,
-        pending: 0,
-        issue: 0,
-        missing: defaultStatuses.length
-      },
+      summary: { delivered: 0, pending: 0, issue: 0, missing: defaultStatuses.length },
       statuses: defaultStatuses,
-      error: apiKey ? null : 'Resend status is unavailable until RESEND_API_KEY is configured.'
+      error: null
     };
   }
 
-  const expectedByEmail = new Map(roster.map(participant => ([
-    normalizeEmail(participant.email),
-    {
-      participant,
-      expectedLink: buildRsvpUrl(baseUrl, participant, event)
-    }
-  ])));
-  const expectedSubject = buildRsvpInviteEmail(roster[0], event).subject;
-  const matchedByEmail = new Map();
-  const candidateSummaries = [];
-  let before = null;
-  let pageCount = 0;
-
-  while (pageCount < (options.maxPages || RESEND_EMAIL_MAX_PAGES)) {
-    const page = await (options.listEmails || listResendEmails)({
-      ...options,
-      before,
-      limit: options.limit || RESEND_EMAIL_PAGE_SIZE
-    });
-    const emails = Array.isArray(page && page.data) ? page.data : [];
-    if (emails.length === 0) break;
-
-    for (const email of emails) {
-      if (!INVITE_FROMS.has(email.from) || email.subject !== expectedSubject) {
-        continue;
+  let records = listEventInvitationDeliveries(event.id);
+  let errorMessage = null;
+  const smtpRecords = records.filter(record => record.provider === 'smtp2go');
+  if (smtpRecords.length > 0) {
+    if (!(options.apiKey || process.env.SMTP2GO_API_KEY)) {
+      errorMessage = 'SMTP2GO activity is unavailable until SMTP2GO_API_KEY is configured.';
+    } else {
+      try {
+        const events = await listSmtp2goActivityForSubject(smtpRecords, options);
+        const byMessageId = new Map(smtpRecords
+          .filter(record => record.provider_message_id)
+          .map(record => [record.provider_message_id, record]));
+        const byDeliveryKey = new Map(smtpRecords.map(record => [record.delivery_key, record]));
+        for (const activity of events) {
+          const row = resolveActivityRow(activity, byMessageId, byDeliveryKey);
+          if (!row) continue;
+          if (activity.recipient && normalizeEmail(activity.recipient) !== normalizeEmail(row.recipient_email)) {
+            continue;
+          }
+          updateDeliveryFromActivity(row.id, {
+            providerMessageId: activity.email_id,
+            event: activity.event,
+            date: activity.date
+          });
+        }
+        records = listEventInvitationDeliveries(event.id);
+      } catch (error) {
+        errorMessage = error.message;
       }
-
-      const recipients = Array.isArray(email.to) ? email.to : [];
-      if (!recipients.some(address => expectedByEmail.has(normalizeEmail(address)))) {
-        continue;
-      }
-
-      candidateSummaries.push(email);
-    }
-
-    pageCount += 1;
-    if (!page.has_more || emails.length === 0) {
-      break;
-    }
-
-    before = emails[emails.length - 1].id;
-    if (!before) {
-      break;
     }
   }
 
-  for (const summary of candidateSummaries) {
-    const recipients = (Array.isArray(summary.to) ? summary.to : [])
-      .map(normalizeEmail)
-      .filter(address => expectedByEmail.has(address) && !matchedByEmail.has(address));
-    if (recipients.length === 0) {
-      continue;
-    }
-
-    const detail = await (options.getEmail || getResendEmail)(summary.id, options);
-    const html = String(detail && detail.html || '');
-    const text = String(detail && detail.text || '');
-
-    for (const recipientEmail of recipients) {
-      const expected = expectedByEmail.get(recipientEmail);
-      if (!expected) continue;
-
-      if (!html.includes(expected.expectedLink) && !text.includes(expected.expectedLink)) {
-        continue;
-      }
-
-      matchedByEmail.set(recipientEmail, {
-        emailId: summary.id,
-        sentAt: summary.created_at || detail.created_at || null,
-        lastEvent: detail.last_event || summary.last_event || null
-      });
-    }
-
-    if (matchedByEmail.size === expectedByEmail.size) {
-      break;
-    }
+  const latestByRecipient = new Map();
+  for (const record of records) {
+    const recipient = normalizeEmail(record.recipient_email);
+    if (!recipient || latestByRecipient.has(recipient)) continue;
+    latestByRecipient.set(recipient, record);
   }
 
-  const summary = {
-    delivered: 0,
-    pending: 0,
-    issue: 0,
-    missing: 0
-  };
-
+  const summary = { delivered: 0, pending: 0, issue: 0, missing: 0 };
   const statuses = roster.map(participant => {
-    const match = matchedByEmail.get(normalizeEmail(participant.email)) || null;
-    const group = match ? getInviteDeliveryGroup(match.lastEvent) : 'missing';
-    const label = formatInviteDeliveryLabel(match && match.lastEvent, Boolean(match));
-
+    const record = latestByRecipient.get(normalizeEmail(participant.email)) || null;
+    const group = record
+      ? getInviteDeliveryGroup(record.last_event, record.delivery_status)
+      : 'missing';
+    const label = formatInviteDeliveryLabel(
+      record && record.last_event,
+      Boolean(record),
+      record && record.delivery_status
+    );
     summary[group] += 1;
 
     return {
       participant,
-      sentAt: match ? match.sentAt : null,
-      emailId: match ? match.emailId : null,
-      lastEvent: match ? match.lastEvent : null,
+      sentAt: record ? record.sent_at || record.created_at : null,
+      emailId: record ? record.provider_message_id : null,
+      lastEvent: record ? record.last_event || record.delivery_status : null,
       group,
-      label
+      label,
+      provider: record ? record.provider : null
     };
   });
 
@@ -242,7 +252,7 @@ async function getEventInviteDeliveryStatus(participants, event, options = {}) {
     checkedAt,
     summary,
     statuses,
-    error: null
+    error: errorMessage
   };
 }
 
@@ -250,6 +260,6 @@ module.exports = {
   formatInviteDeliveryLabel,
   getEventInviteDeliveryStatus,
   getInviteDeliveryGroup,
-  getResendEmail,
-  listResendEmails
+  listSmtp2goActivityForSubject,
+  searchSmtp2goActivity
 };

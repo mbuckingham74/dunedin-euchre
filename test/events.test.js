@@ -3,7 +3,6 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 
-process.env.RESEND_API_KEY = process.env.RESEND_API_KEY || 're_test_key';
 
 const {
   buildMonthlyEventHistory,
